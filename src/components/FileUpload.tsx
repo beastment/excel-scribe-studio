@@ -17,6 +17,7 @@ export interface CommentData {
   author?: string;
   timestamp?: string;
   originalRow?: number;
+  checked?: boolean;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
@@ -62,7 +63,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
               text: commentText.trim(),
               author: authorColumnIndex >= 0 ? row[authorColumnIndex] : undefined,
               originalRow: i + 1,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              checked: false
             });
           }
         }
