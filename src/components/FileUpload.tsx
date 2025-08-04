@@ -12,6 +12,7 @@ interface FileUploadProps {
 
 export interface CommentData {
   id: string;
+  originalText: string;
   text: string;
   author?: string;
   timestamp?: string;
@@ -57,6 +58,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
           if (commentText && typeof commentText === 'string' && commentText.trim()) {
             comments.push({
               id: `comment_${i}`,
+              originalText: commentText.trim(),
               text: commentText.trim(),
               author: authorColumnIndex >= 0 ? row[authorColumnIndex] : undefined,
               originalRow: i + 1,

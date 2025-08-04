@@ -26,6 +26,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   useEffect(() => {
     const filtered = comments.filter(comment =>
       comment.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      comment.originalText.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase()))
     );
     setFilteredComments(filtered);
@@ -54,7 +55,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const exportToExcel = () => {
     const exportData = comments.map((comment, index) => ({
       'Row': comment.originalRow || index + 1,
-      'Comment': comment.text,
+      'Original Comment': comment.originalText,
+      'Final Comment': comment.text,
       'Author': comment.author || '',
       'Last Modified': comment.timestamp || ''
     }));
@@ -130,55 +132,80 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     </div>
                   )}
                 </div>
-                {editingId !== comment.id && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => startEditing(comment)}
-                    className="gap-2 hover:bg-primary/10"
-                  >
-                    <Edit3 className="w-3 h-3" />
-                    Edit
-                  </Button>
-                )}
               </div>
 
-              {/* Comment Content */}
-              {editingId === comment.id ? (
-                <div className="space-y-3">
-                  <Textarea
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                    className="min-h-[100px] resize-none"
-                    placeholder="Edit your comment..."
-                  />
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Original Comment Column */}
+                <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => saveEdit(comment.id)}
-                      className="gap-2"
-                    >
-                      <Check className="w-3 h-3" />
-                      Save
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={cancelEdit}
-                      className="gap-2"
-                    >
-                      <X className="w-3 h-3" />
-                      Cancel
-                    </Button>
+                    <h4 className="text-sm font-medium text-muted-foreground">Original</h4>
+                    <Badge variant="outline" className="text-xs">Read-only</Badge>
+                  </div>
+                  <div className="p-4 rounded-lg bg-muted/30 border">
+                    <p className="text-foreground leading-relaxed">
+                      {comment.originalText}
+                    </p>
                   </div>
                 </div>
-              ) : (
-                <div className="prose prose-sm max-w-none">
-                  <p className="text-foreground leading-relaxed">
-                    {comment.text}
-                  </p>
+
+                {/* Editable Comment Column */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-medium text-muted-foreground">Final Version</h4>
+                      <Badge variant="secondary" className="text-xs">Editable</Badge>
+                    </div>
+                    {editingId !== comment.id && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => startEditing(comment)}
+                        className="gap-2 hover:bg-primary/10"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {editingId === comment.id ? (
+                    <div className="space-y-3">
+                      <Textarea
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        className="min-h-[120px] resize-none"
+                        placeholder="Edit your comment..."
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => saveEdit(comment.id)}
+                          className="gap-2"
+                        >
+                          <Check className="w-3 h-3" />
+                          Save
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={cancelEdit}
+                          className="gap-2"
+                        >
+                          <X className="w-3 h-3" />
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
+                      <p className="text-foreground leading-relaxed">
+                        {comment.text}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           </Card>
         ))}
