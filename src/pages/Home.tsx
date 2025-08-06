@@ -18,27 +18,27 @@ const Home = () => {
               Powered by Enterprise Grade AI
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-              Leverage AI to Unlock the True Voice
-              in Your Business Data
+              Leverage AI to Unlock the <span className="text-primary">True Voice</span>
+              <br />in Your Employee Feedback
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-              Our suite of AI-powered tools helps you analyze, understand, and act on business data 
-              faster and more effectively than ever before.
+              Our suite of AI-powered tools helps you analyze, understand, and act on 
+              employee feedback faster and more effectively than ever before.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {user ? <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
+              {user ? <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg">
                   <Link to="/comments" className="flex items-center">
                     Start Screening Comments <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
                 </Button> : <>
-                  <Button size="lg" className="bg-gradient-primary hover:opacity-90 shadow-lg text-slate-950">
+                  <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg">
                     <Link to="/auth" className="flex items-center">
-                      Get Started <ArrowRight className="ml-2 h-5 w-5" />
+                      Explore Our AI Tools <ArrowRight className="ml-2 h-5 w-5" />
                     </Link>
                   </Button>
-                  <Button size="lg" variant="outline">
+                  <Button size="lg" variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
                     <Link to="/services" className="flex items-center">
-                      Explore Features
+                      Learn More
                     </Link>
                   </Button>
                 </>}
@@ -53,7 +53,7 @@ const Home = () => {
           <h2 className="text-3xl md:text-4xl font-bold mb-4">Powerful AI Applications</h2>
           <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
             Choose from our suite of specialized applications, each designed to supercharge a 
-            specific part of your data analysis workflow.
+            specific part of your feedback analysis workflow.
           </p>
         </div>
 
@@ -61,8 +61,8 @@ const Home = () => {
           {/* Comment De-Identification */}
           <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
             <div className="flex items-start gap-4 mb-6">
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                <MessageSquare className="h-6 w-6 text-blue-500" />
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <MessageSquare className="h-6 w-6 text-primary" />
               </div>
               <div className="flex-1">
                 <div className="text-sm text-muted-foreground mb-1">Starting at</div>
@@ -101,8 +101,8 @@ const Home = () => {
           {/* Thematic Analysis */}
           <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
             <div className="flex items-start gap-4 mb-6">
-              <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
-                <BarChart3 className="h-6 w-6 text-purple-500" />
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <BarChart3 className="h-6 w-6 text-primary" />
               </div>
               <div className="flex-1">
                 <div className="text-sm text-muted-foreground mb-1">Coming Soon</div>
@@ -138,8 +138,8 @@ const Home = () => {
           {/* Action Planning Extension */}
           <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
             <div className="flex items-start gap-4 mb-6">
-              <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                <Zap className="h-6 w-6 text-green-500" />
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <Zap className="h-6 w-6 text-primary" />
               </div>
               <div className="flex-1">
                 <div className="text-sm text-muted-foreground mb-1">Coming Soon</div>
@@ -175,8 +175,8 @@ const Home = () => {
           {/* Report Writer */}
           <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
             <div className="flex items-start gap-4 mb-6">
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
-                <FileText className="h-6 w-6 text-red-500" />
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-primary" />
               </div>
               <div className="flex-1">
                 <div className="text-sm text-muted-foreground mb-1">Coming Soon</div>
