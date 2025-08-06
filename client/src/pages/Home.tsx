@@ -214,7 +214,7 @@ const Home = () => {
           <h2 className="text-3xl md:text-4xl font-bold mb-4 text-[#21212c]">
             Ready to Revolutionize Your Data Process?
           </h2>
-          <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto">
+          <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto text-[#21212c]">
             Join hundreds of organizations that have transformed their data analysis with our platform.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
