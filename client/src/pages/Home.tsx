@@ -1,21 +1,82 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, FileText, Building, Users, Mail, Shield, Zap, MessageSquare, BarChart3 } from 'lucide-react';
+import { ArrowRight, FileText, Building, Users, Mail, Shield, Zap, MessageSquare, BarChart3, LogOut, User } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { AuthModal } from '@/components/AuthModal';
+import { toast } from 'sonner';
 
 const Home = () => {
+  const { user, isAuthenticated, logout, isLogoutPending } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast.success('Logged out successfully');
+    } catch (error: any) {
+      toast.error('Error logging out');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
       <nav className="bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <div className="text-2xl font-bold text-primary">SurveyJumper</div>
-            <div className="hidden md:flex space-x-6">
-              <Link to="/" className="text-foreground hover:text-primary transition-colors px-3 py-2">Home</Link>
-              <Link to="/services" className="text-foreground hover:text-primary transition-colors px-3 py-2">Apps</Link>
-              <Link to="/about" className="text-foreground hover:text-primary transition-colors px-3 py-2">Dashboard</Link>
-              <Link to="/contact" className="text-foreground hover:text-primary transition-colors px-3 py-2">Contact</Link>
+            <div className="text-2xl font-bold text-primary">Eastment</div>
+            <div className="flex items-center gap-4">
+              <div className="hidden md:flex space-x-6">
+                <Link href="/" className="text-foreground hover:text-primary transition-colors px-3 py-2">Home</Link>
+                <Link href="/services" className="text-foreground hover:text-primary transition-colors px-3 py-2">Apps</Link>
+                <Link href="/about" className="text-foreground hover:text-primary transition-colors px-3 py-2">Dashboard</Link>
+                <Link href="/contact" className="text-foreground hover:text-primary transition-colors px-3 py-2">Contact</Link>
+              </div>
+              {isAuthenticated ? (
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    <span className="text-sm">Welcome, {user?.username}</span>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={handleLogout}
+                    disabled={isLogoutPending}
+                    className="text-foreground hover:text-primary"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    {isLogoutPending ? 'Logging out...' : 'Logout'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => {
+                      setAuthMode('login');
+                      setShowAuthModal(true);
+                    }}
+                    className="text-foreground hover:text-primary"
+                  >
+                    Sign In
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      setAuthMode('register');
+                      setShowAuthModal(true);
+                    }}
+                    className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                  >
+                    Sign Up
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -39,11 +100,24 @@ const Home = () => {
               Our suite of AI-powered tools helps you analyze, understand, and act on business data 
               faster and more effectively than ever before.
             </p>
-            <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
-              <Link to="/services" className="flex items-center">
-                Explore Our AI Tools <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
+            {isAuthenticated ? (
+              <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg" asChild>
+                <Link href="/comments" className="flex items-center">
+                  Start Analyzing Comments <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+            ) : (
+              <Button 
+                size="lg" 
+                className="bg-gradient-primary hover:opacity-90 text-white shadow-lg"
+                onClick={() => {
+                  setAuthMode('register');
+                  setShowAuthModal(true);
+                }}
+              >
+                Get Started Free <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -68,9 +142,6 @@ const Home = () => {
                 <div className="text-sm text-muted-foreground mb-1">Starting at</div>
                 <div className="text-2xl font-bold">$199</div>
               </div>
-              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
-                In Development
-              </div>
             </div>
             <h3 className="text-xl font-semibold mb-3">Comment De-Identification</h3>
             <p className="text-muted-foreground mb-6">
@@ -91,8 +162,10 @@ const Home = () => {
                 Bulk Processing API
               </div>
             </div>
-            <Button variant="secondary" className="w-full">
-              Learn More & Get Started
+            <Button variant="secondary" className="w-full" asChild>
+              <Link href="/comments">
+                Get Started
+              </Link>
             </Button>
           </div>
 
@@ -264,6 +337,13 @@ const Home = () => {
           </div>
         </div>
       </footer>
+
+      {/* Auth Modal */}
+      <AuthModal 
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultMode={authMode}
+      />
     </div>
   );
 };
