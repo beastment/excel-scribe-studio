@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, FileText, Building, Users, Mail, Shield, Zap, MessageSquare, BarChart3 } from 'lucide-react';
 
