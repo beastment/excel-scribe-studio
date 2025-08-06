@@ -17,9 +17,10 @@ const Home = () => {
               <Shield className="h-4 w-4" />
               Powered by Enterprise Grade AI
             </div>
-            <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-              Leverage AI to Unlock the <span className="text-primary">True Voice</span>
-              <br />in Your Employee Feedback
+            <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+              Leverage AI to Unlock the
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"> True Voice </span>
+              in Your Employee Feedback
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
               Our suite of AI-powered tools helps you analyze, understand, and act on 
