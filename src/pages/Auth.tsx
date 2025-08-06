@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import { AuthForm } from '@/components/auth/AuthForm';
 import { useAuth } from '@/contexts/AuthContext';
 
 const Auth = () => {
   const { user, loading } = useAuth();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
+
+  useEffect(() => {
+    // Check if this is a password reset redirect
+    const type = searchParams.get('type');
+    if (type === 'recovery') {
+      setMode('reset');
+    }
+  }, [searchParams]);
 
   // Redirect if already authenticated
   if (!loading && user) {
@@ -33,13 +42,15 @@ const Auth = () => {
           </div>
           
           <h1 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6 leading-tight">
-            {mode === 'signin' ? 'Welcome Back' : 'Join Our Community'}
+            {mode === 'signin' ? 'Welcome Back' : mode === 'signup' ? 'Join Our Community' : 'Reset Password'}
           </h1>
           
           <p className="text-xl text-gray-600 mb-8 leading-relaxed max-w-2xl mx-auto">
             {mode === 'signin' 
               ? 'Sign in to access your AI-powered employee feedback tools'
-              : 'Create an account to start leveraging the power of AI for your employee feedback'
+              : mode === 'signup'
+              ? 'Create an account to start leveraging the power of AI for your employee feedback'
+              : 'Enter your new password below'
             }
           </p>
         </div>

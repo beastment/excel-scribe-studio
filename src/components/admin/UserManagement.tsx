@@ -17,9 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Users, Crown, User, Trash2, RefreshCw } from 'lucide-react';
+import { Users, Crown, User, Trash2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { SubscriptionManagement } from './SubscriptionManagement';
 
 interface UserProfile {
   id: string;
@@ -34,6 +35,7 @@ export const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   const fetchUsers = async () => {
@@ -102,6 +104,16 @@ export const UserManagement: React.FC = () => {
     });
   };
 
+  const toggleUserExpansion = (userId: string) => {
+    const newExpanded = new Set(expandedUsers);
+    if (newExpanded.has(userId)) {
+      newExpanded.delete(userId);
+    } else {
+      newExpanded.add(userId);
+    }
+    setExpandedUsers(newExpanded);
+  };
+
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -148,51 +160,81 @@ export const UserManagement: React.FC = () => {
                 <TableHead>Created</TableHead>
                 <TableHead>Last Updated</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right">Subscriptions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      {user.role === 'admin' ? (
-                        <Crown className="w-4 h-4 text-yellow-500" />
-                      ) : (
-                        <User className="w-4 h-4 text-gray-500" />
-                      )}
-                      {user.full_name || 'Unknown User'}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge 
-                      variant={user.role === 'admin' ? 'default' : 'secondary'}
-                      className={user.role === 'admin' ? 'bg-yellow-100 text-yellow-800' : ''}
-                    >
-                      {user.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDate(user.created_at)}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDate(user.updated_at)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Select
-                      value={user.role}
-                      onValueChange={(value: 'admin' | 'user') => updateUserRole(user.user_id, value)}
-                      disabled={updating === user.user_id}
-                    >
-                      <SelectTrigger className="w-24 h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                </TableRow>
+                <React.Fragment key={user.id}>
+                  <TableRow>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {user.role === 'admin' ? (
+                          <Crown className="w-4 h-4 text-yellow-500" />
+                        ) : (
+                          <User className="w-4 h-4 text-gray-500" />
+                        )}
+                        {user.full_name || 'Unknown User'}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant={user.role === 'admin' ? 'default' : 'secondary'}
+                        className={user.role === 'admin' ? 'bg-yellow-100 text-yellow-800' : ''}
+                      >
+                        {user.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(user.created_at)}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(user.updated_at)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Select
+                        value={user.role}
+                        onValueChange={(value: 'admin' | 'user') => updateUserRole(user.user_id, value)}
+                        disabled={updating === user.user_id}
+                      >
+                        <SelectTrigger className="w-24 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleUserExpansion(user.user_id)}
+                      >
+                        {expandedUsers.has(user.user_id) ? (
+                          <ChevronDown className="h-4 w-4 mr-1" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 mr-1" />
+                        )}
+                        Manage
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                  
+                  {expandedUsers.has(user.user_id) && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="p-0">
+                        <div className="p-4 bg-gray-50 border-t">
+                          <SubscriptionManagement 
+                            userId={user.user_id} 
+                            userFullName={user.full_name || 'Unknown User'} 
+                          />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </React.Fragment>
               ))}
             </TableBody>
           </Table>

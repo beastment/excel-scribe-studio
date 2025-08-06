@@ -9,7 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface AuthFormProps {
-  mode: 'signin' | 'signup';
+  mode: 'signin' | 'signup' | 'reset';
   onModeChange: (mode: 'signin' | 'signup') => void;
 }
 
@@ -21,6 +21,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
     email: '',
     password: '',
     fullName: '',
+    confirmPassword: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,6 +38,37 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
             description: 'We sent you a confirmation link to complete your registration.',
           });
         }
+      } else if (mode === 'reset') {
+        if (formData.password !== formData.confirmPassword) {
+          toast({
+            title: 'Password Mismatch',
+            description: 'Passwords do not match. Please try again.',
+            variant: 'destructive',
+          });
+          setLoading(false);
+          return;
+        }
+
+        const { error } = await supabase.auth.updateUser({
+          password: formData.password
+        });
+
+        if (error) {
+          toast({
+            title: 'Error',
+            description: error.message,
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Password Updated',
+            description: 'Your password has been successfully updated.',
+          });
+          // Redirect to dashboard after successful password reset
+          window.location.href = '/';
+        }
+        setLoading(false);
+        return;
       } else {
         result = await signIn(formData.email, formData.password);
         if (!result.error) {
@@ -47,7 +79,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
         }
       }
 
-      if (result.error) {
+      if (result?.error) {
         toast({
           title: 'Authentication Error',
           description: result.error.message,
@@ -112,12 +144,14 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
     <Card className="w-full shadow-xl bg-white border-0">
       <CardHeader className="text-center pb-4">
         <CardTitle className="text-2xl font-bold text-gray-900">
-          {mode === 'signin' ? 'Sign In' : 'Create Account'}
+          {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
         </CardTitle>
         <CardDescription className="text-gray-600">
           {mode === 'signin' 
             ? 'Welcome back! Please sign in to continue'
-            : 'Join us and start transforming your feedback process'
+            : mode === 'signup'
+            ? 'Join us and start transforming your feedback process'
+            : 'Enter your new password below'
           }
         </CardDescription>
       </CardHeader>
@@ -139,23 +173,27 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
             </div>
           )}
           
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-gray-700 font-medium">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="Enter your email"
-              value={formData.email}
-              onChange={handleInputChange}
-              required
-              className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
+          {mode !== 'reset' && (
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-gray-700 font-medium">Email</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="Enter your email"
+                value={formData.email}
+                onChange={handleInputChange}
+                required
+                className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+          )}
           
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password" className="text-gray-700 font-medium">Password</Label>
+              <Label htmlFor="password" className="text-gray-700 font-medium">
+                {mode === 'reset' ? 'New Password' : 'Password'}
+              </Label>
               {mode === 'signin' && (
                 <button
                   type="button"
@@ -170,7 +208,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
               id="password"
               name="password"
               type="password"
-              placeholder="Enter your password"
+              placeholder={mode === 'reset' ? 'Enter your new password' : 'Enter your password'}
               value={formData.password}
               onChange={handleInputChange}
               required
@@ -178,6 +216,23 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
               className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
             />
           </div>
+
+          {mode === 'reset' && (
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword" className="text-gray-700 font-medium">Confirm New Password</Label>
+              <Input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                placeholder="Confirm your new password"
+                value={formData.confirmPassword}
+                onChange={handleInputChange}
+                required
+                minLength={6}
+                className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+          )}
           
           <Button 
             type="submit" 
@@ -185,23 +240,25 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
             disabled={loading}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {mode === 'signin' ? 'Sign In' : 'Create Account'}
+            {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Update Password'}
           </Button>
         </form>
         
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
-            {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
-            {' '}
-            <button
-              type="button"
-              onClick={() => onModeChange(mode === 'signin' ? 'signup' : 'signin')}
-              className="text-blue-600 hover:text-blue-800 hover:underline font-medium transition-colors"
-            >
-              {mode === 'signin' ? 'Sign up here' : 'Sign in here'}
-            </button>
-          </p>
-        </div>
+        {mode !== 'reset' && (
+          <div className="mt-6 text-center">
+            <p className="text-sm text-gray-600">
+              {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
+              {' '}
+              <button
+                type="button"
+                onClick={() => onModeChange(mode === 'signin' ? 'signup' : 'signin')}
+                className="text-blue-600 hover:text-blue-800 hover:underline font-medium transition-colors"
+              >
+                {mode === 'signin' ? 'Sign up here' : 'Sign in here'}
+              </button>
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
