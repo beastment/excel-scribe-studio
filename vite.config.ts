@@ -8,14 +8,6 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
-    // Security headers for development
-    headers: mode === 'development' ? {
-      'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
-      'X-XSS-Protection': '1; mode=block',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-    } : {},
   },
   plugins: [
     react(),
@@ -26,19 +18,5 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
-  },
-  // Production build optimizations and security
-  build: {
-    rollupOptions: {
-      output: {
-        // Remove console logs in production
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          supabase: ['@supabase/supabase-js'],
-        },
-      },
-    },
-    // Security: disable source maps in production
-    sourcemap: mode === 'development',
   },
 }));

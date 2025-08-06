@@ -14,39 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      auth_rate_limits: {
-        Row: {
-          attempts: number
-          created_at: string
-          first_attempt: string
-          id: string
-          ip: unknown
-          is_locked: boolean
-          lockout_until: string | null
-          updated_at: string
-        }
-        Insert: {
-          attempts?: number
-          created_at?: string
-          first_attempt?: string
-          id?: string
-          ip: unknown
-          is_locked?: boolean
-          lockout_until?: string | null
-          updated_at?: string
-        }
-        Update: {
-          attempts?: number
-          created_at?: string
-          first_attempt?: string
-          id?: string
-          ip?: unknown
-          is_locked?: boolean
-          lockout_until?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -79,10 +46,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      cleanup_auth_rate_limits: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never

@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { authenticateWithRateLimit } from '@/utils/rateLimitUtils';
 
 interface AuthContextType {
   user: User | null;
@@ -48,31 +47,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signUp = async (email: string, password: string, fullName?: string) => {
-    return authenticateWithRateLimit(async () => {
-      const redirectUrl = `${window.location.origin}/`;
-      
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: {
-            full_name: fullName
-          }
+    const redirectUrl = `${window.location.origin}/`;
+    
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: redirectUrl,
+        data: {
+          full_name: fullName
         }
-      });
-      return { error };
-    }, 'signup');
+      }
+    });
+    return { error };
   };
 
   const signIn = async (email: string, password: string) => {
-    return authenticateWithRateLimit(async () => {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      return { error };
-    }, 'signin');
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    return { error };
   };
 
   const signOut = async () => {
