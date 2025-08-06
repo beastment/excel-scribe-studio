@@ -77,7 +77,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
         onDataLoaded(comments);
         toast.success(`Successfully loaded ${comments.length} comments`);
       } catch (error) {
-        console.error('Error processing file:', error);
         toast.error('Error processing Excel file. Please check the file format.');
       }
     };

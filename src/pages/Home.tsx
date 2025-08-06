@@ -1,101 +1,253 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, FileText, Building, Users, Mail } from 'lucide-react';
+import { ArrowRight, FileText, Shield, Zap, MessageSquare, BarChart3 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Home = () => {
+  const { user } = useAuth();
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Navigation */}
-      <nav className="bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="text-2xl font-bold text-primary">Eastment</div>
-            <div className="hidden md:flex space-x-8">
-              <Link to="/" className="text-foreground hover:text-primary transition-colors">Home</Link>
-              <Link to="/about" className="text-foreground hover:text-primary transition-colors">About</Link>
-              <Link to="/services" className="text-foreground hover:text-primary transition-colors">Services</Link>
-              <Link to="/comments" className="text-foreground hover:text-primary transition-colors">Comment Editor</Link>
-              <Link to="/contact" className="text-foreground hover:text-primary transition-colors">Contact</Link>
-            </div>
-          </div>
-        </div>
-      </nav>
 
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-primary via-primary-glow to-primary text-primary-foreground">
-        <div className="container mx-auto px-4 py-24">
-          <div className="text-center max-w-4xl mx-auto animate-fade-in">
-            <h1 className="text-5xl md:text-6xl font-bold mb-6">
-              Welcome to Eastment
+      <div className="relative bg-background text-foreground">
+        <div className="container mx-auto px-4 py-16">
+          <div className="text-center max-w-5xl mx-auto animate-fade-in">
+            <div className="text-sm text-muted-foreground mb-6 flex items-center justify-center gap-2">
+              <Shield className="h-4 w-4" />
+              Powered by Enterprise Grade AI
+            </div>
+            <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
+              Leverage AI to Unlock the{' '}
+              <span className="bg-gradient-primary bg-clip-text text-transparent">
+                True Voice
+              </span>{' '}
+              in Your Business Data
             </h1>
-            <p className="text-xl md:text-2xl opacity-90 mb-8">
-              Professional services and innovative solutions for your business needs
+            <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
+              Our suite of AI-powered tools helps you analyze, understand, and act on business data 
+              faster and more effectively than ever before.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button size="lg" variant="secondary" asChild>
-                <Link to="/services">
-                  Our Services <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild>
-                <Link to="/comments">
-                  Try Comment Editor <FileText className="ml-2 h-5 w-5" />
-                </Link>
-              </Button>
+              {user ? (
+                <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
+                  <Link to="/comments" className="flex items-center">
+                    Start Screening Comments <ArrowRight className="ml-2 h-5 w-5" />
+                  </Link>
+                </Button>
+              ) : (
+                <>
+                  <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
+                    <Link to="/auth" className="flex items-center">
+                      Get Started <ArrowRight className="ml-2 h-5 w-5" />
+                    </Link>
+                  </Button>
+                  <Button size="lg" variant="outline">
+                    <Link to="/services" className="flex items-center">
+                      Explore Features
+                    </Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Features Section */}
+      {/* Applications Section */}
       <div className="container mx-auto px-4 py-20">
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Why Choose Eastment?</h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            We provide innovative solutions and professional services tailored to your specific needs
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">Powerful AI Applications</h2>
+          <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
+            Choose from our suite of specialized applications, each designed to supercharge a 
+            specific part of your data analysis workflow.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8">
-          <div className="text-center p-6 rounded-lg border bg-card animate-fade-in">
-            <Building className="h-12 w-12 text-primary mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Professional Services</h3>
-            <p className="text-muted-foreground">
-              Expert consultation and services to help your business grow and succeed
+        <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
+          {/* Comment De-Identification */}
+          <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+                <MessageSquare className="h-6 w-6 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm text-muted-foreground mb-1">Starting at</div>
+                <div className="text-2xl font-bold">$199</div>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-3">Comment De-Identification</h3>
+            <p className="text-muted-foreground mb-6">
+              Securely anonymize open-ended comments while preserving the 
+              original tone and intent.
             </p>
+            <div className="space-y-2 mb-6">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                PII & Sensitive Data Redaction
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Tone & Context Preservation
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Bulk Processing API
+              </div>
+            </div>
+            {user ? (
+              <Button variant="secondary" className="w-full">
+                <Link to="/comments">Try Now</Link>
+              </Button>
+            ) : (
+              <Button variant="secondary" className="w-full">
+                <Link to="/auth">Sign Up to Try</Link>
+              </Button>
+            )}
           </div>
-          
-          <div className="text-center p-6 rounded-lg border bg-card animate-fade-in">
-            <FileText className="h-12 w-12 text-primary mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Document Solutions</h3>
-            <p className="text-muted-foreground">
-              Advanced tools for document processing and content management
+
+          {/* Thematic Analysis */}
+          <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
+                <BarChart3 className="h-6 w-6 text-purple-500" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm text-muted-foreground mb-1">Coming Soon</div>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-3">Thematic Analysis</h3>
+            <p className="text-muted-foreground mb-6">
+              Automatically discover and categorize key themes and sentiment from 
+              thousands of employee comments.
             </p>
+            <div className="space-y-2 mb-6">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                AI-Powered Topic Modeling
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Sentiment Analysis
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Emerging Trend Identification
+              </div>
+            </div>
+            <Button variant="secondary" className="w-full">
+              Coming Soon
+            </Button>
           </div>
-          
-          <div className="text-center p-6 rounded-lg border bg-card animate-fade-in">
-            <Users className="h-12 w-12 text-primary mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Client-Focused</h3>
-            <p className="text-muted-foreground">
-              Dedicated support and personalized solutions for every client
+
+          {/* Action Planning Extension */}
+          <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
+                <Zap className="h-6 w-6 text-green-500" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm text-muted-foreground mb-1">Coming Soon</div>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-3">Action Planning Extension</h3>
+            <p className="text-muted-foreground mb-6">
+              Turn insights into concrete action plans with AI suggested initiatives and 
+              progress tracking.
             </p>
+            <div className="space-y-2 mb-6">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                AI-Generated Action Items
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Goal & Progress Tracking
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Manager Accountability Tools
+              </div>
+            </div>
+            <Button variant="secondary" className="w-full">
+              Coming Soon
+            </Button>
+          </div>
+
+          {/* Report Writer */}
+          <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-red-500" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm text-muted-foreground mb-1">Coming Soon</div>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-3">Report Writer</h3>
+            <p className="text-muted-foreground mb-6">
+              Instantly generate executive summaries and narrative reports from your 
+              quantitative and qualitative data.
+            </p>
+            <div className="space-y-2 mb-6">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Automated Narrative Generation
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Custom Report Templates
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Data Visualization Integration
+              </div>
+            </div>
+            <Button variant="secondary" className="w-full">
+              Coming Soon
+            </Button>
           </div>
         </div>
       </div>
 
       {/* CTA Section */}
-      <div className="bg-muted py-20">
+      <div className="bg-gradient-footer text-white py-20">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to Get Started?</h2>
-          <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Contact us today to learn how we can help your business reach its full potential
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            Ready to Revolutionize Your Data Process?
+          </h2>
+          <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto">
+            Join hundreds of organizations that have transformed their data analysis with our platform.
           </p>
-          <Button size="lg" asChild>
-            <Link to="/contact">
-              Contact Us <Mail className="ml-2 h-5 w-5" />
-            </Link>
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            {user ? (
+              <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
+                <Link to="/comments">Start Screening</Link>
+              </Button>
+            ) : (
+              <>
+                <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
+                  <Link to="/auth">Start Free Trial</Link>
+                </Button>
+                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+                  <Link to="/contact">Schedule Demo</Link>
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
