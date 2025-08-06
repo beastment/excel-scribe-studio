@@ -211,7 +211,7 @@ const Home = () => {
       {/* CTA Section */}
       <div className="bg-gradient-footer text-white py-20">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold mb-4 text-[#21212c]">
             Ready to Revolutionize Your Data Process?
           </h2>
           <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto">
