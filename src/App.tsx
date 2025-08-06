@@ -10,6 +10,7 @@ import { MaintenanceMode } from "@/components/MaintenanceMode";
 import { isInIframe, logIframeInfo } from "@/utils/iframeUtils";
 import { useMaintenanceMode } from "@/hooks/useMaintenanceMode";
 import { useAuth } from "@/contexts/AuthContext";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 import Home from "./pages/Home";
 import About from "./pages/About";
 import FAQ from "./pages/FAQ";
@@ -28,6 +29,9 @@ const queryClient = new QueryClient();
 const AppContent = () => {
   const { maintenanceStatus, loading } = useMaintenanceMode();
   const { user } = useAuth();
+  
+  // Scroll to top on route change
+  useScrollToTop();
   
   // Check if current user is admin
   const isAdminUser = user?.email === 'admin@surveyjumper.com';

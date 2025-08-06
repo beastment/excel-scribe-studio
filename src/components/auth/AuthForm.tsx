@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AuthFormProps {
   mode: 'signin' | 'signup';
@@ -71,24 +72,60 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
     }));
   };
 
+  const handleForgotPassword = async () => {
+    if (!formData.email) {
+      toast({
+        title: 'Email Required',
+        description: 'Please enter your email address first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(formData.email, {
+        redirectTo: `${window.location.origin}/auth`,
+      });
+
+      if (error) {
+        toast({
+          title: 'Error',
+          description: error.message,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Reset Email Sent',
+          description: 'Check your email for password reset instructions.',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'An unexpected error occurred. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl">
-          {mode === 'signin' ? 'Welcome Back' : 'Create Account'}
+    <Card className="w-full shadow-xl bg-white border-0">
+      <CardHeader className="text-center pb-4">
+        <CardTitle className="text-2xl font-bold text-gray-900">
+          {mode === 'signin' ? 'Sign In' : 'Create Account'}
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-gray-600">
           {mode === 'signin' 
-            ? 'Sign in to your account to continue'
-            : 'Create a new account to get started'
+            ? 'Welcome back! Please sign in to continue'
+            : 'Join us and start transforming your feedback process'
           }
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <CardContent className="pt-0">
+        <form onSubmit={handleSubmit} className="space-y-5">
           {mode === 'signup' && (
             <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
+              <Label htmlFor="fullName" className="text-gray-700 font-medium">Full Name</Label>
               <Input
                 id="fullName"
                 name="fullName"
@@ -97,12 +134,13 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
                 value={formData.fullName}
                 onChange={handleInputChange}
                 required
+                className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
               />
             </div>
           )}
           
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-gray-700 font-medium">Email</Label>
             <Input
               id="email"
               name="email"
@@ -111,11 +149,23 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
               value={formData.email}
               onChange={handleInputChange}
               required
+              className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
             />
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password" className="text-gray-700 font-medium">Password</Label>
+              {mode === 'signin' && (
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                >
+                  Forgot password?
+                </button>
+              )}
+            </div>
             <Input
               id="password"
               name="password"
@@ -125,25 +175,30 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
               onChange={handleInputChange}
               required
               minLength={6}
+              className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
             />
           </div>
           
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button 
+            type="submit" 
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 text-base font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-300" 
+            disabled={loading}
+          >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {mode === 'signin' ? 'Sign In' : 'Sign Up'}
+            {mode === 'signin' ? 'Sign In' : 'Create Account'}
           </Button>
         </form>
         
         <div className="mt-6 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-gray-600">
             {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
             {' '}
             <button
               type="button"
               onClick={() => onModeChange(mode === 'signin' ? 'signup' : 'signin')}
-              className="text-primary hover:underline font-medium"
+              className="text-blue-600 hover:text-blue-800 hover:underline font-medium transition-colors"
             >
-              {mode === 'signin' ? 'Sign up' : 'Sign in'}
+              {mode === 'signin' ? 'Sign up here' : 'Sign in here'}
             </button>
           </p>
         </div>
