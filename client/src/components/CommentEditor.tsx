@@ -13,11 +13,13 @@ import * as XLSX from 'xlsx';
 interface CommentEditorProps {
   comments: CommentData[];
   onCommentsUpdate: (comments: CommentData[]) => void;
+  uploadSection?: React.ReactNode;
 }
 
 export const CommentEditor: React.FC<CommentEditorProps> = ({ 
   comments, 
-  onCommentsUpdate 
+  onCommentsUpdate,
+  uploadSection
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -137,6 +139,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           className="pl-10"
         />
       </div>
+
+      {/* Upload Section */}
+      {uploadSection}
 
       {/* Comments List */}
       <div className="space-y-4">

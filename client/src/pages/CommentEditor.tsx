@@ -28,17 +28,18 @@ const Index = () => {
                 Get Started
               </h2>
               <FileUpload onDataLoaded={handleDataLoaded} />
-            </div> : <div className="grid gap-8">
-              <div className="animate-slide-up">
-                <CommentEditor comments={comments} onCommentsUpdate={handleCommentsUpdate} />
-              </div>
-              
-              {/* Upload New File Section */}
-              <div className="animate-slide-up">
-                <h3 className="text-lg font-semibold mb-4">Upload New File</h3>
-                <FileUpload onDataLoaded={handleDataLoaded} />
-              </div>
-            </div>}
+            </div> : <div className="animate-slide-up">
+                <CommentEditor 
+                  comments={comments} 
+                  onCommentsUpdate={handleCommentsUpdate}
+                  uploadSection={
+                    <div className="mb-6">
+                      <h3 className="text-lg font-semibold mb-4">Upload New File</h3>
+                      <FileUpload onDataLoaded={handleDataLoaded} />
+                    </div>
+                  }
+                />
+              </div>}
         </div>
       </div>
     </div>;
