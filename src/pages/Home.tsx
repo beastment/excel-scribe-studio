@@ -1,192 +1,273 @@
-import React from "react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
-import { 
-  Shield, 
-  BrainCircuit, 
-  ClipboardList, 
-  FileText,
-  ArrowRight,
-  Star,
-  Settings
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { ArrowRight, FileText, Shield, Zap, MessageSquare, BarChart3 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+const Home = () => {
+  const {
+    user
+  } = useAuth();
+  return <div className="min-h-screen bg-background">
 
-export default function Home() {
-  const apps = [
-    {
-      id: "comment-de-identification",
-      name: "Comment De-Identification",
-      description: "Securely anonymize open-ended employee comments while preserving the original tone and intent.",
-      icon: Shield,
-      color: "from-blue-500 to-cyan-500",
-      features: ["PII & Sensitive Data Redaction", "Tone & Context Preservation", "Bulk Processing API"],
-      startingPrice: "$199",
-      status: "available"
-    },
-    {
-      id: "thematic-analysis",
-      name: "Thematic Analysis",
-      description: "Automatically discover and categorize key themes and sentiment from thousands of employee comments.",
-      icon: BrainCircuit,
-      color: "from-purple-500 to-pink-500",
-      features: ["AI-Powered Topic Modeling", "Sentiment Analysis", "Emerging Trend Identification"],
-      startingPrice: "$299",
-      status: "development"
-    },
-    {
-      id: "action-planning-extension",
-      name: "Action Planning Extension",
-      description: "Turn feedback into concrete action plans with AI-suggested initiatives and progress tracking.",
-      icon: ClipboardList,
-      color: "from-green-500 to-emerald-500",
-      features: ["AI-Generated Action Items", "Goal & Progress Tracking", "Manager Accountability Tools"],
-      startingPrice: "$149",
-      status: "development"
-    },
-    {
-      id: "report-writer",
-      name: "Report Writer",
-      description: "Instantly generate executive summaries and narrative reports from your quantitative and qualitative data.",
-      icon: FileText,
-      color: "from-orange-500 to-red-500",
-      features: ["Automated Narrative Generation", "Custom Report Templates", "Data Visualization Integration"],
-      startingPrice: "$249",
-      status: "development"
-    }
-  ];
-
-  return (
-    <div className="bg-white">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 to-blue-50 py-20 lg:py-32">
-        <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10"></div>
-        
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center max-w-4xl mx-auto">
-            <div className="inline-flex items-center space-x-2 bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-medium mb-8">
-              <Star className="w-4 h-4" />
-              <span>Powered by Enterprise-Grade AI</span>
+      <div className="relative bg-background text-foreground">
+        <div className="container mx-auto px-4 py-16">
+          <div className="text-center max-w-5xl mx-auto animate-fade-in">
+            <div className="text-sm text-muted-foreground mb-6 flex items-center justify-center gap-2">
+              <Shield className="h-4 w-4" />
+              Powered by Enterprise Grade AI
             </div>
-            
-            <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-              Leverage AI to Unlock the
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"> True Voice </span>
-              in Your Employee Feedback
+            <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
+              Leverage AI to Unlock the True Voice
+              in Your Business Data
             </h1>
-            
-            <p className="text-xl text-gray-600 mb-10 leading-relaxed max-w-3xl mx-auto">
-              Our suite of AI-powered tools helps you analyze, understand, and act on employee feedback faster and more effectively than ever before.
+            <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
+              Our suite of AI-powered tools helps you analyze, understand, and act on business data 
+              faster and more effectively than ever before.
             </p>
-            
-            <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
-              <a href="#apps">
-                <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
-                  Explore Our AI Tools
-                  <ArrowRight className="ml-2 w-5 h-5" />
-                </Button>
-              </a>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              {user ? <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
+                  <Link to="/comments" className="flex items-center">
+                    Start Screening Comments <ArrowRight className="ml-2 h-5 w-5" />
+                  </Link>
+                </Button> : <>
+                  <Button size="lg" className="bg-gradient-primary hover:opacity-90 shadow-lg text-slate-950">
+                    <Link to="/auth" className="flex items-center">
+                      Get Started <ArrowRight className="ml-2 h-5 w-5" />
+                    </Link>
+                  </Button>
+                  <Button size="lg" variant="outline">
+                    <Link to="/services" className="flex items-center">
+                      Explore Features
+                    </Link>
+                  </Button>
+                </>}
             </div>
           </div>
         </div>
-        
-        {/* Floating Elements */}
-        <div className="absolute top-20 left-10 w-20 h-20 bg-blue-200 rounded-full opacity-20 animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-32 h-32 bg-purple-200 rounded-full opacity-20 animate-pulse delay-700"></div>
-      </section>
+      </div>
 
-      {/* Apps Showcase Section */}
-      <section id="apps" className="py-20 bg-gradient-to-br from-gray-50 to-blue-50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-              Powerful AI Applications
-            </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Choose from our suite of specialized applications, each designed to supercharge a specific part of your feedback analysis workflow.
+      {/* Applications Section */}
+      <div className="container mx-auto px-4 py-20">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">Powerful AI Applications</h2>
+          <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
+            Choose from our suite of specialized applications, each designed to supercharge a 
+            specific part of your data analysis workflow.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
+          {/* Comment De-Identification */}
+          <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+                <MessageSquare className="h-6 w-6 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm text-muted-foreground mb-1">Starting at</div>
+                <div className="text-2xl font-bold">$199</div>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-3">Comment De-Identification</h3>
+            <p className="text-muted-foreground mb-6">
+              Securely anonymize open-ended comments while preserving the 
+              original tone and intent.
             </p>
+            <div className="space-y-2 mb-6">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                PII & Sensitive Data Redaction
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Tone & Context Preservation
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Bulk Processing API
+              </div>
+            </div>
+            {user ? <Button variant="secondary" className="w-full">
+                <Link to="/comments">Try Now</Link>
+              </Button> : <Button variant="secondary" className="w-full">
+                <Link to="/auth">Sign Up to Try</Link>
+              </Button>}
           </div>
-          
-          <div className="grid lg:grid-cols-2 gap-8">
-            {apps.map((app, index) => (
-              <Card key={app.id} className="border-0 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-1 bg-white overflow-hidden group">
-                <CardContent className="p-0">
-                  <div className={`h-2 bg-gradient-to-r ${app.color}`}></div>
-                  <div className="p-8">
-                    <div className="flex items-start justify-between mb-6">
-                      <div className={`w-14 h-14 bg-gradient-to-br ${app.color} rounded-2xl flex items-center justify-center`}>
-                        <app.icon className="w-7 h-7 text-white" />
-                      </div>
-                      <div className="text-right">
-                        {app.status === "available" ? (
-                          <>
-                            <div className="text-sm text-gray-500 mb-1">Starting at</div>
-                            <div className="text-2xl font-bold text-gray-900">{app.startingPrice}</div>
-                            <div className="text-sm text-gray-500">/month</div>
-                          </>
-                        ) : (
-                          <Badge className="bg-orange-100 text-orange-800">
-                            <Settings className="w-3 h-3 mr-1" />
-                            In Development
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <h3 className="text-2xl font-semibold mb-4 text-gray-900">{app.name}</h3>
-                    <p className="text-gray-600 mb-6 leading-relaxed h-20">{app.description}</p>
-                    
-                    <div className="space-y-3 mb-8">
-                      {app.features.map((feature, idx) => (
-                        <div key={idx} className="flex items-center space-x-3">
-                          <div className={`w-2 h-2 rounded-full mr-2 bg-gradient-to-r ${app.color}`}></div>
-                          <span className="text-gray-700 font-medium">{feature}</span>
-                        </div>
-                      ))}
-                    </div>
-                    
-                    {app.status === "available" ? (
-                      <Link to={createPageUrl(app.id)}>
-                        <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-medium transition-all duration-300 group-hover:shadow-lg">
-                          Learn More & Get Started
-                          <ArrowRight className="ml-2 w-5 h-5" />
-                        </Button>
-                      </Link>
-                    ) : (
-                      <Button disabled className="w-full bg-gray-300 text-gray-500 py-3 rounded-xl font-medium cursor-not-allowed">
-                        Coming Soon
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+
+          {/* Thematic Analysis */}
+          <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
+                <BarChart3 className="h-6 w-6 text-purple-500" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm text-muted-foreground mb-1">Coming Soon</div>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-3">Thematic Analysis</h3>
+            <p className="text-muted-foreground mb-6">
+              Automatically discover and categorize key themes and sentiment from 
+              thousands of employee comments.
+            </p>
+            <div className="space-y-2 mb-6">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                AI-Powered Topic Modeling
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Sentiment Analysis
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Emerging Trend Identification
+              </div>
+            </div>
+            <Button variant="secondary" className="w-full">
+              Coming Soon
+            </Button>
+          </div>
+
+          {/* Action Planning Extension */}
+          <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
+                <Zap className="h-6 w-6 text-green-500" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm text-muted-foreground mb-1">Coming Soon</div>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-3">Action Planning Extension</h3>
+            <p className="text-muted-foreground mb-6">
+              Turn insights into concrete action plans with AI suggested initiatives and 
+              progress tracking.
+            </p>
+            <div className="space-y-2 mb-6">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                AI-Generated Action Items
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Goal & Progress Tracking
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Manager Accountability Tools
+              </div>
+            </div>
+            <Button variant="secondary" className="w-full">
+              Coming Soon
+            </Button>
+          </div>
+
+          {/* Report Writer */}
+          <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-red-500" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm text-muted-foreground mb-1">Coming Soon</div>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-3">Report Writer</h3>
+            <p className="text-muted-foreground mb-6">
+              Instantly generate executive summaries and narrative reports from your 
+              quantitative and qualitative data.
+            </p>
+            <div className="space-y-2 mb-6">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Automated Narrative Generation
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Custom Report Templates
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Data Visualization Integration
+              </div>
+            </div>
+            <Button variant="secondary" className="w-full">
+              Coming Soon
+            </Button>
           </div>
         </div>
-      </section>
+      </div>
 
       {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-r from-blue-600 to-purple-600">
-        <div className="max-w-4xl mx-auto px-6 text-center">
-          <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
-            Ready to Revolutionize Your Feedback Process?
+      <div className="bg-gradient-footer text-black-20">
+        <div className="container mx-auto px-4 text-center">
+          <h2 className="text-3xl md:text-4xl font-bold mb-4 text-slate-950">
+            Ready to Revolutionize Your Data Process?
           </h2>
-          <p className="text-xl text-blue-100 mb-10">
-            Join hundreds of organizations that have transformed their employee experience with our platform.
+          <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto text-slate-950">
+            Join hundreds of organizations that have transformed their data analysis with our platform.
           </p>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
-            <Button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
-              Start Free Trial
-            </Button>
-            <Button variant="outline" className="border-2 border-white text-white hover:bg-white hover:text-blue-600 px-8 py-4 text-lg rounded-xl transition-all duration-300">
-              Schedule Demo
-            </Button>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            {user ? <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
+                <Link to="/comments">Start Screening</Link>
+              </Button> : <>
+                <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
+                  <Link to="/auth">Start Free Trial</Link>
+                </Button>
+                
+              </>}
           </div>
         </div>
-      </section>
-    </div>
-  );
-}
+      </div>
+
+      {/* Footer */}
+      <footer className="bg-background border-t py-12">
+        <div className="container mx-auto px-4">
+          <div className="grid md:grid-cols-4 gap-8">
+            <div>
+              <h3 className="text-lg font-semibold mb-4">SurveyJumper</h3>
+              <p className="text-muted-foreground">AI based tools for leveraging your survey data</p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-4">Services</h4>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li><Link to="/services" className="hover:text-primary">Consultation</Link></li>
+                <li><Link to="/services" className="hover:text-primary">Document Processing</Link></li>
+                <li><Link to="/services" className="hover:text-primary">Business Solutions</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-4">Tools</h4>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li><Link to="/comments" className="hover:text-primary">Comment Editor</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-4">Contact</h4>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li><Link to="/contact" className="hover:text-primary">Get in Touch</Link></li>
+                <li><Link to="/about" className="hover:text-primary">About Us</Link></li>
+              </ul>
+            </div>
+          </div>
+          <div className="border-t mt-8 pt-8 text-center text-sm text-muted-foreground">
+            <p>© 2025 SurveyJumper. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
+    </div>;
+};
+export default Home;
