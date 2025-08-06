@@ -45,7 +45,7 @@ const Home = () => {
                     size="sm" 
                     onClick={handleLogout}
                     disabled={isLogoutPending}
-                    className="text-foreground hover:text-primary"
+                    className="text-foreground hover:text-primary hover:bg-primary/10 border border-transparent"
                   >
                     <LogOut className="w-4 h-4 mr-2" />
                     {isLogoutPending ? 'Logging out...' : 'Logout'}
@@ -60,7 +60,7 @@ const Home = () => {
                       setAuthMode('login');
                       setShowAuthModal(true);
                     }}
-                    className="text-foreground hover:text-primary"
+                    className="text-foreground hover:text-primary hover:bg-primary/10 border border-transparent"
                   >
                     Sign In
                   </Button>
@@ -71,7 +71,7 @@ const Home = () => {
                       setAuthMode('register');
                       setShowAuthModal(true);
                     }}
-                    className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                    className="border-primary/60 text-primary hover:bg-primary hover:text-primary-foreground hover:border-primary"
                   >
                     Sign Up
                   </Button>
@@ -162,7 +162,7 @@ const Home = () => {
                 Bulk Processing API
               </div>
             </div>
-            <Button variant="secondary" className="w-full" asChild>
+            <Button variant="default" className="w-full bg-primary text-primary-foreground hover:bg-primary/90" asChild>
               <Link href="/comments">
                 Get Started
               </Link>
@@ -201,7 +201,7 @@ const Home = () => {
                 Emerging Trend Identification
               </div>
             </div>
-            <Button variant="secondary" className="w-full">
+            <Button variant="secondary" className="w-full bg-muted text-muted-foreground hover:bg-muted/80 border border-border">
               Coming Soon
             </Button>
           </div>
@@ -238,7 +238,7 @@ const Home = () => {
                 Manager Accountability Tools
               </div>
             </div>
-            <Button variant="secondary" className="w-full">
+            <Button variant="secondary" className="w-full bg-muted text-muted-foreground hover:bg-muted/80 border border-border">
               Coming Soon
             </Button>
           </div>
@@ -275,7 +275,7 @@ const Home = () => {
                 Data Visualization Integration
               </div>
             </div>
-            <Button variant="secondary" className="w-full">
+            <Button variant="secondary" className="w-full bg-muted text-muted-foreground hover:bg-muted/80 border border-border">
               Coming Soon
             </Button>
           </div>
@@ -291,10 +291,10 @@ const Home = () => {
             Join hundreds of organizations that have transformed their data analysis with our platform.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
+            <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100 shadow-lg">
               Start Free Trial
             </Button>
-            <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+            <Button size="lg" variant="outline" className="border-white/80 text-white hover:bg-white/20 hover:border-white bg-white/10 backdrop-blur-sm">
               Schedule Demo
             </Button>
           </div>
