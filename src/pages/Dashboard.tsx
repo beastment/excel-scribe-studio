@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { MaintenanceToggle } from '@/components/admin/MaintenanceToggle';
+import { UserManagement } from '@/components/admin/UserManagement';
 
 interface UserProfile {
   id: string;
@@ -182,6 +184,17 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Admin Controls */}
+        {profile?.role === 'admin' && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-foreground mb-6">Admin Controls</h2>
+            <div className="grid lg:grid-cols-2 gap-8 mb-8">
+              <MaintenanceToggle />
+              <UserManagement />
+            </div>
+          </div>
+        )}
 
         {/* My Applications */}
         <Card className="mb-8">

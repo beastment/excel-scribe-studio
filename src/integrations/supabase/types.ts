@@ -47,6 +47,30 @@ export type Database = {
         }
         Relationships: []
       }
+      maintenance_mode: {
+        Row: {
+          id: string
+          is_enabled: boolean
+          message: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          is_enabled?: boolean
+          message?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          is_enabled?: boolean
+          message?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -85,6 +109,13 @@ export type Database = {
       cleanup_auth_rate_limits: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      get_maintenance_status: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          is_enabled: boolean
+          message: string
+        }[]
       }
       has_role: {
         Args: {

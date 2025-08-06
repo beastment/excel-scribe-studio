@@ -6,7 +6,10 @@ import { BrowserRouter, HashRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Navigation } from "@/components/Navigation";
+import { MaintenanceMode } from "@/components/MaintenanceMode";
 import { isInIframe, logIframeInfo } from "@/utils/iframeUtils";
+import { useMaintenanceMode } from "@/hooks/useMaintenanceMode";
+import { useAuth } from "@/contexts/AuthContext";
 import Home from "./pages/Home";
 import About from "./pages/About";
 import FAQ from "./pages/FAQ";
@@ -21,6 +24,48 @@ import ActionPlanningExtension from "./pages/apps/ActionPlanningExtension";
 import ReportWriter from "./pages/apps/ReportWriter";
 
 const queryClient = new QueryClient();
+
+const AppContent = () => {
+  const { maintenanceStatus, loading } = useMaintenanceMode();
+  const { user } = useAuth();
+  
+  // Check if current user is admin
+  const isAdminUser = user?.email === 'admin@surveyjumper.com';
+  
+  // Show maintenance mode for non-admin users when enabled
+  if (!loading && maintenanceStatus.isEnabled && !isAdminUser) {
+    return <MaintenanceMode />;
+  }
+
+  return (
+    <>
+      <Navigation />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/faq" element={<FAQ />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/comments" element={
+          <ProtectedRoute>
+            <CommentEditor />
+          </ProtectedRoute>
+        } />
+        <Route path="/dashboard" element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/apps/comment-de-identification" element={<CommentDeIdentification />} />
+        <Route path="/apps/thematic-analysis" element={<ThematicAnalysis />} />
+        <Route path="/apps/action-planning-extension" element={<ActionPlanningExtension />} />
+        <Route path="/apps/report-writer" element={<ReportWriter />} />
+        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </>
+  );
+};
 
 const App = () => {
   // Detect if we're in an iframe and log info for debugging
@@ -41,30 +86,7 @@ const App = () => {
           <Toaster />
           <Sonner />
           <Router>
-            <Navigation />
-            <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/faq" element={<FAQ />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/comments" element={
-              <ProtectedRoute>
-                <CommentEditor />
-              </ProtectedRoute>
-            } />
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/apps/comment-de-identification" element={<CommentDeIdentification />} />
-            <Route path="/apps/thematic-analysis" element={<ThematicAnalysis />} />
-            <Route path="/apps/action-planning-extension" element={<ActionPlanningExtension />} />
-            <Route path="/apps/report-writer" element={<ReportWriter />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <AppContent />
           </Router>
         </TooltipProvider>
       </AuthProvider>
