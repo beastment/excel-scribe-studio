@@ -11,10 +11,10 @@ export default defineConfig(({ mode }) => ({
     // Security headers for development
     headers: mode === 'development' ? {
       'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'SAMEORIGIN',
       'X-XSS-Protection': '1; mode=block',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
       'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self' *.lovable.dev *.lovable.app https://lovable.dev https://lovable.app;",
     } : {},
   },
   plugins: [

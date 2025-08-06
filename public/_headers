@@ -1,8 +1,5 @@
 # Security headers for production deployment
 /*
-  # Prevent clickjacking
-  X-Frame-Options: SAMEORIGIN
-  
   # Prevent MIME type sniffing
   X-Content-Type-Options: nosniff
   
@@ -16,7 +13,7 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   
   # Content Security Policy (adjust domains as needed for your app)
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://abobvpamaiwrgwtghoyh.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://abobvpamaiwrgwtghoyh.supabase.co wss://abobvpamaiwrgwtghoyh.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self';
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://abobvpamaiwrgwtghoyh.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://abobvpamaiwrgwtghoyh.supabase.co wss://abobvpamaiwrgwtghoyh.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self' *.lovable.dev *.lovable.app https://lovable.dev https://lovable.app;
   
   # HSTS (uncomment for HTTPS sites)
   # Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
