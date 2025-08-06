@@ -20,7 +20,6 @@ const Home = () => {
           </div>
         </div>
       </nav>
-
       {/* Hero Section */}
       <div className="relative bg-background text-foreground">
         <div className="container mx-auto px-4 py-16">
@@ -31,7 +30,7 @@ const Home = () => {
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
               Leverage AI to Unlock the{' '}
-              <span className="bg-gradient-primary bg-clip-text text-transparent">
+              <span className="bg-gradient-primary bg-clip-text text-[#21212c]">
                 True Voice
               </span>{' '}
               in Your Business Data
@@ -48,7 +47,6 @@ const Home = () => {
           </div>
         </div>
       </div>
-
       {/* Applications Section */}
       <div className="container mx-auto px-4 py-20">
         <div className="text-center mb-16">
@@ -210,7 +208,6 @@ const Home = () => {
           </div>
         </div>
       </div>
-
       {/* CTA Section */}
       <div className="bg-gradient-footer text-white py-20">
         <div className="container mx-auto px-4 text-center">
@@ -230,7 +227,6 @@ const Home = () => {
           </div>
         </div>
       </div>
-
       {/* Footer */}
       <footer className="bg-background border-t py-12">
         <div className="container mx-auto px-4">
