@@ -67,7 +67,7 @@ const Home = () => {
         
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-4xl mx-auto">
-            <div className="inline-flex items-center space-x-2 bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-medium mb-8">
+            <div className="inline-flex items-center space-x-2 bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-medium mb-4">
               <Star className="w-4 h-4" />
               <span>Powered by Enterprise-Grade AI</span>
             </div>
@@ -91,7 +91,7 @@ const Home = () => {
                   </Button>
                 </Link>
               ) : (
-                <a href="#apps">
+                <a href="https://www.youtube.com/watch?v=demo-video" target="_blank" rel="noopener noreferrer">
                   <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
                     Explore Our AI Tools
                     <ArrowRight className="ml-2 w-5 h-5" />
@@ -108,7 +108,7 @@ const Home = () => {
       </section>
 
       {/* Apps Showcase Section */}
-      <section id="apps" className="py-20 bg-gradient-to-br from-gray-50 to-blue-50">
+      <section id="apps" className="py-12 bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">

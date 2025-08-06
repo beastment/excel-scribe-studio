@@ -9,7 +9,7 @@ import { Navigation } from "@/components/Navigation";
 import { isInIframe, logIframeInfo } from "@/utils/iframeUtils";
 import Home from "./pages/Home";
 import About from "./pages/About";
-import Services from "./pages/Services";
+import FAQ from "./pages/FAQ";
 import Contact from "./pages/Contact";
 import Auth from "./pages/Auth";
 import CommentEditor from "./pages/CommentEditor";
@@ -45,7 +45,7 @@ const App = () => {
             <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
-            <Route path="/services" element={<Services />} />
+            <Route path="/faq" element={<FAQ />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/comments" element={

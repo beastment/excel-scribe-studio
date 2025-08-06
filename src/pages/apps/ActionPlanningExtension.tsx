@@ -77,12 +77,9 @@ const ActionPlanningExtension = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
-              <Button disabled className="bg-gray-300 text-gray-500 px-8 py-4 text-lg rounded-xl cursor-not-allowed">
-                Coming Soon
-              </Button>
               <Link to="/contact">
-                <Button variant="outline" className="border-2 border-gray-300 text-gray-700 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl transition-all duration-300">
-                  Get Notified
+                <Button className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-4 text-lg rounded-xl transition-all duration-300">
+                  Get in Touch
                 </Button>
               </Link>
             </div>
@@ -154,8 +151,7 @@ const ActionPlanningExtension = () => {
                   <Settings className="w-3 h-3 mr-1" />
                   In Development
                 </Badge>
-                <div className="text-4xl font-bold text-gray-900 mb-2">$149</div>
-                <div className="text-gray-600">estimated starting price per month</div>
+                <div className="text-4xl font-bold text-gray-900 mb-2">Pricing yet to be confirmed</div>
               </div>
               
               <div className="space-y-3 mb-8">
@@ -179,7 +175,7 @@ const ActionPlanningExtension = () => {
               
               <Link to="/contact">
                 <Button className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-3 rounded-xl font-medium transition-all duration-300">
-                  Get Early Access
+                  Get in Touch
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
               </Link>
@@ -201,12 +197,7 @@ const ActionPlanningExtension = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
             <Link to="/contact">
               <Button className="bg-white text-green-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
-                Join Early Access
-              </Button>
-            </Link>
-            <Link to="/contact">
-              <Button variant="outline" className="border-2 border-white text-white hover:bg-white hover:text-green-600 px-8 py-4 text-lg rounded-xl transition-all duration-300">
-                Learn More
+                Get in Touch
               </Button>
             </Link>
           </div>
