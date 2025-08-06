@@ -13,7 +13,12 @@ import Services from "./pages/Services";
 import Contact from "./pages/Contact";
 import Auth from "./pages/Auth";
 import CommentEditor from "./pages/CommentEditor";
+import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
+import CommentDeIdentification from "./pages/apps/CommentDeIdentification";
+import ThematicAnalysis from "./pages/apps/ThematicAnalysis";
+import ActionPlanningExtension from "./pages/apps/ActionPlanningExtension";
+import ReportWriter from "./pages/apps/ReportWriter";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +53,15 @@ const App = () => {
                 <CommentEditor />
               </ProtectedRoute>
             } />
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/apps/comment-de-identification" element={<CommentDeIdentification />} />
+            <Route path="/apps/thematic-analysis" element={<ThematicAnalysis />} />
+            <Route path="/apps/action-planning-extension" element={<ActionPlanningExtension />} />
+            <Route path="/apps/report-writer" element={<ReportWriter />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

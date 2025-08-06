@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { AuthForm } from '@/components/auth/AuthForm';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -43,7 +43,17 @@ const Auth = () => {
       {/* Auth Form */}
       <div className="container mx-auto px-4 py-12">
         <div className="flex items-center justify-center">
-          <AuthForm mode={mode} onModeChange={setMode} />
+          <div className="max-w-md w-full">
+            <div className="mb-6 text-center">
+              <Link 
+                to="/" 
+                className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                ← Back to Home
+              </Link>
+            </div>
+            <AuthForm mode={mode} onModeChange={setMode} />
+          </div>
         </div>
       </div>
     </div>

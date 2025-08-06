@@ -130,18 +130,17 @@ const Home = () => {
                         <app.icon className="w-7 h-7 text-white" />
                       </div>
                       <div className="text-right">
-                        {app.status === "available" ? (
-                          <>
-                            <div className="text-sm text-gray-500 mb-1">Starting at</div>
-                            <div className="text-2xl font-bold text-gray-900">{app.startingPrice}</div>
-                            <div className="text-sm text-gray-500">/month</div>
-                          </>
-                        ) : (
-                          <Badge className="bg-orange-100 text-orange-800">
-                            <Settings className="w-3 h-3 mr-1" />
-                            In Development
-                          </Badge>
-                        )}
+                         {app.status === "available" ? (
+                           <Badge className="bg-blue-100 text-blue-800">
+                             <Star className="w-3 h-3 mr-1" />
+                             Currently in Beta
+                           </Badge>
+                         ) : (
+                           <Badge className="bg-orange-100 text-orange-800">
+                             <Settings className="w-3 h-3 mr-1" />
+                             In Development
+                           </Badge>
+                         )}
                       </div>
                     </div>
                     
@@ -157,27 +156,21 @@ const Home = () => {
                       ))}
                     </div>
                     
-                    {app.status === "available" ? (
-                      user ? (
-                        <Link to="/comments">
-                          <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-medium transition-all duration-300 group-hover:shadow-lg">
-                            Try Now
-                            <ArrowRight className="ml-2 w-5 h-5" />
-                          </Button>
-                        </Link>
-                      ) : (
-                        <Link to="/auth">
-                          <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-medium transition-all duration-300 group-hover:shadow-lg">
-                            Sign Up to Try
-                            <ArrowRight className="ml-2 w-5 h-5" />
-                          </Button>
-                        </Link>
-                      )
-                    ) : (
-                      <Button disabled className="w-full bg-gray-300 text-gray-500 py-3 rounded-xl font-medium cursor-not-allowed">
-                        Coming Soon
-                      </Button>
-                    )}
+                     {app.status === "available" ? (
+                       <Link to={`/apps/${app.id}`}>
+                         <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-medium transition-all duration-300 group-hover:shadow-lg">
+                           Learn More
+                           <ArrowRight className="ml-2 w-5 h-5" />
+                         </Button>
+                       </Link>
+                     ) : (
+                       <Link to={`/apps/${app.id}`}>
+                         <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-medium transition-all duration-300 group-hover:shadow-lg">
+                           Learn More
+                           <ArrowRight className="ml-2 w-5 h-5" />
+                         </Button>
+                       </Link>
+                     )}
                   </div>
                 </CardContent>
               </Card>
@@ -196,27 +189,20 @@ const Home = () => {
             Join hundreds of organizations that have transformed their employee experience with our platform.
           </p>
           
-          <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
-            {user ? (
-              <Link to="/comments">
-                <Button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
-                  Start Screening
-                </Button>
-              </Link>
-            ) : (
-              <>
-                <Link to="/auth">
-                  <Button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
-                    Start Free Trial
-                  </Button>
-                </Link>
-                <Link to="/contact">
-                  <Button variant="outline" className="border-2 border-white text-white hover:bg-white hover:text-blue-600 px-8 py-4 text-lg rounded-xl transition-all duration-300">
-                    Schedule Demo
-                  </Button>
-                </Link>
-              </>
-            )}
+           <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
+             {user ? (
+               <Link to="/comments">
+                 <Button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+                   Start Screening
+                 </Button>
+               </Link>
+             ) : (
+               <Link to="/contact">
+                 <Button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+                   Get in Touch
+                 </Button>
+               </Link>
+             )}
           </div>
         </div>
       </section>

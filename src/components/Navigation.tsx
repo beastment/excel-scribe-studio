@@ -26,14 +26,8 @@ export const Navigation = () => {
             <Link to="/" className="text-gray-600 hover:text-gray-900 transition-colors">
               Home
             </Link>
-            <a href="/#apps" className="text-gray-600 hover:text-gray-900 transition-colors">
-              Apps
-            </a>
             <Link to="/about" className="text-gray-600 hover:text-gray-900 transition-colors">
               About
-            </Link>
-            <Link to="/services" className="text-gray-600 hover:text-gray-900 transition-colors">
-              Services
             </Link>
             <Link to="/contact" className="text-gray-600 hover:text-gray-900 transition-colors">
               Contact
@@ -42,6 +36,9 @@ export const Navigation = () => {
             {user ? (
               <>
                 <Link to="/comments" className="text-gray-600 hover:text-gray-900 transition-colors font-medium">
+                  Tools
+                </Link>
+                <Link to="/dashboard" className="text-gray-600 hover:text-gray-900 transition-colors font-medium">
                   Dashboard
                 </Link>
                 <Button variant="outline" onClick={handleSignOut}>
