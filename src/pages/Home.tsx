@@ -1,25 +1,9 @@
-import React, { useState } from 'react';
-import { Link } from 'wouter';
+import React from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, FileText, Building, Users, Mail, Shield, Zap, MessageSquare, BarChart3, LogOut, User } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
-import { AuthModal } from '@/components/AuthModal';
-import { toast } from 'sonner';
+import { ArrowRight, FileText, Building, Users, Mail, Shield, Zap, MessageSquare, BarChart3 } from 'lucide-react';
 
 const Home = () => {
-  const { user, isAuthenticated, logout, isLogoutPending } = useAuth();
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-      toast.success('Logged out successfully');
-    } catch (error: any) {
-      toast.error('Error logging out');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
@@ -27,60 +11,16 @@ const Home = () => {
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="text-2xl font-bold text-primary">Eastment</div>
-            <div className="flex items-center gap-4">
-              <div className="hidden md:flex space-x-6">
-                <Link href="/" className="text-foreground hover:text-primary transition-colors px-3 py-2">Home</Link>
-                <Link href="/services" className="text-foreground hover:text-primary transition-colors px-3 py-2">Apps</Link>
-                <Link href="/about" className="text-foreground hover:text-primary transition-colors px-3 py-2">Dashboard</Link>
-                <Link href="/contact" className="text-foreground hover:text-primary transition-colors px-3 py-2">Contact</Link>
-              </div>
-              {isAuthenticated ? (
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    <span className="text-sm">Welcome, {user?.username}</span>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={handleLogout}
-                    disabled={isLogoutPending}
-                    className="text-foreground hover:text-primary hover:bg-primary/10 border border-transparent"
-                  >
-                    <LogOut className="w-4 h-4 mr-2" />
-                    {isLogoutPending ? 'Logging out...' : 'Logout'}
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => {
-                      setAuthMode('login');
-                      setShowAuthModal(true);
-                    }}
-                    className="text-foreground hover:text-primary hover:bg-primary/10 border border-transparent"
-                  >
-                    Sign In
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => {
-                      setAuthMode('register');
-                      setShowAuthModal(true);
-                    }}
-                    className="border-primary/60 text-primary hover:bg-primary hover:text-primary-foreground hover:border-primary"
-                  >
-                    Sign Up
-                  </Button>
-                </div>
-              )}
+            <div className="hidden md:flex space-x-6">
+              <Link to="/" className="text-foreground hover:text-primary transition-colors px-3 py-2">Home</Link>
+              <Link to="/services" className="text-foreground hover:text-primary transition-colors px-3 py-2">Apps</Link>
+              <Link to="/about" className="text-foreground hover:text-primary transition-colors px-3 py-2">Dashboard</Link>
+              <Link to="/contact" className="text-foreground hover:text-primary transition-colors px-3 py-2">Contact</Link>
             </div>
           </div>
         </div>
       </nav>
+
       {/* Hero Section */}
       <div className="relative bg-background text-foreground">
         <div className="container mx-auto px-4 py-16">
@@ -91,7 +31,7 @@ const Home = () => {
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
               Leverage AI to Unlock the{' '}
-              <span className="bg-gradient-primary bg-clip-text text-[#21212c]">
+              <span className="bg-gradient-primary bg-clip-text text-transparent">
                 True Voice
               </span>{' '}
               in Your Business Data
@@ -100,27 +40,15 @@ const Home = () => {
               Our suite of AI-powered tools helps you analyze, understand, and act on business data 
               faster and more effectively than ever before.
             </p>
-            {isAuthenticated ? (
-              <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg" asChild>
-                <Link href="/comments" className="flex items-center">
-                  Start Analyzing Comments <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
-              </Button>
-            ) : (
-              <Button 
-                size="lg" 
-                className="bg-gradient-primary hover:opacity-90 text-white shadow-lg"
-                onClick={() => {
-                  setAuthMode('register');
-                  setShowAuthModal(true);
-                }}
-              >
-                Get Started Free <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            )}
+            <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
+              <Link to="/services" className="flex items-center">
+                Explore Our AI Tools <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
+            </Button>
           </div>
         </div>
       </div>
+
       {/* Applications Section */}
       <div className="container mx-auto px-4 py-20">
         <div className="text-center mb-16">
@@ -142,6 +70,9 @@ const Home = () => {
                 <div className="text-sm text-muted-foreground mb-1">Starting at</div>
                 <div className="text-2xl font-bold">$199</div>
               </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
             </div>
             <h3 className="text-xl font-semibold mb-3">Comment De-Identification</h3>
             <p className="text-muted-foreground mb-6">
@@ -162,10 +93,8 @@ const Home = () => {
                 Bulk Processing API
               </div>
             </div>
-            <Button variant="default" className="w-full bg-primary text-primary-foreground hover:bg-primary/90" asChild>
-              <Link href="/comments">
-                Get Started
-              </Link>
+            <Button variant="secondary" className="w-full">
+              Learn More & Get Started
             </Button>
           </div>
 
@@ -201,7 +130,7 @@ const Home = () => {
                 Emerging Trend Identification
               </div>
             </div>
-            <Button variant="secondary" className="w-full bg-muted text-muted-foreground hover:bg-muted/80 border border-border">
+            <Button variant="secondary" className="w-full">
               Coming Soon
             </Button>
           </div>
@@ -238,7 +167,7 @@ const Home = () => {
                 Manager Accountability Tools
               </div>
             </div>
-            <Button variant="secondary" className="w-full bg-muted text-muted-foreground hover:bg-muted/80 border border-border">
+            <Button variant="secondary" className="w-full">
               Coming Soon
             </Button>
           </div>
@@ -275,31 +204,33 @@ const Home = () => {
                 Data Visualization Integration
               </div>
             </div>
-            <Button variant="secondary" className="w-full bg-muted text-muted-foreground hover:bg-muted/80 border border-border">
+            <Button variant="secondary" className="w-full">
               Coming Soon
             </Button>
           </div>
         </div>
       </div>
+
       {/* CTA Section */}
       <div className="bg-gradient-footer text-white py-20">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4 text-[#21212c]">
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">
             Ready to Revolutionize Your Data Process?
           </h2>
-          <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto text-[#21212c]">
+          <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto">
             Join hundreds of organizations that have transformed their data analysis with our platform.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100 shadow-lg">
+            <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
               Start Free Trial
             </Button>
-            <Button size="lg" variant="outline" className="border-white/80 text-white hover:bg-white/20 hover:border-white bg-white/10 backdrop-blur-sm">
+            <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
               Schedule Demo
             </Button>
           </div>
         </div>
       </div>
+
       {/* Footer */}
       <footer className="bg-background border-t py-12">
         <div className="container mx-auto px-4">
@@ -337,13 +268,6 @@ const Home = () => {
           </div>
         </div>
       </footer>
-
-      {/* Auth Modal */}
-      <AuthModal 
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-        defaultMode={authMode}
-      />
     </div>
   );
 };
