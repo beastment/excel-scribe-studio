@@ -3,12 +3,11 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, FileText, Shield, Zap, MessageSquare, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-
 const Home = () => {
-  const { user } = useAuth();
-
-  return (
-    <div className="min-h-screen bg-background">
+  const {
+    user
+  } = useAuth();
+  return <div className="min-h-screen bg-background">
 
       {/* Hero Section */}
       <div className="relative bg-background text-foreground">
@@ -30,15 +29,12 @@ const Home = () => {
               faster and more effectively than ever before.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {user ? (
-                <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
+              {user ? <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
                   <Link to="/comments" className="flex items-center">
                     Start Screening Comments <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
-                </Button>
-              ) : (
-                <>
-                  <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
+                </Button> : <>
+                  <Button size="lg" className="bg-gradient-primary hover:opacity-90 shadow-lg text-slate-950">
                     <Link to="/auth" className="flex items-center">
                       Get Started <ArrowRight className="ml-2 h-5 w-5" />
                     </Link>
@@ -48,8 +44,7 @@ const Home = () => {
                       Explore Features
                     </Link>
                   </Button>
-                </>
-              )}
+                </>}
             </div>
           </div>
         </div>
@@ -99,15 +94,11 @@ const Home = () => {
                 Bulk Processing API
               </div>
             </div>
-            {user ? (
-              <Button variant="secondary" className="w-full">
+            {user ? <Button variant="secondary" className="w-full">
                 <Link to="/comments">Try Now</Link>
-              </Button>
-            ) : (
-              <Button variant="secondary" className="w-full">
+              </Button> : <Button variant="secondary" className="w-full">
                 <Link to="/auth">Sign Up to Try</Link>
-              </Button>
-            )}
+              </Button>}
           </div>
 
           {/* Thematic Analysis */}
@@ -224,29 +215,23 @@ const Home = () => {
       </div>
 
       {/* CTA Section */}
-      <div className="bg-gradient-footer text-white py-20">
+      <div className="bg-gradient-footer text-black-20">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold mb-4 text-slate-950">
             Ready to Revolutionize Your Data Process?
           </h2>
-          <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto">
+          <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto text-slate-950">
             Join hundreds of organizations that have transformed their data analysis with our platform.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            {user ? (
-              <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
+            {user ? <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
                 <Link to="/comments">Start Screening</Link>
-              </Button>
-            ) : (
-              <>
+              </Button> : <>
                 <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
                   <Link to="/auth">Start Free Trial</Link>
                 </Button>
-                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
-                  <Link to="/contact">Schedule Demo</Link>
-                </Button>
-              </>
-            )}
+                
+              </>}
           </div>
         </div>
       </div>
@@ -288,8 +273,6 @@ const Home = () => {
           </div>
         </div>
       </footer>
-    </div>
-  );
+    </div>;
 };
-
 export default Home;
