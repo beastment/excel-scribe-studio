@@ -238,7 +238,7 @@ const Home = () => {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-4 gap-8">
             <div>
-              <h3 className="text-lg font-semibold mb-4">Eastment</h3>
+              <h3 className="text-lg font-semibold mb-4">SurveyJumper</h3>
               <p className="text-muted-foreground">
                 Professional services and innovative solutions for modern businesses
               </p>
