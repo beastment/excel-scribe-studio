@@ -31,35 +31,66 @@ const AppContent = () => {
   
   // Check if current user is admin
   const isAdminUser = user?.email === 'admin@surveyjumper.com';
-  
-  // Show maintenance mode for non-admin users when enabled
-  if (!loading && maintenanceStatus.isEnabled && !isAdminUser) {
-    return <MaintenanceMode />;
-  }
 
   return (
     <>
       <Navigation />
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/faq" element={<FAQ />} />
-        <Route path="/contact" element={<Contact />} />
+        <Route path="/" element={
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <Home />
+        } />
+        <Route path="/about" element={
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <About />
+        } />
+        <Route path="/faq" element={
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <FAQ />
+        } />
+        <Route path="/contact" element={
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <Contact />
+        } />
         <Route path="/auth" element={<Auth />} />
         <Route path="/comments" element={
-          <ProtectedRoute>
-            <CommentEditor />
-          </ProtectedRoute>
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <ProtectedRoute>
+              <CommentEditor />
+            </ProtectedRoute>
         } />
         <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
         } />
-        <Route path="/apps/comment-de-identification" element={<CommentDeIdentification />} />
-        <Route path="/apps/thematic-analysis" element={<ThematicAnalysis />} />
-        <Route path="/apps/action-planning-extension" element={<ActionPlanningExtension />} />
-        <Route path="/apps/report-writer" element={<ReportWriter />} />
+        <Route path="/apps/comment-de-identification" element={
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <CommentDeIdentification />
+        } />
+        <Route path="/apps/thematic-analysis" element={
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <ThematicAnalysis />
+        } />
+        <Route path="/apps/action-planning-extension" element={
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <ActionPlanningExtension />
+        } />
+        <Route path="/apps/report-writer" element={
+          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+            <MaintenanceMode /> : 
+            <ReportWriter />
+        } />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
