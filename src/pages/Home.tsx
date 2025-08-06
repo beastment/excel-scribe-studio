@@ -1,14 +1,25 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, FileText, Shield, Zap, MessageSquare, BarChart3 } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { ArrowRight, FileText, Building, Users, Mail, Shield, Zap, MessageSquare, BarChart3 } from 'lucide-react';
 
 const Home = () => {
-  const { user } = useAuth();
-
   return (
     <div className="min-h-screen bg-background">
+      {/* Navigation */}
+      <nav className="bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="text-2xl font-bold text-primary">Eastment</div>
+            <div className="hidden md:flex space-x-6">
+              <Link to="/" className="text-foreground hover:text-primary transition-colors px-3 py-2">Home</Link>
+              <Link to="/services" className="text-foreground hover:text-primary transition-colors px-3 py-2">Apps</Link>
+              <Link to="/about" className="text-foreground hover:text-primary transition-colors px-3 py-2">Dashboard</Link>
+              <Link to="/contact" className="text-foreground hover:text-primary transition-colors px-3 py-2">Contact</Link>
+            </div>
+          </div>
+        </div>
+      </nav>
 
       {/* Hero Section */}
       <div className="relative bg-background text-foreground">
@@ -29,28 +40,11 @@ const Home = () => {
               Our suite of AI-powered tools helps you analyze, understand, and act on business data 
               faster and more effectively than ever before.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {user ? (
-                <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
-                  <Link to="/comments" className="flex items-center">
-                    Start Screening Comments <ArrowRight className="ml-2 h-5 w-5" />
-                  </Link>
-                </Button>
-              ) : (
-                <>
-                  <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
-                    <Link to="/auth" className="flex items-center">
-                      Get Started <ArrowRight className="ml-2 h-5 w-5" />
-                    </Link>
-                  </Button>
-                  <Button size="lg" variant="outline">
-                    <Link to="/services" className="flex items-center">
-                      Explore Features
-                    </Link>
-                  </Button>
-                </>
-              )}
-            </div>
+            <Button size="lg" className="bg-gradient-primary hover:opacity-90 text-white shadow-lg">
+              <Link to="/services" className="flex items-center">
+                Explore Our AI Tools <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
+            </Button>
           </div>
         </div>
       </div>
@@ -99,15 +93,9 @@ const Home = () => {
                 Bulk Processing API
               </div>
             </div>
-            {user ? (
-              <Button variant="secondary" className="w-full">
-                <Link to="/comments">Try Now</Link>
-              </Button>
-            ) : (
-              <Button variant="secondary" className="w-full">
-                <Link to="/auth">Sign Up to Try</Link>
-              </Button>
-            )}
+            <Button variant="secondary" className="w-full">
+              Learn More & Get Started
+            </Button>
           </div>
 
           {/* Thematic Analysis */}
@@ -233,20 +221,12 @@ const Home = () => {
             Join hundreds of organizations that have transformed their data analysis with our platform.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            {user ? (
-              <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
-                <Link to="/comments">Start Screening</Link>
-              </Button>
-            ) : (
-              <>
-                <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
-                  <Link to="/auth">Start Free Trial</Link>
-                </Button>
-                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
-                  <Link to="/contact">Schedule Demo</Link>
-                </Button>
-              </>
-            )}
+            <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100">
+              Start Free Trial
+            </Button>
+            <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+              Schedule Demo
+            </Button>
           </div>
         </div>
       </div>
