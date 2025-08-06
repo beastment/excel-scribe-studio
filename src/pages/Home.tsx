@@ -239,9 +239,7 @@ const Home = () => {
           <div className="grid md:grid-cols-4 gap-8">
             <div>
               <h3 className="text-lg font-semibold mb-4">SurveyJumper</h3>
-              <p className="text-muted-foreground">
-                Professional services and innovative solutions for modern businesses
-              </p>
+              <p className="text-muted-foreground">AI based tools for leveraging your survey data</p>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Services</h4>
@@ -266,7 +264,7 @@ const Home = () => {
             </div>
           </div>
           <div className="border-t mt-8 pt-8 text-center text-sm text-muted-foreground">
-            <p>&copy; 2024 Eastment. All rights reserved.</p>
+            <p>© 2025 SurveyJumper. All rights reserved.</p>
           </div>
         </div>
       </footer>
