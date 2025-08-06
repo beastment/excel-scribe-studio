@@ -1,7 +1,7 @@
 # Security headers for production deployment
 /*
   # Prevent clickjacking
-  X-Frame-Options: DENY
+  X-Frame-Options: SAMEORIGIN
   
   # Prevent MIME type sniffing
   X-Content-Type-Options: nosniff
