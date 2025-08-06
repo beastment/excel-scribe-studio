@@ -112,8 +112,7 @@ const Contact = () => {
                       </div>
                       <div>
                         <h3 className="font-semibold mb-2 text-gray-900">Email</h3>
-                        <p className="text-gray-600">contact@surveyjumper.com.au</p>
-                        <p className="text-gray-600">support@surveyjumper.com.au</p>
+                        <p className="text-gray-600">support@surveyjumper.com</p>
                       </div>
                     </div>
                   </CardContent>
