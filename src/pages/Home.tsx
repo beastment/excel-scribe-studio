@@ -18,10 +18,7 @@ const Home = () => {
               Powered by Enterprise Grade AI
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-              Leverage AI to Unlock the{' '}
-              <span className="bg-gradient-primary bg-clip-text text-transparent">
-                True Voice
-              </span>{' '}
+              Leverage AI to Unlock the True Voice
               in Your Business Data
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
