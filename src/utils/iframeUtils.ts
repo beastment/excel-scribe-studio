@@ -14,6 +14,21 @@ export const logIframeInfo = (): void => {
     console.log('[Iframe Mode] App is running in an iframe');
     console.log('[Iframe Mode] User agent:', navigator.userAgent);
     console.log('[Iframe Mode] Location:', window.location.href);
+    console.log('[Iframe Mode] Parent origin:', document.referrer);
+    
+    // Add error listeners to catch iframe-specific issues
+    window.addEventListener('error', (e) => {
+      console.error('[Iframe Mode] Error:', e.error, e.message);
+    });
+    
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('[Iframe Mode] Unhandled rejection:', e.reason);
+    });
+    
+    // Log if the page becomes hidden
+    document.addEventListener('visibilitychange', () => {
+      console.log('[Iframe Mode] Visibility changed:', document.hidden ? 'hidden' : 'visible');
+    });
   }
 };
 
