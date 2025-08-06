@@ -60,7 +60,7 @@ const Home = () => {
   ];
 
   return (
-    <div className="bg-white">
+    <div>
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 to-blue-50 py-20 lg:py-32">
         <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10"></div>
@@ -220,42 +220,6 @@ const Home = () => {
           </div>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="bg-white border-t py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div>
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">SurveyJumper</h3>
-              <p className="text-gray-600">AI based tools for leveraging your survey data</p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4 text-gray-900">Services</h4>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li><Link to="/services" className="hover:text-blue-600">Consultation</Link></li>
-                <li><Link to="/services" className="hover:text-blue-600">Document Processing</Link></li>
-                <li><Link to="/services" className="hover:text-blue-600">Business Solutions</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4 text-gray-900">Tools</h4>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li><Link to="/comments" className="hover:text-blue-600">Comment Editor</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4 text-gray-900">Contact</h4>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li><Link to="/contact" className="hover:text-blue-600">Get in Touch</Link></li>
-                <li><Link to="/about" className="hover:text-blue-600">About Us</Link></li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t mt-8 pt-8 text-center text-sm text-gray-500">
-            <p>© 2025 SurveyJumper. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };
