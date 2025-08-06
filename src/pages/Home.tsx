@@ -60,14 +60,45 @@ const Home = () => {
 
         <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
           {/* Comment De-Identification */}
-      id: "comment-de-identification",
-      name: "Comment De-Identification",
-      description: "Securely anonymize open-ended employee comments while preserving the original tone and intent.",
-      icon: Shield,
-      color: "from-blue-500 to-cyan-500",
-      features: ["PII & Sensitive Data Redaction", "Tone & Context Preservation", "Bulk Processing API"],
-      startingPrice: "$199",
-      status: "available"
+          <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <MessageSquare className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm text-muted-foreground mb-1">Starting at</div>
+                <div className="text-2xl font-bold">$199</div>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
+                In Development
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-3">Comment De-Identification</h3>
+            <p className="text-muted-foreground mb-6">
+              Securely anonymize open-ended comments while preserving the 
+              original tone and intent.
+            </p>
+            <div className="space-y-2 mb-6">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                PII & Sensitive Data Redaction
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Tone & Context Preservation
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                Bulk Processing API
+              </div>
+            </div>
+            {user ? <Button variant="secondary" className="w-full">
+                <Link to="/comments">Try Now</Link>
+              </Button> : <Button variant="secondary" className="w-full">
+                <Link to="/auth">Sign Up to Try</Link>
+              </Button>}
+          </div>
+
           {/* Thematic Analysis */}
           <div className="bg-card rounded-xl border p-8 shadow-card hover:shadow-lg transition-all duration-300 animate-fade-in">
             <div className="flex items-start gap-4 mb-6">
