@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Download, Edit3, Check, X, User, Filter, Scan, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { Search, Download, Edit3, Check, X, User, Filter, Scan, AlertTriangle, Eye, EyeOff, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -27,6 +27,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [showIdentifiableOnly, setShowIdentifiableOnly] = useState(false);
   const [filteredComments, setFilteredComments] = useState<CommentData[]>(comments);
   const [isScanning, setIsScanning] = useState(false);
+  const [defaultMode, setDefaultMode] = useState<'redact' | 'rephrase'>('redact');
 
   useEffect(() => {
     let filtered = comments.filter(comment => {
@@ -49,7 +50,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
   const saveEdit = (commentId: string) => {
     const updatedComments = comments.map(comment =>
-      comment.id === commentId ? { ...comment, text: editText } : comment
+      comment.id === commentId ? { ...comment, text: editText, approved: true } : comment
     );
     onCommentsUpdate(updatedComments);
     setEditingId(null);
@@ -62,9 +63,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setEditText('');
   };
 
-  const toggleCommentCheck = (commentId: string, field: 'checked' | 'concerning' | 'identifiable') => {
+  const toggleCommentCheck = (commentId: string, field: 'checked' | 'concerning' | 'identifiable' | 'approved') => {
     const updatedComments = comments.map(comment =>
       comment.id === commentId ? { ...comment, [field]: !comment[field] } : comment
+    );
+    onCommentsUpdate(updatedComments);
+  };
+
+  const toggleCommentMode = (commentId: string, mode: 'redact' | 'rephrase') => {
+    const updatedComments = comments.map(comment =>
+      comment.id === commentId ? { ...comment, mode } : comment
     );
     onCommentsUpdate(updatedComments);
   };
@@ -80,7 +88,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
     try {
       const { data, error } = await supabase.functions.invoke('scan-comments', {
-        body: { comments }
+        body: { comments, defaultMode }
       });
 
       if (error) {
@@ -113,6 +121,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       'Concerning': comment.concerning ? 'Yes' : 'No',
       'Identifiable': comment.identifiable ? 'Yes' : 'No',
       'AI Reasoning': comment.aiReasoning || '',
+      'Redacted': comment.redactedText || '',
+      'Rephrased': comment.rephrasedText || '',
+      'Approved': comment.approved ? 'Yes' : 'No',
       'Last Modified': comment.timestamp || ''
     }));
 
@@ -166,6 +177,30 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             <Scan className="w-4 h-4" />
             {isScanning ? 'Scanning...' : 'Scan Comments'}
           </Button>
+          
+          {/* Default Mode Toggle */}
+          <div className="flex items-center gap-2 px-3 py-2 border rounded-md">
+            <span className="text-sm font-medium">Default Mode:</span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant={defaultMode === 'redact' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDefaultMode('redact')}
+                className="h-7 text-xs"
+              >
+                Redact
+              </Button>
+              <Button
+                variant={defaultMode === 'rephrase' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDefaultMode('rephrase')}
+                className="h-7 text-xs"
+              >
+                Rephrase
+              </Button>
+            </div>
+          </div>
+          
           <Button 
             onClick={() => setShowConcerningOnly(!showConcerningOnly)} 
             variant={showConcerningOnly ? "default" : "outline"} 
@@ -206,7 +241,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           <Card 
             key={comment.id} 
             className={`p-4 sm:p-6 hover:shadow-md transition-all duration-300 animate-fade-in ${
-              comment.concerning ? 'bg-red-100 border-red-300 dark:bg-red-950/30 dark:border-red-800/50' : ''
+              comment.concerning ? 'bg-red-100 border-red-300 dark:bg-red-950/30 dark:border-red-800/50' : 
+              comment.identifiable && !comment.concerning ? 'bg-red-50 border-red-200 dark:bg-red-950/10 dark:border-red-800/20' : ''
             }`}
           >
             <div className="space-y-4">
@@ -222,16 +258,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       {comment.author}
                     </div>
                   )}
-                  {comment.concerning && (
-                    <Badge variant="destructive" className="text-xs">
-                      Concerning
-                    </Badge>
-                  )}
-                  {comment.identifiable && (
-                    <Badge variant="outline" className="text-xs border-amber-500 text-amber-700 dark:text-amber-400">
-                      Identifiable
-                    </Badge>
-                  )}
                 </div>
               </div>
 
@@ -239,7 +265,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
                 {/* Checkboxes Column */}
                 <div className="space-y-4">
-                  <h4 className="text-sm font-medium text-muted-foreground">Classification</h4>
                   <div className="space-y-3">
                     <div className="flex items-center space-x-2">
                       <Checkbox
@@ -277,15 +302,39 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   </div>
                 </div>
 
-                {/* Original Comment Column */}
+                {/* AI Processed Column */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-medium text-muted-foreground">Original</h4>
-                    <Badge variant="outline" className="text-xs">Read-only</Badge>
+                    <h4 className="text-sm font-medium text-muted-foreground">
+                      {(comment.concerning || comment.identifiable) ? 'AI Processed' : 'Original'}
+                    </h4>
+                    {(comment.concerning || comment.identifiable) && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant={comment.mode === 'redact' ? 'default' : 'ghost'}
+                          size="sm"
+                          onClick={() => toggleCommentMode(comment.id, 'redact')}
+                          className="h-6 text-xs px-2"
+                        >
+                          Redact
+                        </Button>
+                        <Button
+                          variant={comment.mode === 'rephrase' ? 'default' : 'ghost'}
+                          size="sm"
+                          onClick={() => toggleCommentMode(comment.id, 'rephrase')}
+                          className="h-6 text-xs px-2"
+                        >
+                          Rephrase
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
                     <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                      {comment.originalText}
+                      {(comment.concerning || comment.identifiable) ? 
+                        (comment.mode === 'rephrase' ? comment.rephrasedText : comment.redactedText) || comment.originalText :
+                        comment.originalText
+                      }
                     </p>
                   </div>
                 </div>
@@ -296,6 +345,21 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium text-muted-foreground">Final Version</h4>
                       <Badge variant="secondary" className="text-xs">Editable</Badge>
+                      {(comment.concerning || comment.identifiable) && (
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`approved-${comment.id}`}
+                            checked={comment.approved || false}
+                            onCheckedChange={() => toggleCommentCheck(comment.id, 'approved')}
+                          />
+                          <label 
+                            htmlFor={`approved-${comment.id}`}
+                            className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                          >
+                            Approve
+                          </label>
+                        </div>
+                      )}
                     </div>
                     {editingId !== comment.id && (
                       <Button

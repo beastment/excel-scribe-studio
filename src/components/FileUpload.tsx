@@ -21,6 +21,10 @@ export interface CommentData {
   concerning?: boolean;
   identifiable?: boolean;
   aiReasoning?: string;
+  redactedText?: string;
+  rephrasedText?: string;
+  approved?: boolean;
+  mode?: 'redact' | 'rephrase';
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {

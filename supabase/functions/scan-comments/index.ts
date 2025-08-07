@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { comments } = await req.json();
+    const { comments, defaultMode = 'redact' } = await req.json();
     
     if (!comments || !Array.isArray(comments)) {
       throw new Error('Invalid comments data');
@@ -78,15 +78,95 @@ Respond with JSON only:
         const data = await response.json();
         const result = JSON.parse(data.choices[0].message.content);
         
+        let redactedText = '';
+        let rephrasedText = '';
+        
+        // If the comment is flagged, generate redacted and rephrased versions
+        if (result.concerning || result.identifiable) {
+          // Generate redacted version
+          const redactPrompt = `Take this comment and replace any sensitive, identifying, or concerning information with "XXXX" while keeping the overall structure and meaning clear:
+
+Comment: "${comment.text}"
+
+Return only the redacted text, no explanation.`;
+
+          const redactResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openAIApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are an expert at redacting sensitive information from employee feedback. Replace identifying or concerning information with XXXX.'
+                },
+                {
+                  role: 'user',
+                  content: redactPrompt
+                }
+              ],
+              temperature: 0.1,
+              max_tokens: 300
+            }),
+          });
+
+          if (redactResponse.ok) {
+            const redactData = await redactResponse.json();
+            redactedText = redactData.choices[0].message.content.trim();
+          }
+
+          // Generate rephrased version
+          const rephrasePrompt = `Rephrase this comment to preserve the original intent and sentiment while removing any identifying or concerning information:
+
+Comment: "${comment.text}"
+
+Return only the rephrased text, no explanation.`;
+
+          const rephraseResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openAIApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are an expert at rephrasing employee feedback to remove sensitive information while preserving the original meaning and tone.'
+                },
+                {
+                  role: 'user',
+                  content: rephrasePrompt
+                }
+              ],
+              temperature: 0.2,
+              max_tokens: 300
+            }),
+          });
+
+          if (rephraseResponse.ok) {
+            const rephraseData = await rephraseResponse.json();
+            rephrasedText = rephraseData.choices[0].message.content.trim();
+          }
+        }
+        
         scannedComments.push({
           ...comment,
           concerning: result.concerning || false,
           identifiable: result.identifiable || false,
-          aiReasoning: result.reasoning
+          aiReasoning: result.reasoning,
+          redactedText: redactedText,
+          rephrasedText: rephrasedText,
+          mode: defaultMode,
+          approved: false
         });
 
-        // Small delay to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Small delay to respect rate limits (increased for multiple API calls)
+        await new Promise(resolve => setTimeout(resolve, 300));
 
       } catch (error) {
         console.error(`Error scanning comment ${comment.id}:`, error);
@@ -95,7 +175,11 @@ Respond with JSON only:
           ...comment,
           concerning: false,
           identifiable: false,
-          aiReasoning: 'Scan failed'
+          aiReasoning: 'Scan failed',
+          redactedText: '',
+          rephrasedText: '',
+          mode: defaultMode,
+          approved: false
         });
       }
     }
