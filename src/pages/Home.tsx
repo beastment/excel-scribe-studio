@@ -3,64 +3,50 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Shield, 
-  BrainCircuit, 
-  ClipboardList, 
-  FileText,
-  ArrowRight,
-  Star,
-  Settings
-} from 'lucide-react';
+import { Shield, BrainCircuit, ClipboardList, FileText, ArrowRight, Star, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 const Home = () => {
-  const { user } = useAuth();
-
-  const apps = [
-    {
-      id: "comment-de-identification",
-      name: "Comment De-Identification",
-      description: "Securely anonymize open-ended employee comments while preserving the original tone and intent.",
-      icon: Shield,
-      color: "from-blue-500 to-cyan-500",
-      features: ["PII & Sensitive Data Redaction", "Tone & Context Preservation", "Bulk Processing API"],
-      startingPrice: "$199",
-      status: "available"
-    },
-    {
-      id: "thematic-analysis",
-      name: "Thematic Analysis",
-      description: "Automatically discover and categorize key themes and sentiment from thousands of employee comments.",
-      icon: BrainCircuit,
-      color: "from-purple-500 to-pink-500",
-      features: ["AI-Powered Topic Modeling", "Sentiment Analysis", "Emerging Trend Identification"],
-      startingPrice: "$299",
-      status: "development"
-    },
-    {
-      id: "action-planning-extension",
-      name: "Action Planning Extension",
-      description: "Turn feedback into concrete action plans with AI-suggested initiatives and progress tracking.",
-      icon: ClipboardList,
-      color: "from-green-500 to-emerald-500",
-      features: ["AI-Generated Action Items", "Goal & Progress Tracking", "Manager Accountability Tools"],
-      startingPrice: "$149",
-      status: "development"
-    },
-    {
-      id: "report-writer",
-      name: "Report Writer",
-      description: "Instantly generate executive summaries and narrative reports from your quantitative and qualitative data.",
-      icon: FileText,
-      color: "from-orange-500 to-red-500",
-      features: ["Automated Narrative Generation", "Custom Report Templates", "Data Visualization Integration"],
-      startingPrice: "$249",
-      status: "development"
-    }
-  ];
-
-  return (
-    <div className="pt-20">
+  const {
+    user
+  } = useAuth();
+  const apps = [{
+    id: "comment-de-identification",
+    name: "Comment De-Identification",
+    description: "Securely anonymize open-ended employee comments while preserving the original tone and intent.",
+    icon: Shield,
+    color: "from-blue-500 to-cyan-500",
+    features: ["PII & Sensitive Data Redaction", "Tone & Context Preservation", "Bulk Processing API"],
+    startingPrice: "$199",
+    status: "available"
+  }, {
+    id: "thematic-analysis",
+    name: "Thematic Analysis",
+    description: "Automatically discover and categorize key themes and sentiment from thousands of employee comments.",
+    icon: BrainCircuit,
+    color: "from-purple-500 to-pink-500",
+    features: ["AI-Powered Topic Modeling", "Sentiment Analysis", "Emerging Trend Identification"],
+    startingPrice: "$299",
+    status: "development"
+  }, {
+    id: "action-planning-extension",
+    name: "Action Planning Extension",
+    description: "Turn feedback into concrete action plans with AI-suggested initiatives and progress tracking.",
+    icon: ClipboardList,
+    color: "from-green-500 to-emerald-500",
+    features: ["AI-Generated Action Items", "Goal & Progress Tracking", "Manager Accountability Tools"],
+    startingPrice: "$149",
+    status: "development"
+  }, {
+    id: "report-writer",
+    name: "Report Writer",
+    description: "Instantly generate executive summaries and narrative reports from your quantitative and qualitative data.",
+    icon: FileText,
+    color: "from-orange-500 to-red-500",
+    features: ["Automated Narrative Generation", "Custom Report Templates", "Data Visualization Integration"],
+    startingPrice: "$249",
+    status: "development"
+  }];
+  return <div className="pt-20">
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 to-blue-50 py-20 lg:py-32">
         <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10"></div>
@@ -83,21 +69,17 @@ const Home = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
-              {user ? (
-                <Link to="/comments">
+              {user ? <Link to="/comments">
                   <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
                     Start Screening Comments
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
-                </Link>
-              ) : (
-                <a href="https://www.youtube.com/watch?v=demo-video" target="_blank" rel="noopener noreferrer">
+                </Link> : <a href="https://www.youtube.com/watch?v=demo-video" target="_blank" rel="noopener noreferrer">
                   <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
                     Explore Our AI Tools
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
-                </a>
-              )}
+                </a>}
             </div>
           </div>
         </div>
@@ -114,14 +96,11 @@ const Home = () => {
             <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
               Powerful AI Applications
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Choose from our suite of specialized applications, each designed to supercharge a specific part of your feedback analysis workflow.
-            </p>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">Choose from our suite of specialized applications, each designed to supercharge a specific part of your feedback analysis workflow. No need to change providers, our offerings leverage your existing survey platform.</p>
           </div>
           
           <div className="grid lg:grid-cols-2 gap-8">
-            {apps.map((app, index) => (
-              <Card key={app.id} className="border-0 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-1 bg-white overflow-hidden group">
+            {apps.map((app, index) => <Card key={app.id} className="border-0 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-1 bg-white overflow-hidden group">
                 <CardContent className="p-0">
                   <div className={`h-2 bg-gradient-to-r ${app.color}`}></div>
                   <div className="p-8">
@@ -130,17 +109,13 @@ const Home = () => {
                         <app.icon className="w-7 h-7 text-white" />
                       </div>
                       <div className="text-right">
-                         {app.status === "available" ? (
-                           <Badge className="bg-blue-100 text-blue-800">
+                         {app.status === "available" ? <Badge className="bg-blue-100 text-blue-800">
                              <Star className="w-3 h-3 mr-1" />
                              Currently in Beta
-                           </Badge>
-                         ) : (
-                           <Badge className="bg-orange-100 text-orange-800">
+                           </Badge> : <Badge className="bg-orange-100 text-orange-800">
                              <Settings className="w-3 h-3 mr-1" />
                              In Development
-                           </Badge>
-                         )}
+                           </Badge>}
                       </div>
                     </div>
                     
@@ -148,33 +123,26 @@ const Home = () => {
                     <p className="text-gray-600 mb-6 leading-relaxed h-20">{app.description}</p>
                     
                     <div className="space-y-3 mb-8">
-                      {app.features.map((feature, idx) => (
-                        <div key={idx} className="flex items-center space-x-3">
+                      {app.features.map((feature, idx) => <div key={idx} className="flex items-center space-x-3">
                           <div className={`w-2 h-2 rounded-full mr-2 bg-gradient-to-r ${app.color}`}></div>
                           <span className="text-gray-700 font-medium">{feature}</span>
-                        </div>
-                      ))}
+                        </div>)}
                     </div>
                     
-                     {app.status === "available" ? (
-                       <Link to={`/apps/${app.id}`}>
+                     {app.status === "available" ? <Link to={`/apps/${app.id}`}>
                          <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-medium transition-all duration-300 group-hover:shadow-lg">
                            Learn More
                            <ArrowRight className="ml-2 w-5 h-5" />
                          </Button>
-                       </Link>
-                     ) : (
-                       <Link to={`/apps/${app.id}`}>
+                       </Link> : <Link to={`/apps/${app.id}`}>
                          <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-medium transition-all duration-300 group-hover:shadow-lg">
                            Learn More
                            <ArrowRight className="ml-2 w-5 h-5" />
                          </Button>
-                       </Link>
-                     )}
+                       </Link>}
                   </div>
                 </CardContent>
-              </Card>
-            ))}
+              </Card>)}
           </div>
         </div>
       </section>
@@ -190,23 +158,18 @@ const Home = () => {
           </p>
           
            <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
-             {user ? (
-               <Link to="/comments">
+             {user ? <Link to="/comments">
                  <Button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
                    Start Screening
                  </Button>
-               </Link>
-             ) : (
-               <Link to="/contact">
+               </Link> : <Link to="/contact">
                  <Button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
                    Get in Touch
                  </Button>
-               </Link>
-             )}
+               </Link>}
           </div>
         </div>
       </section>
-    </div>
-  );
+    </div>;
 };
 export default Home;
