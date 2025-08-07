@@ -24,7 +24,7 @@ export interface CommentData {
   redactedText?: string;
   rephrasedText?: string;
   approved?: boolean;
-  mode?: 'redact' | 'rephrase' | 'revert';
+  mode?: 'redact' | 'rephrase' | 'revert' | 'edit';
   demographics?: string;
 }
 

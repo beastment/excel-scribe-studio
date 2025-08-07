@@ -66,13 +66,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     onCommentsUpdate(updatedComments);
   };
 
-  const toggleCommentMode = async (commentId: string, mode: 'redact' | 'rephrase' | 'revert') => {
+  const toggleCommentMode = async (commentId: string, mode: 'redact' | 'rephrase' | 'revert' | 'edit') => {
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
 
     // Determine the middle column text based on mode
     let middleColumnText = '';
-    if (mode === 'revert') {
+    if (mode === 'edit') {
+      // Keep existing text when switching to edit mode
+      middleColumnText = comment.text;
+    } else if (mode === 'revert') {
       middleColumnText = comment.originalText;
     } else if (mode === 'rephrase') {
       middleColumnText = comment.rephrasedText || comment.originalText;
@@ -80,20 +83,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       middleColumnText = comment.redactedText || comment.originalText;
     }
 
-    // Update the mode, copy to final column, and unset approved
+    // Update the mode, copy to final column, and unset approved (except for edit mode)
     const updatedComments = comments.map(c =>
       c.id === commentId ? { 
         ...c, 
         mode, 
         text: middleColumnText, 
-        approved: false 
+        approved: mode === 'edit' ? c.approved : false 
       } : c
     );
     onCommentsUpdate(updatedComments);
 
-    // Only reprocess if the comment is concerning/identifiable and not reverting
+    // Only reprocess if the comment is concerning/identifiable and not reverting or editing
     if (comment.concerning || comment.identifiable) {
-      if (mode !== 'revert') {
+      if (mode !== 'revert' && mode !== 'edit') {
         await reprocessComment(commentId, mode);
       }
     }
@@ -355,18 +358,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 </div>
               </div>
 
-              {/* Four Column Layout (with optional demographics) */}
-              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
+              {/* Three Column Layout (with optional demographics) */}
+              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-3' : 'xl:grid-cols-2'}`}>
                 {/* Demographics Column (conditional) */}
                 {hasDemographics && (
-                  <div className="space-y-2">
+                  <div className="space-y-2 xl:max-w-48">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium text-muted-foreground">Demographics</h4>
                     </div>
                     <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
                       <p className="text-foreground leading-relaxed text-sm sm:text-base">
                         {comment.demographics ? 
-                          `${comment.demographics} (${demographicCounts[comment.demographics]})` : 
+                          `(${comment.demographics}, ${demographicCounts[comment.demographics]} comments)` : 
                           'No data'
                         }
                       </p>
@@ -422,64 +425,54 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   </div>
                 </div>
 
-                {/* AI Processed Column */}
+                {/* AI Processed / Final Version Column */}
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-medium text-muted-foreground">
-                      {(comment.concerning || comment.identifiable) ? 'AI Processed' : 
-                        (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Scan Required' : 'No Changes Needed')}
-                    </h4>
-                    {(comment.concerning || comment.identifiable) && (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant={comment.mode === 'redact' ? 'default' : 'ghost'}
-                          size="sm"
-                          onClick={() => toggleCommentMode(comment.id, 'redact')}
-                          className="h-6 text-xs px-2"
-                        >
-                          Redact
-                        </Button>
-                        <Button
-                          variant={comment.mode === 'rephrase' ? 'default' : 'ghost'}
-                          size="sm"
-                          onClick={() => toggleCommentMode(comment.id, 'rephrase')}
-                          className="h-6 text-xs px-2"
-                        >
-                          Rephrase
-                        </Button>
-                        <Button
-                          variant={comment.mode === 'revert' ? 'default' : 'ghost'}
-                          size="sm"
-                          onClick={() => toggleCommentMode(comment.id, 'revert')}
-                          className="h-6 text-xs px-2"
-                        >
-                          Revert
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
-                    <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                      {(comment.concerning || comment.identifiable) ? 
-                        (comment.mode === 'revert' ? comment.originalText :
-                         comment.mode === 'rephrase' ? 
-                          (comment.rephrasedText || 'Processing...') : 
-                          (comment.redactedText || 'Processing...')
-                        ) :
-                        (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Not processed yet' : 'No processing needed')
-                      }
-                    </p>
-                  </div>
-                </div>
-
-                {/* Final Editable Column */}
-                <div className="space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-medium text-muted-foreground">Final Version</h4>
-                      <Badge variant="secondary" className="text-xs">Editable</Badge>
+                      <h4 className="text-sm font-medium text-muted-foreground">
+                        {comment.mode === 'edit' ? 'Final Version' : 
+                         (comment.concerning || comment.identifiable) ? 'AI Processed' : 
+                         (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Scan Required' : 'No Changes Needed')}
+                      </h4>
+                      {comment.mode === 'edit' && <Badge variant="secondary" className="text-xs">Editable</Badge>}
+                    </div>
+                    
+                    {/* Mode Controls */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Button
+                        variant={comment.mode === 'redact' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => toggleCommentMode(comment.id, 'redact')}
+                        className="h-6 text-xs px-2"
+                      >
+                        Redact
+                      </Button>
+                      <Button
+                        variant={comment.mode === 'rephrase' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => toggleCommentMode(comment.id, 'rephrase')}
+                        className="h-6 text-xs px-2"
+                      >
+                        Rephrase
+                      </Button>
+                      <Button
+                        variant={comment.mode === 'revert' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => toggleCommentMode(comment.id, 'revert')}
+                        className="h-6 text-xs px-2"
+                      >
+                        Revert
+                      </Button>
+                      <Button
+                        variant={comment.mode === 'edit' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => toggleCommentMode(comment.id, 'edit')}
+                        className="h-6 text-xs px-2"
+                      >
+                        Edit
+                      </Button>
                       {(comment.concerning || comment.identifiable) && (
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2 ml-2">
                           <Checkbox
                             id={`approved-${comment.id}`}
                             checked={comment.approved || false}
@@ -496,14 +489,43 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     </div>
                   </div>
                   
-                  <div className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
-                    <Textarea
-                      value={comment.text}
-                      onChange={(e) => handleTextChange(comment.id, e.target.value)}
-                      className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0"
-                      placeholder="Edit your comment..."
-                    />
-                  </div>
+                  {/* Content Area */}
+                  {comment.mode === 'edit' ? (
+                    <div className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
+                      <Textarea
+                        value={comment.text}
+                        onChange={(e) => {
+                          handleTextChange(comment.id, e.target.value);
+                          // Auto-switch to edit mode when typing
+                          if (comment.mode !== 'edit') {
+                            toggleCommentMode(comment.id, 'edit');
+                          }
+                        }}
+                        onFocus={() => {
+                          // Auto-switch to edit mode when clicking in textarea
+                          if (comment.mode !== 'edit') {
+                            toggleCommentMode(comment.id, 'edit');
+                          }
+                        }}
+                        className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0"
+                        placeholder="Edit your comment..."
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
+                      <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                        {comment.mode === 'revert' ? comment.originalText :
+                         comment.mode === 'rephrase' ? 
+                           (comment.rephrasedText || 'Processing...') : 
+                         comment.mode === 'redact' ?
+                           (comment.redactedText || 'Processing...') :
+                         (comment.concerning || comment.identifiable) ? 
+                           (comment.redactedText || comment.rephrasedText || 'Processing...') :
+                           (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Not processed yet' : 'No processing needed')
+                        }
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
