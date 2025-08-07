@@ -48,20 +48,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setEditText(comment.text);
   };
 
-  const saveEdit = (commentId: string) => {
+  const handleTextChange = (commentId: string, newText: string) => {
     const updatedComments = comments.map(comment =>
-      comment.id === commentId ? { ...comment, text: editText, approved: true } : comment
+      comment.id === commentId ? { ...comment, text: newText } : comment
     );
     onCommentsUpdate(updatedComments);
-    setEditingId(null);
-    setEditText('');
-    toast.success('Comment updated successfully');
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditText('');
-  };
 
   const toggleCommentCheck = (commentId: string, field: 'checked' | 'concerning' | 'identifiable' | 'approved') => {
     const updatedComments = comments.map(comment =>
@@ -70,19 +63,36 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     onCommentsUpdate(updatedComments);
   };
 
-  const toggleCommentMode = async (commentId: string, mode: 'redact' | 'rephrase') => {
+  const toggleCommentMode = async (commentId: string, mode: 'redact' | 'rephrase' | 'revert') => {
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
 
-    // Update the mode immediately for UI feedback
+    // Determine the middle column text based on mode
+    let middleColumnText = '';
+    if (mode === 'revert') {
+      middleColumnText = comment.originalText;
+    } else if (mode === 'rephrase') {
+      middleColumnText = comment.rephrasedText || comment.originalText;
+    } else {
+      middleColumnText = comment.redactedText || comment.originalText;
+    }
+
+    // Update the mode, copy to final column, and unset approved
     const updatedComments = comments.map(c =>
-      c.id === commentId ? { ...c, mode } : c
+      c.id === commentId ? { 
+        ...c, 
+        mode, 
+        text: middleColumnText, 
+        approved: false 
+      } : c
     );
     onCommentsUpdate(updatedComments);
 
-    // Only reprocess if the comment is concerning or identifiable
+    // Only reprocess if the comment is concerning/identifiable and not reverting
     if (comment.concerning || comment.identifiable) {
-      await reprocessComment(commentId, mode);
+      if (mode !== 'revert') {
+        await reprocessComment(commentId, mode);
+      }
     }
   };
 
@@ -164,8 +174,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
   const concerningCount = comments.filter(c => c.concerning).length;
   const identifiableCount = comments.filter(c => c.identifiable).length;
+  
+  // Check if any comments have demographic data
+  const hasDemographics = comments.some(c => c.demographics);
+  
+  // Calculate demographic counts
+  const demographicCounts = comments.reduce((acc, comment) => {
+    if (comment.demographics) {
+      acc[comment.demographics] = (acc[comment.demographics] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
 
-  const reprocessComment = async (commentId: string, mode: 'redact' | 'rephrase') => {
+  const reprocessComment = async (commentId: string, mode: 'redact' | 'rephrase' | 'revert') => {
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
 
@@ -181,8 +202,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
       if (data?.comments && data.comments.length > 0) {
         const updatedComment = data.comments[0];
+        const middleColumnText = mode === 'rephrase' ? updatedComment.rephrasedText : updatedComment.redactedText;
         const updatedComments = comments.map(c =>
-          c.id === commentId ? { ...c, ...updatedComment, mode } : c
+          c.id === commentId ? { 
+            ...c, 
+            ...updatedComment, 
+            mode, 
+            text: middleColumnText || c.text, 
+            approved: false 
+          } : c
         );
         onCommentsUpdate(updatedComments);
         toast.success(`Comment ${mode === 'redact' ? 'redacted' : 'rephrased'} successfully`);
@@ -302,8 +330,24 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 </div>
               </div>
 
-              {/* Three Column Layout */}
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
+              {/* Four Column Layout (with optional demographics) */}
+              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
+                {/* Demographics Column (conditional) */}
+                {hasDemographics && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-medium text-muted-foreground">Demographics</h4>
+                    </div>
+                    <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
+                      <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                        {comment.demographics ? 
+                          `${comment.demographics} (${demographicCounts[comment.demographics]})` : 
+                          'No data'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {/* Original Comment Column */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -375,13 +419,22 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         >
                           Rephrase
                         </Button>
+                        <Button
+                          variant={comment.mode === 'revert' ? 'default' : 'ghost'}
+                          size="sm"
+                          onClick={() => toggleCommentMode(comment.id, 'revert')}
+                          className="h-6 text-xs px-2"
+                        >
+                          Revert
+                        </Button>
                       </div>
                     )}
                   </div>
                   <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
                     <p className="text-foreground leading-relaxed text-sm sm:text-base">
                       {(comment.concerning || comment.identifiable) ? 
-                        (comment.mode === 'rephrase' ? 
+                        (comment.mode === 'revert' ? comment.originalText :
+                         comment.mode === 'rephrase' ? 
                           (comment.rephrasedText || 'Processing...') : 
                           (comment.redactedText || 'Processing...')
                         ) :
@@ -415,44 +468,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     </div>
                   </div>
                   
-                  {editingId === comment.id ? (
-                    <div className="space-y-3">
-                      <Textarea
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
-                        className="min-h-[120px] resize-none text-sm sm:text-base"
-                        placeholder="Edit your comment..."
-                      />
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => saveEdit(comment.id)}
-                          className="gap-2"
-                        >
-                          <Check className="w-3 h-3" />
-                          Save
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={cancelEdit}
-                          className="gap-2"
-                        >
-                          <X className="w-3 h-3" />
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div 
-                      className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors cursor-pointer"
-                      onClick={() => startEditing(comment)}
-                    >
-                      <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                        {comment.text}
-                      </p>
-                    </div>
-                  )}
+                  <div className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
+                    <Textarea
+                      value={comment.text}
+                      onChange={(e) => handleTextChange(comment.id, e.target.value)}
+                      className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0"
+                      placeholder="Edit your comment..."
+                    />
+                  </div>
                 </div>
               </div>
             </div>

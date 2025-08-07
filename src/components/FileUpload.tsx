@@ -24,7 +24,8 @@ export interface CommentData {
   redactedText?: string;
   rephrasedText?: string;
   approved?: boolean;
-  mode?: 'redact' | 'rephrase';
+  mode?: 'redact' | 'rephrase' | 'revert';
+  demographics?: string;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
@@ -53,6 +54,19 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
           header && (header.toLowerCase().includes('author') || header.toLowerCase().includes('name'))
         );
         
+        // Find demographic columns (department, work area, etc.)
+        const demographicColumnIndex = headers.findIndex(header => 
+          header && (
+            header.toLowerCase().includes('department') ||
+            header.toLowerCase().includes('work area') ||
+            header.toLowerCase().includes('area') ||
+            header.toLowerCase().includes('division') ||
+            header.toLowerCase().includes('team') ||
+            header.toLowerCase().includes('location') ||
+            header.toLowerCase().includes('region')
+          )
+        );
+        
         if (commentColumnIndex === -1) {
           toast.error('No comment column found in the Excel file');
           return;
@@ -73,7 +87,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
               timestamp: new Date().toISOString(),
               checked: false,
               concerning: false,
-              identifiable: false
+              identifiable: false,
+              demographics: demographicColumnIndex >= 0 ? row[demographicColumnIndex] : undefined
             });
           }
         }
