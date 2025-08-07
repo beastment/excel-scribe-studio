@@ -70,11 +70,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     onCommentsUpdate(updatedComments);
   };
 
-  const toggleCommentMode = (commentId: string, mode: 'redact' | 'rephrase') => {
-    const updatedComments = comments.map(comment =>
-      comment.id === commentId ? { ...comment, mode } : comment
+  const toggleCommentMode = async (commentId: string, mode: 'redact' | 'rephrase') => {
+    const comment = comments.find(c => c.id === commentId);
+    if (!comment) return;
+
+    // Update the mode immediately for UI feedback
+    const updatedComments = comments.map(c =>
+      c.id === commentId ? { ...c, mode } : c
     );
     onCommentsUpdate(updatedComments);
+
+    // Only reprocess if the comment is concerning or identifiable
+    if (comment.concerning || comment.identifiable) {
+      await reprocessComment(commentId, mode);
+    }
   };
 
   const scanComments = async () => {
@@ -156,18 +165,38 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const concerningCount = comments.filter(c => c.concerning).length;
   const identifiableCount = comments.filter(c => c.identifiable).length;
 
+  const reprocessComment = async (commentId: string, mode: 'redact' | 'rephrase') => {
+    const comment = comments.find(c => c.id === commentId);
+    if (!comment) return;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('scan-comments', {
+        body: { 
+          comments: [{ ...comment, mode }], 
+          defaultMode: mode
+        }
+      });
+
+      if (error) throw new Error(error.message);
+
+      if (data?.comments && data.comments.length > 0) {
+        const updatedComment = data.comments[0];
+        const updatedComments = comments.map(c =>
+          c.id === commentId ? { ...c, ...updatedComment, mode } : c
+        );
+        onCommentsUpdate(updatedComments);
+        toast.success(`Comment ${mode === 'redact' ? 'redacted' : 'rephrased'} successfully`);
+      }
+    } catch (error) {
+      console.error('Reprocess error:', error);
+      toast.error(`Failed to ${mode} comment. Please try again.`);
+    }
+  };
+
   return (
     <div className="w-full max-w-none">
       {/* Header */}
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold">Comment Editor</h2>
-          <p className="text-muted-foreground">
-            {filteredComments.length} of {comments.length} comments
-            {concerningCount > 0 && ` • ${concerningCount} concerning`}
-            {identifiableCount > 0 && ` • ${identifiableCount} identifiable`}
-          </p>
-        </div>
         <div className="flex flex-wrap gap-2">
           <Button 
             onClick={scanComments}
@@ -200,7 +229,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               </Button>
             </div>
           </div>
-          
+        </div>
+        
+        <div>
+          <h2 className="text-2xl font-bold">Comment Editor</h2>
+          <p className="text-muted-foreground">
+            {filteredComments.length} of {comments.length} comments
+            {concerningCount > 0 && ` • ${concerningCount} concerning`}
+            {identifiableCount > 0 && ` • ${identifiableCount} identifiable`}
+          </p>
+        </div>
+        
+        <div className="flex flex-wrap gap-2">
           <Button 
             onClick={() => setShowConcerningOnly(!showConcerningOnly)} 
             variant={showConcerningOnly ? "default" : "outline"} 
@@ -241,6 +281,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           <Card 
             key={comment.id} 
             className={`p-4 sm:p-6 hover:shadow-md transition-all duration-300 animate-fade-in ${
+              comment.approved ? 'bg-green-50 border-green-300 dark:bg-green-950/30 dark:border-green-800/50' :
               comment.concerning ? 'bg-red-100 border-red-300 dark:bg-red-950/30 dark:border-red-800/50' : 
               comment.identifiable && !comment.concerning ? 'bg-red-50 border-red-200 dark:bg-red-950/10 dark:border-red-800/20' : ''
             }`}
@@ -263,9 +304,17 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
               {/* Three Column Layout */}
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
-                {/* Checkboxes Column */}
-                <div className="space-y-4">
-                  <div className="space-y-3">
+                {/* Original Comment Column */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-medium text-muted-foreground">Original Comment</h4>
+                  </div>
+                  <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
+                    <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                      {comment.originalText}
+                    </p>
+                  </div>
+                  <div className="space-y-3 mt-4">
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id={`concerning-${comment.id}`}
@@ -306,7 +355,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-medium text-muted-foreground">
-                      {(comment.concerning || comment.identifiable) ? 'AI Processed' : 'Original'}
+                      {(comment.concerning || comment.identifiable) ? 'AI Processed' : 'No Changes Needed'}
                     </h4>
                     {(comment.concerning || comment.identifiable) && (
                       <div className="flex items-center gap-1">
@@ -333,13 +382,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     <p className="text-foreground leading-relaxed text-sm sm:text-base">
                       {(comment.concerning || comment.identifiable) ? 
                         (comment.mode === 'rephrase' ? comment.rephrasedText : comment.redactedText) || comment.originalText :
-                        comment.originalText
+                        'No processing needed'
                       }
                     </p>
                   </div>
                 </div>
 
-                {/* Editable Comment Column */}
+                {/* Final Editable Column */}
                 <div className="space-y-2">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -356,22 +405,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                             htmlFor={`approved-${comment.id}`}
                             className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                           >
-                            Approve
+                            Approved
                           </label>
                         </div>
                       )}
                     </div>
-                    {editingId !== comment.id && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => startEditing(comment)}
-                        className="gap-2 hover:bg-primary/10 self-start sm:self-center"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                        Edit
-                      </Button>
-                    )}
                   </div>
                   
                   {editingId === comment.id ? (
@@ -403,7 +441,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
+                    <div 
+                      className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors cursor-pointer"
+                      onClick={() => startEditing(comment)}
+                    >
                       <p className="text-foreground leading-relaxed text-sm sm:text-base">
                         {comment.text}
                       </p>
