@@ -11,45 +11,22 @@ const Auth = () => {
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
 
   useEffect(() => {
-    const handlePasswordRecovery = async () => {
-      // Check if this is a password reset redirect
-      const type = searchParams.get('type');
-      const hash = window.location.hash;
+    const type = searchParams.get('type');
+    const hash = window.location.hash;
+    
+    console.log('Auth page loaded with type:', type, 'hash:', hash);
+    
+    if (type === 'recovery') {
+      console.log('Password recovery detected, setting mode to reset');
+      setMode('reset');
       
-      if (type === 'recovery' && hash) {
-        // Extract tokens from the URL hash
-        const hashParams = new URLSearchParams(hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        
-        if (accessToken && refreshToken) {
-          try {
-            // Set the session using the tokens from the password reset link
-            const { data, error } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken
-            });
-            
-            if (error) {
-              console.error('Error setting session:', error);
-            } else {
-              console.log('Session set successfully:', data);
-              // Set mode to reset after successful session establishment
-              setMode('reset');
-              // Clear the hash from the URL
-              window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-            }
-          } catch (error) {
-            console.error('Error handling password recovery:', error);
-          }
-        } else {
-          // If no tokens found, just set mode to reset
-          setMode('reset');
-        }
+      // If there's a hash with tokens, let Supabase handle it automatically
+      if (hash) {
+        console.log('Hash found, clearing from URL');
+        // Clear the hash from the URL for cleaner experience
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
       }
-    };
-
-    handlePasswordRecovery();
+    }
   }, [searchParams]);
 
   // Redirect if already authenticated and not in reset mode
