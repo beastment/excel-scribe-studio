@@ -11,6 +11,7 @@ import { isInIframe, logIframeInfo } from "@/utils/iframeUtils";
 import { useMaintenanceMode } from "@/hooks/useMaintenanceMode";
 import { useAuth } from "@/contexts/AuthContext";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
+import { useUserRole } from "@/hooks/useUserRole";
 import Home from "./pages/Home";
 import About from "./pages/About";
 import FAQ from "./pages/FAQ";
@@ -19,6 +20,7 @@ import Auth from "./pages/Auth";
 import CommentEditor from "./pages/CommentEditor";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
+import { PasswordReset } from "./pages/PasswordReset";
 import CommentDeIdentification from "./pages/apps/CommentDeIdentification";
 import ThematicAnalysis from "./pages/apps/ThematicAnalysis";
 import ActionPlanningExtension from "./pages/apps/ActionPlanningExtension";
@@ -29,69 +31,71 @@ const queryClient = new QueryClient();
 const AppContent = () => {
   const { maintenanceStatus, loading } = useMaintenanceMode();
   const { user } = useAuth();
+  const { canBypassMaintenance, loading: roleLoading } = useUserRole();
   
   // Scroll to top on route change
   useScrollToTop();
   
-  // Check if current user is admin
-  const isAdminUser = user?.email === 'admin@surveyjumper.com';
+  // Check if we should show maintenance mode
+  const shouldShowMaintenance = !loading && !roleLoading && maintenanceStatus.isEnabled && !canBypassMaintenance();
 
   return (
     <>
       <Navigation />
       <Routes>
         <Route path="/" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <Home />
         } />
         <Route path="/about" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <About />
         } />
         <Route path="/faq" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <FAQ />
         } />
         <Route path="/contact" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <Contact />
         } />
         <Route path="/auth" element={<Auth />} />
+        <Route path="/password-reset" element={<PasswordReset />} />
         <Route path="/comments" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <ProtectedRoute>
               <CommentEditor />
             </ProtectedRoute>
         } />
         <Route path="/dashboard" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <ProtectedRoute>
               <Dashboard />
             </ProtectedRoute>
         } />
         <Route path="/apps/comment-de-identification" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <CommentDeIdentification />
         } />
         <Route path="/apps/thematic-analysis" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <ThematicAnalysis />
         } />
         <Route path="/apps/action-planning-extension" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <ActionPlanningExtension />
         } />
         <Route path="/apps/report-writer" element={
-          !loading && maintenanceStatus.isEnabled && !isAdminUser ? 
+          shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <ReportWriter />
         } />

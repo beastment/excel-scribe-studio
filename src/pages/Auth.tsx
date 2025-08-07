@@ -11,7 +11,19 @@ const Auth = () => {
   useEffect(() => {
     // Check if this is a password reset redirect
     const type = searchParams.get('type');
+    const hash = window.location.hash;
+    
     if (type === 'recovery') {
+      // If we have tokens in the URL hash, redirect to password reset page
+      if (hash.includes('access_token') && hash.includes('refresh_token')) {
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        
+        // Redirect to password reset page with tokens as query params
+        window.location.href = `/password-reset?access_token=${accessToken}&refresh_token=${refreshToken}`;
+        return;
+      }
       setMode('reset');
     }
   }, [searchParams]);

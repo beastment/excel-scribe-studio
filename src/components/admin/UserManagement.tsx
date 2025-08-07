@@ -26,7 +26,7 @@ interface UserProfile {
   id: string;
   user_id: string;
   full_name: string | null;
-  role: 'admin' | 'user';
+  role: 'admin' | 'user' | 'partner';
   created_at: string;
   updated_at: string;
 }
@@ -63,7 +63,7 @@ export const UserManagement: React.FC = () => {
     }
   };
 
-  const updateUserRole = async (userId: string, newRole: 'admin' | 'user') => {
+  const updateUserRole = async (userId: string, newRole: 'admin' | 'user' | 'partner') => {
     setUpdating(userId);
     try {
       const { error } = await supabase
@@ -194,7 +194,7 @@ export const UserManagement: React.FC = () => {
                     <TableCell className="text-right">
                       <Select
                         value={user.role}
-                        onValueChange={(value: 'admin' | 'user') => updateUserRole(user.user_id, value)}
+                        onValueChange={(value: 'admin' | 'user' | 'partner') => updateUserRole(user.user_id, value)}
                         disabled={updating === user.user_id}
                       >
                         <SelectTrigger className="w-24 h-8">
@@ -203,6 +203,7 @@ export const UserManagement: React.FC = () => {
                         <SelectContent>
                           <SelectItem value="user">User</SelectItem>
                           <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="partner">Partner</SelectItem>
                         </SelectContent>
                       </Select>
                     </TableCell>
