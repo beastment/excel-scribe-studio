@@ -39,22 +39,6 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
           });
         }
       } else if (mode === 'reset') {
-        console.log('Attempting password reset...');
-        
-        // Check if user is authenticated for password reset
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        console.log('Current user for reset:', user?.email, 'Error:', userError);
-        
-        if (!user) {
-          toast({
-            title: 'Auth Session Missing',
-            description: 'Please click the password reset link again from your email.',
-            variant: 'destructive',
-          });
-          setLoading(false);
-          return;
-        }
-        
         if (formData.password !== formData.confirmPassword) {
           toast({
             title: 'Password Mismatch',
@@ -70,14 +54,20 @@ export const AuthForm: React.FC<AuthFormProps> = ({ mode, onModeChange }) => {
         });
 
         if (error) {
-          console.error('Password update error:', error);
-          toast({
-            title: 'Error',
-            description: error.message,
-            variant: 'destructive',
-          });
+          if (error.message.includes('Auth session missing')) {
+            toast({
+              title: 'Session Expired',
+              description: 'Please click the password reset link again from your email.',
+              variant: 'destructive',
+            });
+          } else {
+            toast({
+              title: 'Error',
+              description: error.message,
+              variant: 'destructive',
+            });
+          }
         } else {
-          console.log('Password updated successfully');
           toast({
             title: 'Password Updated',
             description: 'Your password has been successfully updated.',

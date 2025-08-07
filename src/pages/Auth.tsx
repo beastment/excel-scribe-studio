@@ -11,58 +11,12 @@ const Auth = () => {
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
 
   useEffect(() => {
-    const handlePasswordRecovery = async () => {
-      const type = searchParams.get('type');
-      const hash = window.location.hash;
-      
-      console.log('Auth page loaded with type:', type, 'hash:', hash);
-      
-      if (type === 'recovery') {
-        console.log('Password recovery detected');
-        
-        if (hash) {
-          console.log('Processing hash tokens...');
-          
-          // Extract tokens from the URL hash
-          const hashParams = new URLSearchParams(hash.substring(1));
-          const accessToken = hashParams.get('access_token');
-          const refreshToken = hashParams.get('refresh_token');
-          
-          console.log('Tokens found:', { 
-            hasAccessToken: !!accessToken, 
-            hasRefreshToken: !!refreshToken 
-          });
-          
-          if (accessToken && refreshToken) {
-            try {
-              // Set the session using the tokens from the password reset link
-              const { data, error } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken
-              });
-              
-              if (error) {
-                console.error('Error setting session:', error);
-              } else {
-                console.log('Session set successfully, user:', data.user?.email);
-                setMode('reset');
-                // Clear the hash from the URL
-                window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-                return;
-              }
-            } catch (error) {
-              console.error('Error handling password recovery:', error);
-            }
-          }
-        }
-        
-        // Fallback: just set mode to reset even if no tokens
-        console.log('Setting mode to reset as fallback');
-        setMode('reset');
-      }
-    };
-
-    handlePasswordRecovery();
+    // Simple detection of password recovery mode
+    const type = searchParams.get('type');
+    
+    if (type === 'recovery') {
+      setMode('reset');
+    }
   }, [searchParams]);
 
   // Redirect if already authenticated and not in reset mode
