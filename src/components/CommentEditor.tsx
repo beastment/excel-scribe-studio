@@ -200,6 +200,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     return 'No Changes Needed';
   };
 
+  // Get the initial mode for comments with "No Changes Needed" status
+  const getInitialMode = (comment: CommentData) => {
+    const status = getCommentStatus(comment);
+    if (status === 'No Changes Needed' && !comment.mode) {
+      return 'revert';
+    }
+    return comment.mode;
+  };
+
   const reprocessComment = async (commentId: string, mode: 'redact' | 'rephrase' | 'revert') => {
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
@@ -258,6 +267,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             <Scan className="w-4 h-4" />
             {isScanning ? 'Scanning...' : 'Scan Comments'}
           </Button>
+          
+          {/* Progress Indicator */}
+          {isScanning && (
+            <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/30">
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm text-muted-foreground">Processing comments...</span>
+            </div>
+          )}
           
           {/* Default Mode Toggle */}
           <div className="flex items-center gap-2 px-3 py-2 border rounded-md">
@@ -450,7 +467,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         <>
                           {getCommentStatus(comment) === 'No Changes Needed' ? (
                             <Button
-                              variant={comment.mode === 'revert' ? 'default' : 'ghost'}
+                              variant={(getInitialMode(comment) || comment.mode) === 'revert' ? 'default' : 'ghost'}
                               size="sm"
                               onClick={() => toggleCommentMode(comment.id, 'revert')}
                               className="h-6 text-xs px-2"
@@ -550,7 +567,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       onClick={() => toggleCommentMode(comment.id, 'edit')}
                     >
                       <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                        {getCommentStatus(comment) === 'No Changes Needed' && comment.mode === 'revert' ? 
+                        {getCommentStatus(comment) === 'No Changes Needed' && (getInitialMode(comment) || comment.mode) === 'revert' ? 
                           comment.originalText :
                          comment.mode === 'revert' ? 
                            comment.originalText :
