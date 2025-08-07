@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Download, Edit3, Check, X, User, Filter, Scan, AlertTriangle, Eye, EyeOff, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Search, Download, Edit3, Check, X, User, Filter, Scan, AlertTriangle, Eye, EyeOff, ToggleLeft, ToggleRight, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -7,18 +7,20 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { CommentData } from './FileUpload';
+import { CommentData, FileUpload } from './FileUpload';
 import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
 
 interface CommentEditorProps {
   comments: CommentData[];
   onCommentsUpdate: (comments: CommentData[]) => void;
+  onImportComments: (comments: CommentData[]) => void;
 }
 
 export const CommentEditor: React.FC<CommentEditorProps> = ({ 
   comments, 
-  onCommentsUpdate 
+  onCommentsUpdate,
+  onImportComments
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -28,6 +30,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [filteredComments, setFilteredComments] = useState<CommentData[]>(comments);
   const [isScanning, setIsScanning] = useState(false);
   const [defaultMode, setDefaultMode] = useState<'redact' | 'rephrase'>('redact');
+  const [showImportDialog, setShowImportDialog] = useState(false);
 
   useEffect(() => {
     let filtered = comments.filter(comment => {
@@ -227,6 +230,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-6">
         <div className="flex flex-wrap gap-2">
           <Button 
+            onClick={() => setShowImportDialog(!showImportDialog)}
+            variant="outline"
+            className="gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            Import Comments
+          </Button>
+          
+          <Button 
             onClick={scanComments}
             disabled={isScanning}
             className="gap-2"
@@ -260,7 +272,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         </div>
         
         <div>
-          <h2 className="text-2xl font-bold">Comment Editor</h2>
+          <h2 className="text-2xl font-bold mb-1">Comment Editor</h2>
           <p className="text-muted-foreground">
             {filteredComments.length} of {comments.length} comments
             {concerningCount > 0 && ` • ${concerningCount} concerning`}
@@ -287,10 +299,23 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           </Button>
           <Button onClick={exportToExcel} variant="outline" className="gap-2">
             <Download className="w-4 h-4" />
-            Export Excel
+            Export
           </Button>
         </div>
       </div>
+
+      {/* Import Dialog */}
+      {showImportDialog && (
+        <div className="mb-6">
+          <Card className="p-4">
+            <h3 className="text-lg font-semibold mb-4">Import New Comments</h3>
+            <FileUpload onDataLoaded={(newComments) => {
+              onImportComments(newComments);
+              setShowImportDialog(false);
+            }} />
+          </Card>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mb-6">
@@ -359,31 +384,33 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     </p>
                   </div>
                   <div className="space-y-3 mt-4">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`concerning-${comment.id}`}
-                        checked={comment.concerning || false}
-                        onCheckedChange={() => toggleCommentCheck(comment.id, 'concerning')}
-                      />
-                      <label 
-                        htmlFor={`concerning-${comment.id}`}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                      >
-                        Concerning
-                      </label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`identifiable-${comment.id}`}
-                        checked={comment.identifiable || false}
-                        onCheckedChange={() => toggleCommentCheck(comment.id, 'identifiable')}
-                      />
-                      <label 
-                        htmlFor={`identifiable-${comment.id}`}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                      >
-                        Identifiable
-                      </label>
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`concerning-${comment.id}`}
+                          checked={comment.concerning || false}
+                          onCheckedChange={() => toggleCommentCheck(comment.id, 'concerning')}
+                        />
+                        <label 
+                          htmlFor={`concerning-${comment.id}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          Concerning
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`identifiable-${comment.id}`}
+                          checked={comment.identifiable || false}
+                          onCheckedChange={() => toggleCommentCheck(comment.id, 'identifiable')}
+                        />
+                        <label 
+                          htmlFor={`identifiable-${comment.id}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          Identifiable
+                        </label>
+                      </div>
                     </div>
                     {comment.aiReasoning && (
                       <div className="p-2 rounded-lg bg-muted/50 border">
@@ -399,7 +426,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-medium text-muted-foreground">
-                      {(comment.concerning || comment.identifiable) ? 'AI Processed' : 'No Changes Needed'}
+                      {(comment.concerning || comment.identifiable) ? 'AI Processed' : 
+                        (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Scan Required' : 'No Changes Needed')}
                     </h4>
                     {(comment.concerning || comment.identifiable) && (
                       <div className="flex items-center gap-1">
@@ -438,7 +466,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                           (comment.rephrasedText || 'Processing...') : 
                           (comment.redactedText || 'Processing...')
                         ) :
-                        'No processing needed'
+                        (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Not processed yet' : 'No processing needed')
                       }
                     </p>
                   </div>

@@ -36,21 +36,13 @@ const Index = () => {
       <section className="py-20 bg-white">
         <div className="w-full px-6">
           <div className="w-full space-y-12">
-          {comments.length === 0 ? <div className="animate-slide-up">
+            {comments.length === 0 ? <div className="animate-slide-up">
               <h2 className="text-2xl font-bold text-center mb-8">
                 Get Started
               </h2>
               <FileUpload onDataLoaded={handleDataLoaded} />
-            </div> : <div className="grid gap-8">
-              <div className="animate-slide-up">
-                <CommentEditor comments={comments} onCommentsUpdate={handleCommentsUpdate} />
-              </div>
-              
-              {/* Upload New File Section */}
-              <div className="animate-slide-up">
-                <h3 className="text-lg font-semibold mb-4">Upload New File</h3>
-                <FileUpload onDataLoaded={handleDataLoaded} />
-              </div>
+            </div> : <div className="animate-slide-up">
+              <CommentEditor comments={comments} onCommentsUpdate={handleCommentsUpdate} onImportComments={handleDataLoaded} />
             </div>}
           </div>
         </div>
