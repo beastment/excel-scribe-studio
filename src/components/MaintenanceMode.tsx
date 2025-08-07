@@ -9,8 +9,8 @@ export const MaintenanceMode: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-6">
       <Card className="w-full max-w-md mx-auto shadow-lg">
         <CardHeader className="text-center">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center mb-4">
-            <Wrench className="w-8 h-8 text-white" />
+          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center mb-4">
+            <span className="text-white font-bold text-2xl">S</span>
           </div>
           <CardTitle className="text-2xl font-bold text-gray-900">
             Maintenance Mode
