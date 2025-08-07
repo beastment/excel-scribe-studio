@@ -20,7 +20,7 @@ import Auth from "./pages/Auth";
 import CommentEditor from "./pages/CommentEditor";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
-import { PasswordReset } from "./pages/PasswordReset";
+
 import CommentDeIdentification from "./pages/apps/CommentDeIdentification";
 import ThematicAnalysis from "./pages/apps/ThematicAnalysis";
 import ActionPlanningExtension from "./pages/apps/ActionPlanningExtension";
@@ -64,7 +64,7 @@ const AppContent = () => {
             <Contact />
         } />
         <Route path="/auth" element={<Auth />} />
-        <Route path="/password-reset" element={<PasswordReset />} />
+        
         <Route path="/comments" element={
           shouldShowMaintenance ? 
             <MaintenanceMode /> : 

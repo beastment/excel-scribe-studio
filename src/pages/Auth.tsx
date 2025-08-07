@@ -14,29 +14,8 @@ const Auth = () => {
     const hash = window.location.hash;
     
     if (type === 'recovery') {
-      // If we have tokens in the URL hash, redirect to password reset page
-      if (hash.includes('access_token') && hash.includes('refresh_token')) {
-        const hashParams = new URLSearchParams(hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        
-        // Redirect to password reset page with tokens as query params
-        window.location.href = `/password-reset?access_token=${accessToken}&refresh_token=${refreshToken}`;
-        return;
-      }
+      // For password recovery, just set mode to reset - the user is already authenticated
       setMode('reset');
-    }
-    
-    // Also check URL hash directly for password reset tokens (without type parameter)
-    if (hash.includes('access_token') && hash.includes('refresh_token') && !type) {
-      const hashParams = new URLSearchParams(hash.substring(1));
-      const accessToken = hashParams.get('access_token');
-      const refreshToken = hashParams.get('refresh_token');
-      
-      if (accessToken && refreshToken) {
-        window.location.href = `/password-reset?access_token=${accessToken}&refresh_token=${refreshToken}`;
-        return;
-      }
     }
   }, [searchParams]);
 
