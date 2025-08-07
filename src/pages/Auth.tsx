@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import { AuthForm } from '@/components/auth/AuthForm';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 const Auth = () => {
   const { user, loading } = useAuth();
@@ -9,18 +11,49 @@ const Auth = () => {
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
 
   useEffect(() => {
-    // Check if this is a password reset redirect
-    const type = searchParams.get('type');
-    const hash = window.location.hash;
-    
-    if (type === 'recovery') {
-      // For password recovery, just set mode to reset - the user is already authenticated
-      setMode('reset');
-    }
+    const handlePasswordRecovery = async () => {
+      // Check if this is a password reset redirect
+      const type = searchParams.get('type');
+      const hash = window.location.hash;
+      
+      if (type === 'recovery' && hash) {
+        // Extract tokens from the URL hash
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        
+        if (accessToken && refreshToken) {
+          try {
+            // Set the session using the tokens from the password reset link
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+            
+            if (error) {
+              console.error('Error setting session:', error);
+            } else {
+              console.log('Session set successfully:', data);
+              // Set mode to reset after successful session establishment
+              setMode('reset');
+              // Clear the hash from the URL
+              window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+            }
+          } catch (error) {
+            console.error('Error handling password recovery:', error);
+          }
+        } else {
+          // If no tokens found, just set mode to reset
+          setMode('reset');
+        }
+      }
+    };
+
+    handlePasswordRecovery();
   }, [searchParams]);
 
-  // Redirect if already authenticated
-  if (!loading && user) {
+  // Redirect if already authenticated and not in reset mode
+  if (!loading && user && mode !== 'reset') {
     return <Navigate to="/" replace />;
   }
 
