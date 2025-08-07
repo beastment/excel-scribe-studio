@@ -382,20 +382,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     <p className="text-foreground leading-relaxed text-sm sm:text-base">
                       {(comment.concerning || comment.identifiable) ? 
                         (comment.mode === 'rephrase' ? 
-                          (comment.rephrasedText || 'Rephrasing in progress...') : 
-                          (comment.redactedText || 'Redacting in progress...')
+                          (comment.rephrasedText || 'Processing...') : 
+                          (comment.redactedText || 'Processing...')
                         ) :
                         'No processing needed'
                       }
                     </p>
-                    {/* Debug info */}
-                    {(comment.concerning || comment.identifiable) && (
-                      <div className="mt-2 p-2 bg-muted/50 rounded text-xs text-muted-foreground">
-                        Mode: {comment.mode} | 
-                        Redacted: {comment.redactedText ? 'Yes' : 'No'} | 
-                        Rephrased: {comment.rephrasedText ? 'Yes' : 'No'}
-                      </div>
-                    )}
                   </div>
                 </div>
 
