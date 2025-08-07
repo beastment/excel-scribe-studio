@@ -26,6 +26,18 @@ const Auth = () => {
       }
       setMode('reset');
     }
+    
+    // Also check URL hash directly for password reset tokens (without type parameter)
+    if (hash.includes('access_token') && hash.includes('refresh_token') && !type) {
+      const hashParams = new URLSearchParams(hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      
+      if (accessToken && refreshToken) {
+        window.location.href = `/password-reset?access_token=${accessToken}&refresh_token=${refreshToken}`;
+        return;
+      }
+    }
   }, [searchParams]);
 
   // Redirect if already authenticated
