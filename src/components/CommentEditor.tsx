@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { CommentData, FileUpload } from './FileUpload';
 import { supabase } from '@/integrations/supabase/client';
@@ -192,6 +193,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     return acc;
   }, {} as Record<string, number>);
 
+  const getCommentStatus = (comment: CommentData) => {
+    if (comment.mode === 'edit') return 'Final Version';
+    if (comment.concerning || comment.identifiable) return 'AI Processed';
+    if (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning) return 'Scan Required';
+    return 'No Changes Needed';
+  };
+
   const reprocessComment = async (commentId: string, mode: 'redact' | 'rephrase' | 'revert') => {
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
@@ -228,7 +236,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   };
 
   return (
-    <div className="w-full max-w-none">
+    <TooltipProvider>
+      <div className="w-full max-w-none">
       {/* Header */}
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-6">
         <div className="flex flex-wrap gap-2">
@@ -359,7 +368,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               </div>
 
               {/* Three Column Layout (with optional demographics) */}
-              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-3' : 'xl:grid-cols-2'}`}>
+              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-3 xl:gap-4' : 'xl:grid-cols-2'}`}>
                 {/* Demographics Column (conditional) */}
                 {hasDemographics && (
                   <div className="space-y-2 xl:max-w-48">
@@ -430,61 +439,85 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium text-muted-foreground">
-                        {comment.mode === 'edit' ? 'Final Version' : 
-                         (comment.concerning || comment.identifiable) ? 'AI Processed' : 
-                         (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Scan Required' : 'No Changes Needed')}
+                        {getCommentStatus(comment)}
                       </h4>
                       {comment.mode === 'edit' && <Badge variant="secondary" className="text-xs">Editable</Badge>}
                     </div>
                     
                     {/* Mode Controls */}
                     <div className="flex items-center gap-1 flex-wrap">
-                      <Button
-                        variant={comment.mode === 'redact' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => toggleCommentMode(comment.id, 'redact')}
-                        className="h-6 text-xs px-2"
-                      >
-                        Redact
-                      </Button>
-                      <Button
-                        variant={comment.mode === 'rephrase' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => toggleCommentMode(comment.id, 'rephrase')}
-                        className="h-6 text-xs px-2"
-                      >
-                        Rephrase
-                      </Button>
-                      <Button
-                        variant={comment.mode === 'revert' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => toggleCommentMode(comment.id, 'revert')}
-                        className="h-6 text-xs px-2"
-                      >
-                        Revert
-                      </Button>
-                      <Button
-                        variant={comment.mode === 'edit' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => toggleCommentMode(comment.id, 'edit')}
-                        className="h-6 text-xs px-2"
-                      >
-                        Edit
-                      </Button>
-                      {(comment.concerning || comment.identifiable) && (
-                        <div className="flex items-center space-x-2 ml-2">
-                          <Checkbox
-                            id={`approved-${comment.id}`}
-                            checked={comment.approved || false}
-                            onCheckedChange={() => toggleCommentCheck(comment.id, 'approved')}
-                          />
-                          <label 
-                            htmlFor={`approved-${comment.id}`}
-                            className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      {getCommentStatus(comment) !== 'Scan Required' && (
+                        <>
+                          {getCommentStatus(comment) === 'No Changes Needed' ? (
+                            <Button
+                              variant={comment.mode === 'revert' ? 'default' : 'ghost'}
+                              size="sm"
+                              onClick={() => toggleCommentMode(comment.id, 'revert')}
+                              className="h-6 text-xs px-2"
+                            >
+                              Revert
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                variant={comment.mode === 'redact' ? 'default' : 'ghost'}
+                                size="sm"
+                                onClick={() => toggleCommentMode(comment.id, 'redact')}
+                                className="h-6 text-xs px-2"
+                              >
+                                Redact
+                              </Button>
+                              <Button
+                                variant={comment.mode === 'rephrase' ? 'default' : 'ghost'}
+                                size="sm"
+                                onClick={() => toggleCommentMode(comment.id, 'rephrase')}
+                                className="h-6 text-xs px-2"
+                              >
+                                Rephrase
+                              </Button>
+                              <Button
+                                variant={comment.mode === 'revert' ? 'default' : 'ghost'}
+                                size="sm"
+                                onClick={() => toggleCommentMode(comment.id, 'revert')}
+                                className="h-6 text-xs px-2"
+                              >
+                                Revert
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            variant={comment.mode === 'edit' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => toggleCommentMode(comment.id, 'edit')}
+                            className="h-6 text-xs px-2"
                           >
-                            Approved
-                          </label>
-                        </div>
+                            Edit
+                          </Button>
+                        </>
+                      )}
+                      {(comment.concerning || comment.identifiable) && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center space-x-2 ml-2">
+                              <Checkbox
+                                id={`approved-${comment.id}`}
+                                checked={comment.approved || false}
+                                onCheckedChange={() => toggleCommentCheck(comment.id, 'approved')}
+                              />
+                              <label 
+                                htmlFor={`approved-${comment.id}`}
+                                className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              >
+                                Approved
+                              </label>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">
+                              Marking as approved just indicates that you are finished looking at this comment. You do not need to approve items for them to appear in the export.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
                       )}
                     </div>
                   </div>
@@ -512,9 +545,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       />
                     </div>
                   ) : (
-                    <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
+                    <div 
+                      className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors"
+                      onClick={() => toggleCommentMode(comment.id, 'edit')}
+                    >
                       <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                        {comment.mode === 'revert' ? comment.originalText :
+                        {getCommentStatus(comment) === 'No Changes Needed' && comment.mode === 'revert' ? 
+                          comment.originalText :
+                         comment.mode === 'revert' ? 
+                           comment.originalText :
                          comment.mode === 'rephrase' ? 
                            (comment.rephrasedText || 'Processing...') : 
                          comment.mode === 'redact' ?
@@ -548,6 +587,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           </div>
         </Card>
       )}
-    </div>
+      </div>
+    </TooltipProvider>
   );
 };
