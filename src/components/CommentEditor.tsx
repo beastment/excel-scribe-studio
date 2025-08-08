@@ -473,7 +473,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       <h4 className="text-sm font-medium text-muted-foreground">
                         {getCommentStatus(comment)}
                       </h4>
-                      {comment.mode === 'edit' && <Badge variant="secondary" className="text-xs">Editable</Badge>}
+                      {comment.mode === 'edit' && <Badge variant="secondary" className="text-xs">Edited</Badge>}
                     </div>
                     
                     {/* Mode Controls */}
