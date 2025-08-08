@@ -400,7 +400,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               </div>
 
               {/* Three Column Layout (with optional demographics) */}
-              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-3 xl:gap-2' : 'xl:grid-cols-2'}`}>
+              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-3 xl:gap-6' : 'xl:grid-cols-2'}`}>
                 {/* Demographics Column (conditional) */}
                 {hasDemographics && (
                   <div className="space-y-2 xl:max-w-48">
