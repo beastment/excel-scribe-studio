@@ -46,14 +46,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setEditText(comment.text);
   };
   const handleTextChange = (commentId: string, newText: string) => {
-    const comment = comments.find(c => c.id === commentId);
-    if (comment && comment.mode !== 'edit') {
-      // Only switch to edit mode when user actually types something different
-      if (newText !== comment.text) {
-        toggleCommentMode(commentId, 'edit');
-      }
-    }
-    
     const updatedComments = comments.map(comment => comment.id === commentId ? {
       ...comment,
       text: newText
@@ -195,6 +187,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     return acc;
   }, {} as Record<string, number>);
   const getCommentStatus = (comment: CommentData) => {
+    // If the comment was never processed by AI (no aiReasoning), keep it as "No Changes Needed"
+    if (!comment.aiReasoning) {
+      return 'No Changes Needed';
+    }
+    
     // Check if comment has been manually edited and differs from both original AND AI suggestions
     if (comment.mode === 'edit' || comment.text !== comment.originalText && comment.text !== comment.redactedText && comment.text !== comment.rephrasedText) {
       return 'Edited';
