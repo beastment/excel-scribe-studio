@@ -31,6 +31,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [scanProgress, setScanProgress] = useState(0);
   const [defaultMode, setDefaultMode] = useState<'redact' | 'rephrase'>('redact');
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   useEffect(() => {
     let filtered = comments.filter(comment => {
       const matchesSearch = comment.text.toLowerCase().includes(searchTerm.toLowerCase()) || comment.originalText.toLowerCase().includes(searchTerm.toLowerCase()) || comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase());
@@ -45,6 +46,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setEditText(comment.text);
   };
   const handleTextChange = (commentId: string, newText: string) => {
+    const comment = comments.find(c => c.id === commentId);
+    if (comment && comment.mode !== 'edit') {
+      // Only switch to edit mode when user actually types something different
+      if (newText !== comment.text) {
+        toggleCommentMode(commentId, 'edit');
+      }
+    }
+    
     const updatedComments = comments.map(comment => comment.id === commentId ? {
       ...comment,
       text: newText
@@ -432,20 +441,27 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   </div>
                   
                   {/* Content Area */}
-                  {comment.mode === 'edit' ? <div className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
-                      <Textarea value={comment.text} onChange={e => {
-                    handleTextChange(comment.id, e.target.value);
-                  }} onFocus={() => {
-                    // Auto-switch to edit mode when clicking in textarea
-                    if (comment.mode !== 'edit') {
-                      toggleCommentMode(comment.id, 'edit');
-                    }
-                  }} className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0" placeholder="Edit your comment..." />
-                    </div> : <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors" onClick={() => toggleCommentMode(comment.id, 'edit')}>
-                      <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                        {getCommentStatus(comment) === 'No Changes Needed' ? comment.originalText : comment.mode === 'revert' ? comment.originalText : comment.mode === 'rephrase' ? comment.rephrasedText || 'Processing...' : comment.mode === 'redact' ? comment.redactedText || 'Processing...' : comment.concerning || comment.identifiable ? comment.redactedText || comment.rephrasedText || 'Processing...' : !comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Not processed yet' : 'No processing needed'}
-                      </p>
-                    </div>}
+                  {comment.mode === 'edit' || focusedCommentId === comment.id ? <div className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
+                      <Textarea 
+                        value={comment.text} 
+                        onChange={e => {
+                          handleTextChange(comment.id, e.target.value);
+                        }} 
+                        onFocus={() => {
+                          setFocusedCommentId(comment.id);
+                        }} 
+                        onBlur={() => {
+                          setFocusedCommentId(null);
+                        }} 
+                        autoFocus={focusedCommentId === comment.id}
+                        className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0" 
+                        placeholder="Edit your comment..." 
+                      />
+                    </div> : <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors" onClick={() => setFocusedCommentId(comment.id)}>
+                       <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                         {getCommentStatus(comment) === 'No Changes Needed' ? comment.originalText : comment.mode === 'revert' ? comment.originalText : comment.mode === 'rephrase' ? comment.rephrasedText || 'Processing...' : comment.mode === 'redact' ? comment.redactedText || 'Processing...' : comment.concerning || comment.identifiable ? comment.redactedText || comment.rephrasedText || 'Processing...' : !comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Not processed yet' : 'No processing needed'}
+                       </p>
+                     </div>}
                 </div>
               </div>
             </div>
