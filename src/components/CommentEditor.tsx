@@ -480,9 +480,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     <div className="flex items-center gap-1 flex-wrap">
                       {getCommentStatus(comment) !== 'Scan Required' && (
                         <>
-                          {getCommentStatus(comment) === 'No Changes Needed' ? (
+                           {getCommentStatus(comment) === 'No Changes Needed' ? (
                             <Button
-                              variant={(getInitialMode(comment) || comment.mode) === 'revert' ? 'default' : 'ghost'}
+                              variant="default"
                               size="sm"
                               onClick={() => toggleCommentMode(comment.id, 'revert')}
                               className="h-6 text-xs px-2"
