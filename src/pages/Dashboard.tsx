@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { MaintenanceToggle } from '@/components/admin/MaintenanceToggle';
 import { UserManagement } from '@/components/admin/UserManagement';
+import { AppManagement } from '@/components/admin/AppManagement';
 
 interface UserProfile {
   id: string;
@@ -192,6 +193,9 @@ const Dashboard = () => {
             <div className="grid lg:grid-cols-2 gap-8 mb-8">
               <MaintenanceToggle />
               <UserManagement />
+            </div>
+            <div className="grid lg:grid-cols-1 gap-8 mb-8">
+              <AppManagement />
             </div>
           </div>
         )}

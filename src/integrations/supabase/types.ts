@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_configurations: {
+        Row: {
+          app_id: string
+          created_at: string
+          description: string | null
+          id: string
+          is_enabled: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       auth_rate_limits: {
         Row: {
           attempts: number
