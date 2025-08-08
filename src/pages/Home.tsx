@@ -71,14 +71,14 @@ const Home = () => {
   
   // Static app data that gets merged with database configurations
   const staticApps = {
-    "comment-de-identification": {
-      name: "Comment De-Identification",
-      description: "Securely anonymize open-ended employee comments while preserving the original tone and intent.",
-      icon: Shield,
-      color: "from-blue-500 to-cyan-500",
-      features: ["PII & Sensitive Data Redaction", "Tone & Context Preservation", "Bulk Processing API"],
-      startingPrice: "$199",
-      status: "available"
+    "action-planning-extension": {
+      name: "Action Planning Extension",
+      description: "Turn feedback into concrete action plans with AI-suggested initiatives and progress tracking.",
+      icon: ClipboardList,
+      color: "from-green-500 to-emerald-500",
+      features: ["AI-Generated Action Items", "Goal & Progress Tracking", "Manager Accountability Tools"],
+      startingPrice: "$149",
+      status: "development"
     },
     "thematic-analysis": {
       name: "Thematic Analysis",
@@ -89,14 +89,14 @@ const Home = () => {
       startingPrice: "$299",
       status: "development"
     },
-    "action-planning-extension": {
-      name: "Action Planning Extension",
-      description: "Turn feedback into concrete action plans with AI-suggested initiatives and progress tracking.",
-      icon: ClipboardList,
-      color: "from-green-500 to-emerald-500",
-      features: ["AI-Generated Action Items", "Goal & Progress Tracking", "Manager Accountability Tools"],
-      startingPrice: "$149",
-      status: "development"
+    "comment-de-identification": {
+      name: "Comment De-Identification",
+      description: "Securely anonymize open-ended employee comments while preserving the original tone and intent.",
+      icon: Shield,
+      color: "from-blue-500 to-cyan-500",
+      features: ["PII & Sensitive Data Redaction", "Tone & Context Preservation", "Bulk Processing API"],
+      startingPrice: "$199",
+      status: "available"
     },
     "report-writer": {
       name: "Report Writer",
