@@ -207,7 +207,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   }, {} as Record<string, number>);
 
   const getCommentStatus = (comment: CommentData) => {
-    if (comment.mode === 'edit') return 'Final Version (Editable)';
+    // Check if comment has been manually edited and differs from both original AND AI suggestions
+    if (comment.mode === 'edit' || 
+        (comment.text !== comment.originalText && 
+         comment.text !== comment.redactedText && 
+         comment.text !== comment.rephrasedText)) {
+      return 'Edited';
+    }
     if (comment.concerning || comment.identifiable) return 'AI Processed';
     if (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning) return 'Scan Required';
     return 'No Changes Needed';
@@ -400,10 +406,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               </div>
 
               {/* Three Column Layout (with optional demographics) */}
-              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-3 xl:gap-2' : 'xl:grid-cols-2'}`}>
+              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-[200px_1fr_1fr] xl:gap-x-6' : 'xl:grid-cols-2'}`}>
                 {/* Demographics Column (conditional) */}
                 {hasDemographics && (
-                  <div className="space-y-2 xl:max-w-48">
+                  <div className="space-y-2 xl:mr-[-16px]">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium text-muted-foreground">Demographics</h4>
                     </div>
@@ -466,14 +472,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   </div>
                 </div>
 
-                {/* AI Processed / Final Version Column */}
+                {/* Final Version Column */}
                 <div className="space-y-2">
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium text-muted-foreground">
-                        {getCommentStatus(comment)}
+                        Final Version
                       </h4>
-                      {comment.mode === 'edit' && <Badge variant="secondary" className="text-xs">Edited</Badge>}
+                      <Badge variant="secondary" className="text-xs">
+                        {getCommentStatus(comment)}
+                      </Badge>
                     </div>
                     
                     {/* Mode Controls */}
@@ -517,14 +525,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                               </Button>
                             </>
                           )}
-                          <Button
-                            variant={comment.mode === 'edit' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => toggleCommentMode(comment.id, 'edit')}
-                            className="h-6 text-xs px-2"
-                          >
-                            Edit
-                          </Button>
                         </>
                       )}
                       {(comment.concerning || comment.identifiable) && (
@@ -561,10 +561,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         value={comment.text}
                         onChange={(e) => {
                           handleTextChange(comment.id, e.target.value);
-                          // Auto-switch to edit mode when typing
-                          if (comment.mode !== 'edit') {
-                            toggleCommentMode(comment.id, 'edit');
-                          }
                         }}
                         onFocus={() => {
                           // Auto-switch to edit mode when clicking in textarea
