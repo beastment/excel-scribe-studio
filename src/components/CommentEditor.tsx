@@ -414,12 +414,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       <h4 className="text-sm font-medium text-muted-foreground">Demographics</h4>
                     </div>
                     <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
-                      <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                        {comment.demographics ? 
-                          `(${comment.demographics}, ${demographicCounts[comment.demographics]} comments)` : 
-                          'No data'
-                        }
-                      </p>
+                      {comment.demographics ? (
+                        <div className="text-foreground leading-relaxed text-sm sm:text-base">
+                          <div className="font-medium">{comment.demographics}</div>
+                          <div className="text-muted-foreground text-xs mt-1">
+                            {demographicCounts[comment.demographics]} comments
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                          No data
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -477,7 +483,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium text-muted-foreground">
-                        Final Version
+                        Final Version (Editable)
                       </h4>
                       <Badge variant="secondary" className="text-xs">
                         {getCommentStatus(comment)}
