@@ -207,7 +207,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   }, {} as Record<string, number>);
 
   const getCommentStatus = (comment: CommentData) => {
-    if (comment.mode === 'edit') return 'Final Version';
+    if (comment.mode === 'edit') return 'Edited';
     if (comment.concerning || comment.identifiable) return 'AI Processed';
     if (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning) return 'Scan Required';
     return 'No Changes Needed';
@@ -466,14 +466,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   </div>
                 </div>
 
-                {/* AI Processed / Final Version Column */}
+                {/* Final Version Column */}
                 <div className="space-y-2">
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium text-muted-foreground">
-                        {getCommentStatus(comment)}
+                        Final Version
                       </h4>
-                      {comment.mode === 'edit' && <Badge variant="secondary" className="text-xs">Edited</Badge>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">
+                        {getCommentStatus(comment)}
+                      </Badge>
                     </div>
                     
                     {/* Mode Controls */}
