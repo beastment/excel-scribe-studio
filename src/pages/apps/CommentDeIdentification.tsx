@@ -43,6 +43,7 @@ const CommentDeIdentification = () => {
   const benefits = [
     "Protect employee privacy while preserving feedback value",
     "Comply with GDPR, CCPA, and other privacy regulations",
+    "Complete data sovereignty - your data never leaves Australia",
     "Enable safe sharing of feedback across teams",
     "Reduce legal risks from data exposure",
     "Maintain statistical accuracy for analysis"
