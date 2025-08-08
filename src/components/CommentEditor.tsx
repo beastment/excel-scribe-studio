@@ -400,7 +400,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               </div>
 
               {/* Three Column Layout (with optional demographics) */}
-              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-3 xl:gap-6' : 'xl:grid-cols-2'}`}>
+              <div className={`${hasDemographics ? 'xl:flex xl:gap-2' : 'grid'} grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-2`}>
                 {/* Demographics Column (conditional) */}
                 {hasDemographics && (
                   <div className="space-y-2 xl:max-w-48">
@@ -418,7 +418,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   </div>
                 )}
                 {/* Original Comment Column */}
-                <div className="space-y-2">
+                <div className={`space-y-2 ${hasDemographics ? 'xl:ml-2' : ''}`}>
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-medium text-muted-foreground">Original Comment</h4>
                   </div>
@@ -467,7 +467,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 </div>
 
                 {/* Final Version Column */}
-                <div className="space-y-2">
+                <div className={`space-y-2 ${hasDemographics ? 'xl:ml-6' : ''}`}>
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium text-muted-foreground">
