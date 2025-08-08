@@ -473,8 +473,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       <h4 className="text-sm font-medium text-muted-foreground">
                         Final Version
                       </h4>
-                    </div>
-                    <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="text-xs">
                         {getCommentStatus(comment)}
                       </Badge>
