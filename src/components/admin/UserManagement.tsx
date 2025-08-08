@@ -40,6 +40,7 @@ interface UserProfile {
   role: 'admin' | 'user' | 'partner';
   created_at: string;
   updated_at: string;
+  email?: string; // We'll need to fetch this separately
 }
 
 export const UserManagement: React.FC = () => {
@@ -156,12 +157,16 @@ export const UserManagement: React.FC = () => {
     }
   };
 
-  const resendConfirmationEmail = async (userEmail: string) => {
-    setResending(userEmail);
+  const resendConfirmationEmail = async (userId: string) => {
+    // For now, ask admin to input the email since we don't store it in profiles
+    const email = prompt(`Please enter the email address for this user (${userId}):`);
+    if (!email) return;
+
+    setResending(userId);
     try {
       const { error } = await supabase.auth.resend({
         type: 'signup',
-        email: userEmail,
+        email: email,
         options: {
           emailRedirectTo: `${window.location.origin}/auth`
         }
@@ -171,7 +176,7 @@ export const UserManagement: React.FC = () => {
         console.error('Error resending confirmation email:', error);
         toast({
           title: "Error",
-          description: "Failed to resend confirmation email.",
+          description: `Failed to resend confirmation email: ${error.message}`,
           variant: "destructive",
         });
         return;
@@ -179,7 +184,7 @@ export const UserManagement: React.FC = () => {
 
       toast({
         title: "Success",
-        description: "Confirmation email has been resent.",
+        description: `Confirmation email has been sent to ${email}.`,
       });
     } catch (error) {
       console.error('Error resending confirmation email:', error);
