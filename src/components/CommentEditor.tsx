@@ -327,7 +327,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   <Badge variant="secondary" className="text-xs">
                     Row {comment.originalRow || index + 1}
                   </Badge>
-                  {comment.author}
                 </div>
               </div>
 
