@@ -438,12 +438,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                            {getCommentStatus(comment) === 'No Changes Needed' ? <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
                               Revert
                             </Button> : <>
-                              <Button variant={comment.mode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'redact')} className="h-6 text-xs px-2">
-                                Redact
-                              </Button>
-                              <Button variant={comment.mode === 'rephrase' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'rephrase')} className="h-6 text-xs px-2">
-                                Rephrase
-                              </Button>
+                              {/* Only show Redact/Rephrase buttons for comments flagged as concerning or identifiable */}
+                              {(comment.concerning || comment.identifiable) && <>
+                                <Button variant={comment.mode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'redact')} className="h-6 text-xs px-2">
+                                  Redact
+                                </Button>
+                                <Button variant={comment.mode === 'rephrase' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'rephrase')} className="h-6 text-xs px-2">
+                                  Rephrase
+                                </Button>
+                              </>}
                               <Button variant={comment.mode === 'revert' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
                                 Revert
                               </Button>
