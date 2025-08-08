@@ -32,6 +32,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [defaultMode, setDefaultMode] = useState<'redact' | 'rephrase'>('redact');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
+  const [hasScanRun, setHasScanRun] = useState(false);
   useEffect(() => {
     let filtered = comments.filter(comment => {
       const matchesSearch = comment.text.toLowerCase().includes(searchTerm.toLowerCase()) || comment.originalText.toLowerCase().includes(searchTerm.toLowerCase()) || comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase());
@@ -138,6 +139,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
       if (data?.comments) {
         setScanProgress(100);
+        setHasScanRun(true);
         onCommentsUpdate(data.comments);
         const summary = data.summary;
         toast.success(`Scan complete! Found ${summary.concerning} concerning and ${summary.identifiable} identifiable comments`);
@@ -269,7 +271,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             Import Comments
           </Button>
           
-          <Button onClick={scanComments} disabled={isScanning} className="gap-2">
+          <Button onClick={scanComments} disabled={isScanning} className={`gap-2 ${!hasScanRun && !isScanning ? 'animate-pulse' : ''}`}>
             <Scan className="w-4 h-4" />
             {isScanning ? 'Scanning...' : 'Scan Comments'}
           </Button>
