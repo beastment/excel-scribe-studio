@@ -367,21 +367,21 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       {comment.originalText}
                     </p>
                   </div>
-                  <div className="space-y-3 mt-4">
-                    <div className="flex items-center gap-6">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id={`concerning-${comment.id}`} checked={comment.concerning || false} onCheckedChange={() => toggleCommentCheck(comment.id, 'concerning')} />
-                        <label htmlFor={`concerning-${comment.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Concerning
-                        </label>
+                    <div className="space-y-3 mt-4">
+                      <div className="flex items-center gap-6">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox id={`concerning-${comment.id}`} checked={comment.concerning || false} disabled={true} />
+                          <label htmlFor={`concerning-${comment.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                            Concerning
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox id={`identifiable-${comment.id}`} checked={comment.identifiable || false} disabled={true} />
+                          <label htmlFor={`identifiable-${comment.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                            Identifiable
+                          </label>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id={`identifiable-${comment.id}`} checked={comment.identifiable || false} onCheckedChange={() => toggleCommentCheck(comment.id, 'identifiable')} />
-                        <label htmlFor={`identifiable-${comment.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Identifiable
-                        </label>
-                      </div>
-                    </div>
                     {comment.aiReasoning && getCommentStatus(comment) !== 'No Changes Needed' && <div className="p-2 rounded-lg bg-muted/50 border">
                         <p className="text-xs text-muted-foreground">
                           <strong>AI:</strong> {comment.aiReasoning}
