@@ -271,7 +271,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             Import Comments
           </Button>
           
-          <Button onClick={scanComments} disabled={isScanning} className={`gap-2 ${!hasScanRun && !isScanning ? 'animate-slow-pulse' : ''}`}>
+          <Button onClick={scanComments} disabled={isScanning} className={`gap-2 ${!hasScanRun && !isScanning ? 'animate-gentle-pulse' : ''}`}>
             <Scan className="w-4 h-4" />
             {isScanning ? 'Scanning...' : 'Scan Comments'}
           </Button>
