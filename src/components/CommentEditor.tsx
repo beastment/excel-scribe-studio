@@ -369,15 +369,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   </div>
                     <div className="space-y-3 mt-4">
                       <div className="flex items-center gap-6">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id={`concerning-${comment.id}`} checked={comment.concerning || false} disabled={true} />
-                          <label htmlFor={`concerning-${comment.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                        <div className="flex items-center space-x-2 pointer-events-none">
+                          <Checkbox id={`concerning-${comment.id}`} checked={comment.concerning || false} />
+                          <label htmlFor={`concerning-${comment.id}`} className="text-sm font-medium leading-none">
                             Concerning
                           </label>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id={`identifiable-${comment.id}`} checked={comment.identifiable || false} disabled={true} />
-                          <label htmlFor={`identifiable-${comment.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                        <div className="flex items-center space-x-2 pointer-events-none">
+                          <Checkbox id={`identifiable-${comment.id}`} checked={comment.identifiable || false} />
+                          <label htmlFor={`identifiable-${comment.id}`} className="text-sm font-medium leading-none">
                             Identifiable
                           </label>
                         </div>
