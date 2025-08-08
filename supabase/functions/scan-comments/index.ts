@@ -154,14 +154,18 @@ Return only the rephrased text, no explanation.`;
           }
         }
         
-        // Determine the final text based on the mode
+        // Determine the final text based on the mode (or defaultMode for initial scans)
+        const mode = comment.mode || defaultMode;
         let finalText = comment.text;
-        if (comment.mode === 'redact' && redactedText) {
-          finalText = redactedText;
-        } else if (comment.mode === 'rephrase' && rephrasedText) {
-          finalText = rephrasedText;
-        } else if (comment.mode === 'revert') {
-          finalText = comment.originalText || comment.text;
+        
+        // If the comment is flagged and we have processed versions, use them based on mode
+        if (result.concerning || result.identifiable) {
+          if (mode === 'redact' && redactedText) {
+            finalText = redactedText;
+          } else if (mode === 'rephrase' && rephrasedText) {
+            finalText = rephrasedText;
+          }
+          // For 'revert' mode or if no processed text available, keep original
         }
         
         scannedComments.push({
@@ -172,7 +176,7 @@ Return only the rephrased text, no explanation.`;
           redactedText: redactedText,
           rephrasedText: rephrasedText,
           text: finalText,
-          mode: comment.mode || defaultMode,
+          mode: mode,
           approved: false
         });
 
