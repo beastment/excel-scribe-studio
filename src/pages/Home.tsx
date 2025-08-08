@@ -130,14 +130,14 @@ const Home = () => {
         
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-4xl mx-auto">
-            <div className="inline-flex items-center space-x-2 bg-emerald-light/20 text-emerald px-4 py-2 rounded-full text-sm font-medium mb-4 border border-emerald-glow">
+            <div className="inline-flex items-center space-x-2 bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-medium mb-4">
               <Star className="w-4 h-4" />
               <span>Powered by Enterprise-Grade AI</span>
             </div>
             
             <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
               Leverage AI to Unlock the
-              <span className="bg-gradient-to-r from-primary to-emerald bg-clip-text text-transparent"> True Voice </span>
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"> True Voice </span>
               in Your Employee Feedback
             </h1>
             
@@ -147,12 +147,12 @@ const Home = () => {
             
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
               {user ? <Link to="/comments">
-                  <Button variant="emerald-gradient" className="px-8 py-4 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
+                  <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
                     Start Screening Comments
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
                 </Link> : <a href="https://www.youtube.com/watch?v=demo-video" target="_blank" rel="noopener noreferrer">
-                  <Button className="bg-gradient-to-r from-primary to-emerald hover:from-primary/90 hover:to-emerald/90 text-white px-8 py-4 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
+                  <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
                     Explore Our AI Tools
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
@@ -162,14 +162,13 @@ const Home = () => {
         </div>
         
         {/* Floating Elements */}
-        <div className="absolute top-20 left-10 w-20 h-20 bg-emerald-glow rounded-full opacity-25 animate-pulse"></div>
+        <div className="absolute top-20 left-10 w-20 h-20 bg-blue-200 rounded-full opacity-20 animate-pulse"></div>
         <div className="absolute top-40 right-10 w-16 h-16 bg-emerald-glow rounded-full opacity-30 animate-pulse delay-1000"></div>
-        <div className="absolute bottom-40 left-20 w-24 h-24 bg-emerald-light/30 rounded-full opacity-20 animate-pulse delay-500"></div>
         <div className="absolute bottom-20 right-20 w-32 h-32 bg-purple-200 rounded-full opacity-20 animate-pulse delay-700"></div>
       </section>
 
       {/* Apps Showcase Section */}
-      <section id="apps" className="py-12 bg-gradient-to-br from-gray-50 via-emerald-light/5 to-blue-50">
+      <section id="apps" className="py-12 bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
@@ -245,24 +244,24 @@ const Home = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-r from-primary to-emerald">
+      <section className="py-20 bg-gradient-to-r from-blue-600 to-purple-600">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
             Ready to Revolutionize Your Feedback Process?
           </h2>
-          <p className="text-xl text-white/80 mb-10">
+          <p className="text-xl text-blue-100 mb-10">
             Join hundreds of organizations that have transformed their employee experience with our platform.
           </p>
           
            <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
              {user ? <Link to="/comments">
-                  <Button className="bg-white text-primary hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
-                    Start Screening
-                  </Button>
+                 <Button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+                   Start Screening
+                 </Button>
                </Link> : <Link to="/contact">
-                  <Button className="bg-white text-primary hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
-                    Get in Touch
-                  </Button>
+                 <Button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-4 text-lg rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+                   Get in Touch
+                 </Button>
                </Link>}
           </div>
         </div>

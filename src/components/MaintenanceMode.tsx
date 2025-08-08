@@ -6,10 +6,10 @@ import { Wrench } from 'lucide-react';
 
 export const MaintenanceMode: React.FC = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-light/10 to-blue-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-6">
       <Card className="w-full max-w-md mx-auto shadow-lg">
         <CardHeader className="text-center">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-emerald rounded-xl flex items-center justify-center mb-4">
+          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center mb-4">
             <span className="text-white font-bold text-2xl">S</span>
           </div>
           <CardTitle className="text-2xl font-bold text-gray-900">
@@ -22,7 +22,7 @@ export const MaintenanceMode: React.FC = () => {
           </p>
           
           <Link to="/auth">
-            <Button className="w-full bg-gradient-to-r from-primary to-emerald hover:from-primary/90 hover:to-emerald/90 text-white">
+            <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
               Login
             </Button>
           </Link>
