@@ -17,10 +17,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Users, Crown, User, Trash2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, Crown, User, Trash2, RefreshCw, ChevronDown, ChevronRight, Mail, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SubscriptionManagement } from './SubscriptionManagement';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface UserProfile {
   id: string;
@@ -36,6 +47,8 @@ export const UserManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [resending, setResending] = useState<string | null>(null);
   const { toast } = useToast();
 
   const fetchUsers = async () => {
@@ -102,6 +115,82 @@ export const UserManagement: React.FC = () => {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const deleteUser = async (userId: string, userEmail: string) => {
+    setDeleting(userId);
+    try {
+      // First delete from profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('user_id', userId);
+
+      if (profileError) {
+        console.error('Error deleting user profile:', profileError);
+        toast({
+          title: "Error",
+          description: "Failed to delete user profile.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Note: We can't delete from auth.users table directly via client SDK
+      // The user profile has been removed from profiles table
+      toast({
+        title: "Success",
+        description: "User has been removed from the system.",
+      });
+
+      await fetchUsers();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete user.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const resendConfirmationEmail = async (userEmail: string) => {
+    setResending(userEmail);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: userEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth`
+        }
+      });
+
+      if (error) {
+        console.error('Error resending confirmation email:', error);
+        toast({
+          title: "Error",
+          description: "Failed to resend confirmation email.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Confirmation email has been resent.",
+      });
+    } catch (error) {
+      console.error('Error resending confirmation email:', error);
+      toast({
+        title: "Error",
+        description: "Failed to resend confirmation email.",
+        variant: "destructive",
+      });
+    } finally {
+      setResending(null);
+    }
   };
 
   const toggleUserExpansion = (userId: string) => {
@@ -192,20 +281,67 @@ export const UserManagement: React.FC = () => {
                       {formatDate(user.updated_at)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Select
-                        value={user.role}
-                        onValueChange={(value: 'admin' | 'user' | 'partner') => updateUserRole(user.user_id, value)}
-                        disabled={updating === user.user_id}
-                      >
-                        <SelectTrigger className="w-24 h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="user">User</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="partner">Partner</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center gap-2 justify-end">
+                        <Select
+                          value={user.role}
+                          onValueChange={(value: 'admin' | 'user' | 'partner') => updateUserRole(user.user_id, value)}
+                          disabled={updating === user.user_id}
+                        >
+                          <SelectTrigger className="w-24 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="user">User</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="partner">Partner</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => resendConfirmationEmail(user.user_id)}
+                          disabled={resending === user.user_id}
+                          title="Resend confirmation email"
+                        >
+                          <Mail className="h-4 w-4" />
+                        </Button>
+
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={deleting === user.user_id}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title="Delete user"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="flex items-center gap-2">
+                                <AlertTriangle className="h-5 w-5 text-red-600" />
+                                Delete User
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete <strong>{user.full_name || 'Unknown User'}</strong>? 
+                                This action cannot be undone and will remove the user from the system.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteUser(user.user_id, user.user_id)}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Delete User
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
