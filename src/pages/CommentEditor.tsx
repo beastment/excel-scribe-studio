@@ -251,9 +251,15 @@ const Index = () => {
               <span className="bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent"> De-Identification</span>
             </h1>
             
-            <p className="text-xl text-gray-600 mb-10 leading-relaxed max-w-3xl mx-auto">
+            <p className="text-xl text-gray-600 mb-6 leading-relaxed max-w-3xl mx-auto">
               Upload your comment files (.xlsx, .xls, .csv) and automatically remove sensitive information while preserving tone and context. Powered by enterprise-grade AI.
             </p>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto">
+              <p className="text-sm text-blue-800 font-medium text-center">
+                🔒 Your data remains yours and will never be used for training AI models
+              </p>
+            </div>
           </div>
         </div>
       </section>

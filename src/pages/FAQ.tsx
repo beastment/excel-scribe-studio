@@ -37,6 +37,10 @@ const FAQ = () => {
         {
           q: "Who has access to my data?",
           a: "Access is strictly controlled and limited to authorized personnel only. All access is logged and monitored. We operate under a zero-trust security model where access is granted on a need-to-know basis."
+        },
+        {
+          q: "Will my data be used to train AI models?",
+          a: "No, absolutely not. Your data remains yours and will never be used for training AI models. We maintain strict data privacy policies to ensure your information is only used for the specific services you've requested."
         }
       ]
     },
