@@ -20,8 +20,6 @@ const buttonVariants = cva(
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
         premium: "bg-gradient-to-r from-primary via-primary-glow to-primary text-primary-foreground hover:shadow-2xl hover:scale-105 animate-glow",
-        emerald: "bg-emerald text-emerald-foreground hover:bg-emerald-light hover:shadow-lg hover:scale-105",
-        "emerald-gradient": "bg-gradient-to-r from-emerald to-emerald-glow text-emerald-foreground hover:shadow-xl hover:scale-105",
       },
       size: {
         default: "h-10 px-4 py-2",

@@ -57,12 +57,6 @@ export default {
 					DEFAULT: 'hsl(var(--success))',
 					foreground: 'hsl(var(--success-foreground))'
 				},
-				emerald: {
-					DEFAULT: 'hsl(var(--emerald))',
-					foreground: 'hsl(var(--emerald-foreground))',
-					light: 'hsl(var(--emerald-light))',
-					glow: 'hsl(var(--emerald-glow))'
-				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',

@@ -75,7 +75,7 @@ const Home = () => {
       name: "Action Planning Extension",
       description: "Turn feedback into concrete action plans with AI-suggested initiatives and progress tracking.",
       icon: ClipboardList,
-      color: "from-emerald to-emerald-glow",
+      color: "from-green-500 to-emerald-500",
       features: ["AI-Generated Action Items", "Goal & Progress Tracking", "Manager Accountability Tools"],
       startingPrice: "$149",
       status: "development"
@@ -163,7 +163,6 @@ const Home = () => {
         
         {/* Floating Elements */}
         <div className="absolute top-20 left-10 w-20 h-20 bg-blue-200 rounded-full opacity-20 animate-pulse"></div>
-        <div className="absolute top-40 right-10 w-16 h-16 bg-emerald-glow rounded-full opacity-30 animate-pulse delay-1000"></div>
         <div className="absolute bottom-20 right-20 w-32 h-32 bg-purple-200 rounded-full opacity-20 animate-pulse delay-700"></div>
       </section>
 
@@ -199,13 +198,13 @@ const Home = () => {
                               Disabled
                             </Badge>
                           )}
-                           {app.status === "available" ? <Badge className="bg-emerald-light/20 text-emerald border border-emerald-glow">
-                               <Star className="w-3 h-3 mr-1" />
-                               Currently in Beta
-                             </Badge> : <Badge className="bg-orange-100 text-orange-800">
-                               <Settings className="w-3 h-3 mr-1" />
-                               In Development
-                             </Badge>}
+                          {app.status === "available" ? <Badge className="bg-blue-100 text-blue-800">
+                              <Star className="w-3 h-3 mr-1" />
+                              Currently in Beta
+                            </Badge> : <Badge className="bg-orange-100 text-orange-800">
+                              <Settings className="w-3 h-3 mr-1" />
+                              In Development
+                            </Badge>}
                         </div>
                       </div>
                       
