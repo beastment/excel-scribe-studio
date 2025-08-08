@@ -547,7 +547,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                             >
                               Approved
                             </label>
-                            <HelpCircle className="w-3 h-3 text-muted-foreground" />
+                            <HelpCircle className="w-3 h-3 text-muted-foreground hover:text-foreground transition-colors cursor-help" />
                           </div>
                         </TooltipTrigger>
                         <TooltipContent>
