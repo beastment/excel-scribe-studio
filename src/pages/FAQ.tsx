@@ -86,29 +86,6 @@ const FAQ = () => {
         }
       ]
     },
-    {
-      category: "Support & Implementation",
-      icon: Users,
-      color: "from-orange-500 to-red-500",
-      questions: [
-        {
-          q: "What support is available?",
-          a: "We provide comprehensive support including onboarding assistance, training sessions, technical documentation, and ongoing customer success management. Support is available during Australian business hours."
-        },
-        {
-          q: "How long does implementation take?",
-          a: "Most organizations are up and running within 1-2 weeks. This includes data integration setup, user training, and initial analysis workflows. Complex integrations may take longer."
-        },
-        {
-          q: "Do you provide training?",
-          a: "Yes, we offer comprehensive training programs including live sessions, documentation, video tutorials, and hands-on workshops for your team members."
-        },
-        {
-          q: "What if I need custom features?",
-          a: "We work closely with clients to develop custom features and integrations. Our development team can create tailored solutions to meet your specific requirements."
-        }
-      ]
-    }
   ];
 
   return (
