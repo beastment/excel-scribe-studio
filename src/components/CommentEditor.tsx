@@ -79,7 +79,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       middleColumnText = comment.originalText;
     } else if (mode === 'rephrase') {
       middleColumnText = comment.rephrasedText || comment.originalText;
-    } else {
+    } else if (mode === 'redact') {
+      // For redact mode, use redacted text if available, otherwise reprocess
       middleColumnText = comment.redactedText || comment.originalText;
     }
 
@@ -92,9 +93,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     } : c);
     onCommentsUpdate(updatedComments);
 
-    // Only reprocess if the comment is concerning/identifiable and not reverting or editing
+    // Reprocess if we don't have the required text for the mode, or if it's a concerning/identifiable comment that needs updating
     if (comment.concerning || comment.identifiable) {
-      if (mode !== 'revert' && mode !== 'edit') {
+      if (mode === 'redact' && !comment.redactedText) {
+        // If switching to redact mode but no redacted text exists, reprocess
+        await reprocessComment(commentId, mode);
+      } else if (mode === 'rephrase' && !comment.rephrasedText) {
+        // If switching to rephrase mode but no rephrased text exists, reprocess
+        await reprocessComment(commentId, mode);
+      } else if (mode !== 'revert' && mode !== 'edit') {
+        // For other modes that need reprocessing
         await reprocessComment(commentId, mode);
       }
     }
