@@ -15,6 +15,11 @@ const Index = () => {
     setComments(updatedComments);
   };
 
+  const clearComments = () => {
+    setComments([]);
+    toast.success('Comments cleared successfully');
+  };
+
   const loadDemoData = () => {
     const demoComments: CommentData[] = [
       {
@@ -266,7 +271,7 @@ const Index = () => {
               </div>
               <FileUpload onDataLoaded={handleDataLoaded} />
             </div> : <div className="animate-slide-up">
-              <CommentEditor comments={comments} onCommentsUpdate={handleCommentsUpdate} onImportComments={handleDataLoaded} />
+              <CommentEditor comments={comments} onCommentsUpdate={handleCommentsUpdate} onImportComments={handleDataLoaded} onClearComments={clearComments} />
             </div>}
           </div>
         </div>
