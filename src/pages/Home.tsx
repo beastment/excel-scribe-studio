@@ -37,7 +37,7 @@ const Home = () => {
       const { data, error } = await supabase
         .from('app_configurations')
         .select('*')
-        .order('name');
+        .order('position');
 
       if (error) throw error;
       setAppConfigs(data || []);
