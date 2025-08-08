@@ -121,27 +121,23 @@ export const UserManagement: React.FC = () => {
   const deleteUser = async (userId: string, userEmail: string) => {
     setDeleting(userId);
     try {
-      // First delete from profiles table
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('user_id', userId);
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { userId }
+      });
 
-      if (profileError) {
-        console.error('Error deleting user profile:', profileError);
+      if (error) {
+        console.error('Error deleting user:', error);
         toast({
           title: "Error",
-          description: "Failed to delete user profile.",
+          description: error.message || "Failed to delete user.",
           variant: "destructive",
         });
         return;
       }
 
-      // Note: We can't delete from auth.users table directly via client SDK
-      // The user profile has been removed from profiles table
       toast({
         title: "Success",
-        description: "User has been removed from the system.",
+        description: "User has been completely removed from the system.",
       });
 
       await fetchUsers();
@@ -162,11 +158,22 @@ export const UserManagement: React.FC = () => {
     const email = prompt(`Please enter the email address for this user (${userId}):`);
     if (!email) return;
 
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid email address.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setResending(userId);
     try {
       const { error } = await supabase.auth.resend({
         type: 'signup',
-        email: email,
+        email: email.trim(),
         options: {
           emailRedirectTo: `${window.location.origin}/auth`
         }
@@ -174,9 +181,19 @@ export const UserManagement: React.FC = () => {
 
       if (error) {
         console.error('Error resending confirmation email:', error);
+        let errorMessage = "Failed to resend confirmation email.";
+        
+        if (error.message.includes("Email address") && error.message.includes("invalid")) {
+          errorMessage = "The email address format is invalid. Please check and try again.";
+        } else if (error.message.includes("rate limit")) {
+          errorMessage = "Too many requests. Please wait a moment before trying again.";
+        } else {
+          errorMessage = `Failed to resend confirmation email: ${error.message}`;
+        }
+        
         toast({
           title: "Error",
-          description: `Failed to resend confirmation email: ${error.message}`,
+          description: errorMessage,
           variant: "destructive",
         });
         return;
