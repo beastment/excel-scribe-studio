@@ -207,7 +207,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   }, {} as Record<string, number>);
 
   const getCommentStatus = (comment: CommentData) => {
-    if (comment.mode === 'edit') return 'Edited';
+    // Check if comment has been manually edited and differs from both original AND AI suggestions
+    if (comment.mode === 'edit' || 
+        (comment.text !== comment.originalText && 
+         comment.text !== comment.redactedText && 
+         comment.text !== comment.rephrasedText)) {
+      return 'Edited';
+    }
     if (comment.concerning || comment.identifiable) return 'AI Processed';
     if (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning) return 'Scan Required';
     return 'No Changes Needed';
@@ -519,14 +525,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                               </Button>
                             </>
                           )}
-                          <Button
-                            variant={comment.mode === 'edit' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => toggleCommentMode(comment.id, 'edit')}
-                            className="h-6 text-xs px-2"
-                          >
-                            Edit
-                          </Button>
                         </>
                       )}
                       {(comment.concerning || comment.identifiable) && (
@@ -563,10 +561,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         value={comment.text}
                         onChange={(e) => {
                           handleTextChange(comment.id, e.target.value);
-                          // Auto-switch to edit mode when typing
-                          if (comment.mode !== 'edit') {
-                            toggleCommentMode(comment.id, 'edit');
-                          }
                         }}
                         onFocus={() => {
                           // Auto-switch to edit mode when clicking in textarea
