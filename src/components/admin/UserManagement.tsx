@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Users, Crown, User, Trash2, RefreshCw, ChevronDown, ChevronRight, Mail, AlertTriangle } from 'lucide-react';
+import { Users, Crown, User, Trash2, RefreshCw, ChevronDown, ChevronRight, Mail, AlertTriangle, Link2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SubscriptionManagement } from './SubscriptionManagement';
@@ -50,6 +50,7 @@ export const UserManagement: React.FC = () => {
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<string | null>(null);
   const [resending, setResending] = useState<string | null>(null);
+  const [generatingLink, setGeneratingLink] = useState<string | null>(null);
   const { toast } = useToast();
 
   const fetchUsers = async () => {
@@ -215,6 +216,43 @@ export const UserManagement: React.FC = () => {
     }
   };
 
+  const generateLoginLink = async (userId: string) => {
+    setGeneratingLink(userId);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-login-link', {
+        body: { userId }
+      });
+
+      if (error) {
+        console.error('Error generating login link:', error);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to generate login link.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Copy link to clipboard
+      if (data.loginLink) {
+        await navigator.clipboard.writeText(data.loginLink);
+        toast({
+          title: "Success",
+          description: `Login link for ${data.email} has been copied to clipboard.`,
+        });
+      }
+    } catch (error) {
+      console.error('Error generating login link:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate login link.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingLink(null);
+    }
+  };
+
   const toggleUserExpansion = (userId: string) => {
     const newExpanded = new Set(expandedUsers);
     if (newExpanded.has(userId)) {
@@ -327,6 +365,16 @@ export const UserManagement: React.FC = () => {
                           title="Resend confirmation email"
                         >
                           <Mail className="h-4 w-4" />
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => generateLoginLink(user.user_id)}
+                          disabled={generatingLink === user.user_id}
+                          title="Generate login link"
+                        >
+                          <Link2 className="h-4 w-4" />
                         </Button>
 
                         <AlertDialog>
