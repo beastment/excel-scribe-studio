@@ -2,6 +2,14 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { User, LogOut, LayoutDashboard, ChevronDown } from 'lucide-react';
 
 export const Navigation = () => {
   const { user, signOut } = useAuth();
@@ -37,17 +45,31 @@ export const Navigation = () => {
             </Link>
 
             {user ? (
-              <>
-                <Link to="/comments" className="text-gray-600 hover:text-gray-900 transition-colors font-medium">
-                  Tools
-                </Link>
-                <Link to="/dashboard" className="text-gray-600 hover:text-gray-900 transition-colors font-medium">
-                  Dashboard
-                </Link>
-                <Button variant="outline" onClick={handleSignOut}>
-                  Logout
-                </Button>
-              </>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center space-x-2 text-gray-700 hover:text-gray-900">
+                    <User size={16} />
+                    <span>{user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'}</span>
+                    <ChevronDown size={14} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 bg-white border border-gray-200 shadow-lg z-50">
+                  <DropdownMenuItem asChild>
+                    <Link to="/dashboard" className="flex items-center space-x-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
+                      <LayoutDashboard size={16} />
+                      <span>Dashboard</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={handleSignOut}
+                    className="flex items-center space-x-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-gray-50 text-red-600"
+                  >
+                    <LogOut size={16} />
+                    <span>Logout</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <Link to="/auth">
                 <Button className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:shadow-lg transition-all duration-300">
