@@ -154,6 +154,16 @@ Return only the rephrased text, no explanation.`;
           }
         }
         
+        // Determine the final text based on the mode
+        let finalText = comment.text;
+        if (comment.mode === 'redact' && redactedText) {
+          finalText = redactedText;
+        } else if (comment.mode === 'rephrase' && rephrasedText) {
+          finalText = rephrasedText;
+        } else if (comment.mode === 'revert') {
+          finalText = comment.originalText || comment.text;
+        }
+        
         scannedComments.push({
           ...comment,
           concerning: result.concerning || false,
@@ -161,7 +171,8 @@ Return only the rephrased text, no explanation.`;
           aiReasoning: result.reasoning,
           redactedText: redactedText,
           rephrasedText: rephrasedText,
-          mode: defaultMode,
+          text: finalText,
+          mode: comment.mode || defaultMode,
           approved: false
         });
 
