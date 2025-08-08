@@ -136,7 +136,7 @@ All colors MUST be HSL.
 }
 
 .animate-very-slow-pulse {
-  animation: very-slow-pulse 6s ease-in-out infinite;
+  animation: very-slow-pulse 3s ease-in-out infinite;
 }
 
 @layer base {
