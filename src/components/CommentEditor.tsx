@@ -46,10 +46,17 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setEditText(comment.text);
   };
   const handleTextChange = (commentId: string, newText: string) => {
-    const updatedComments = comments.map(comment => comment.id === commentId ? {
-      ...comment,
-      text: newText
-    } : comment);
+    const comment = comments.find(c => c.id === commentId);
+    if (!comment) return;
+
+    const updatedComments = comments.map(c => c.id === commentId ? {
+      ...c,
+      text: newText,
+      // Automatically switch to edit mode when user starts typing something different
+      mode: newText !== c.originalText && newText !== c.redactedText && newText !== c.rephrasedText ? 'edit' : c.mode,
+      // Hide AI response when user starts editing and the comment originally had "No Changes Needed" status
+      hideAiResponse: c.hideAiResponse || (newText !== c.originalText && c.aiReasoning && !c.concerning && !c.identifiable)
+    } : c);
     onCommentsUpdate(updatedComments);
   };
   const toggleCommentCheck = (commentId: string, field: 'checked' | 'concerning' | 'identifiable' | 'approved') => {
@@ -379,7 +386,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                           </label>
                         </div>
                       </div>
-                    {comment.aiReasoning && getCommentStatus(comment) !== 'No Changes Needed' && <div className="p-2 rounded-lg bg-muted/50 border">
+                    {comment.aiReasoning && !comment.hideAiResponse && getCommentStatus(comment) !== 'No Changes Needed' && <div className="p-2 rounded-lg bg-muted/50 border">
                         <p className="text-xs text-muted-foreground">
                           <strong>AI:</strong> {comment.aiReasoning}
                         </p>

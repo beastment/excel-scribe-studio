@@ -26,6 +26,7 @@ export interface CommentData {
   approved?: boolean;
   mode?: 'redact' | 'rephrase' | 'revert' | 'edit';
   demographics?: string;
+  hideAiResponse?: boolean;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
