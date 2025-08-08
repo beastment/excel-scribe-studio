@@ -15,13 +15,11 @@ interface CommentEditorProps {
   comments: CommentData[];
   onCommentsUpdate: (comments: CommentData[]) => void;
   onImportComments: (comments: CommentData[]) => void;
-  onClearComments?: () => void;
 }
 export const CommentEditor: React.FC<CommentEditorProps> = ({
   comments,
   onCommentsUpdate,
-  onImportComments,
-  onClearComments
+  onImportComments
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -320,12 +318,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             <Download className="w-4 h-4" />
             Export
           </Button>
-          {onClearComments && (
-            <Button onClick={onClearComments} variant="outline" className="gap-2 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground">
-              <X className="w-4 h-4" />
-              Clear All
-            </Button>
-          )}
         </div>
       </div>
 

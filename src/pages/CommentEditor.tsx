@@ -15,11 +15,6 @@ const Index = () => {
     setComments(updatedComments);
   };
 
-  const clearComments = () => {
-    setComments([]);
-    toast.success('Comments cleared successfully');
-  };
-
   const loadDemoData = () => {
     const demoComments: CommentData[] = [
       {
@@ -224,7 +219,18 @@ const Index = () => {
       }
     ];
 
-    handleDataLoaded(demoComments);
+    // Clear any cached AI results and reset to clean state
+    const cleanDemoComments = demoComments.map(comment => ({
+      ...comment,
+      aiReasoning: undefined,
+      redactedText: undefined,
+      rephrasedText: undefined,
+      mode: undefined,
+      approved: false,
+      hideAiResponse: false
+    }));
+
+    handleDataLoaded(cleanDemoComments);
     toast.success('Demo data loaded successfully! 20 employee survey comments imported.');
   };
   return <div className="pt-20">
@@ -271,7 +277,7 @@ const Index = () => {
               </div>
               <FileUpload onDataLoaded={handleDataLoaded} />
             </div> : <div className="animate-slide-up">
-              <CommentEditor comments={comments} onCommentsUpdate={handleCommentsUpdate} onImportComments={handleDataLoaded} onClearComments={clearComments} />
+              <CommentEditor comments={comments} onCommentsUpdate={handleCommentsUpdate} onImportComments={handleDataLoaded} />
             </div>}
           </div>
         </div>
