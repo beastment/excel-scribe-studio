@@ -101,6 +101,10 @@ export default {
 				glow: {
 					'0%': { boxShadow: '0 0 20px hsl(var(--primary) / 0.1)' },
 					'100%': { boxShadow: '0 0 30px hsl(var(--primary) / 0.2)' }
+				},
+				'slow-pulse': {
+					'0%, 100%': { opacity: '1' },
+					'50%': { opacity: '0.5' }
 				}
 			},
 			animation: {
@@ -108,7 +112,8 @@ export default {
 				'accordion-up': 'accordion-up 0.2s ease-out',
 				'fade-in': 'fadeIn 0.5s ease-in-out',
 				'slide-up': 'slideUp 0.3s ease-out',
-				'glow': 'glow 2s ease-in-out infinite alternate'
+				'glow': 'glow 2s ease-in-out infinite alternate',
+				'slow-pulse': 'slow-pulse 3s ease-in-out infinite'
 			}
 		}
 	},
