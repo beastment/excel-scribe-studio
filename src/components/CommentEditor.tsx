@@ -30,6 +30,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [showIdentifiableOnly, setShowIdentifiableOnly] = useState(false);
   const [filteredComments, setFilteredComments] = useState<CommentData[]>(comments);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
   const [defaultMode, setDefaultMode] = useState<'redact' | 'rephrase'>('redact');
   const [showImportDialog, setShowImportDialog] = useState(false);
 
@@ -110,7 +111,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     }
 
     setIsScanning(true);
+    setScanProgress(0);
     toast.info(`Scanning ${comments.length} comments with AI...`);
+
+    // Simulate progress tracking
+    const progressInterval = setInterval(() => {
+      setScanProgress(prev => {
+        const newProgress = Math.min(prev + Math.random() * 15, 90);
+        return newProgress;
+      });
+    }, 500);
 
     try {
       const { data, error } = await supabase.functions.invoke('scan-comments', {
@@ -122,6 +132,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
 
       if (data?.comments) {
+        setScanProgress(100);
         onCommentsUpdate(data.comments);
         const summary = data.summary;
         toast.success(
@@ -134,7 +145,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       console.error('Scan error:', error);
       toast.error('Failed to scan comments. Please try again.');
     } finally {
+      clearInterval(progressInterval);
       setIsScanning(false);
+      setScanProgress(0);
     }
   };
 
@@ -272,7 +285,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           {isScanning && (
             <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/30">
               <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-sm text-muted-foreground">Processing comments...</span>
+              <span className="text-sm text-muted-foreground">
+                Processing comments... {Math.round(scanProgress)}%
+              </span>
             </div>
           )}
           
@@ -385,7 +400,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               </div>
 
               {/* Three Column Layout (with optional demographics) */}
-              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-3 xl:gap-4' : 'xl:grid-cols-2'}`}>
+              <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-3 xl:gap-2' : 'xl:grid-cols-2'}`}>
                 {/* Demographics Column (conditional) */}
                 {hasDemographics && (
                   <div className="space-y-2 xl:max-w-48">
@@ -441,7 +456,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         </label>
                       </div>
                     </div>
-                    {comment.aiReasoning && (
+                    {comment.aiReasoning && getCommentStatus(comment) !== 'No Changes Needed' && (
                       <div className="p-2 rounded-lg bg-muted/50 border">
                         <p className="text-xs text-muted-foreground">
                           <strong>AI:</strong> {comment.aiReasoning}
@@ -567,7 +582,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       onClick={() => toggleCommentMode(comment.id, 'edit')}
                     >
                       <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                        {getCommentStatus(comment) === 'No Changes Needed' && (getInitialMode(comment) || comment.mode) === 'revert' ? 
+                        {getCommentStatus(comment) === 'No Changes Needed' ? 
                           comment.originalText :
                          comment.mode === 'revert' ? 
                            comment.originalText :
