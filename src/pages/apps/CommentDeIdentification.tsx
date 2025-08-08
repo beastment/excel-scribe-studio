@@ -116,7 +116,8 @@ const CommentDeIdentification = () => {
               Advanced De-Identification Features
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Our AI-powered system provides comprehensive privacy protection while maintaining data utility.
+              Our AI-powered system provides comprehensive privacy protection while maintaining data utility. 
+              Our AI also has situational awareness, and can protect people from giving themselves away by describing roles, specific events, etc.
             </p>
           </div>
           
