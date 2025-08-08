@@ -222,6 +222,8 @@ const Index = () => {
     // Clear any cached AI results and reset to clean state
     const cleanDemoComments = demoComments.map(comment => ({
       ...comment,
+      concerning: false,
+      identifiable: false,
       aiReasoning: undefined,
       redactedText: undefined,
       rephrasedText: undefined,
