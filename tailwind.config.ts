@@ -113,7 +113,7 @@ export default {
 				'fade-in': 'fadeIn 0.5s ease-in-out',
 				'slide-up': 'slideUp 0.3s ease-out',
 				'glow': 'glow 2s ease-in-out infinite alternate',
-				'slow-pulse': 'slow-pulse 3s ease-in-out infinite'
+				'slow-pulse': 'slow-pulse 5s ease-in-out infinite'
 			}
 		}
 	},
