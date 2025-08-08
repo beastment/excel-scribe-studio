@@ -459,7 +459,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       />
                     </div> : <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors" onClick={() => setFocusedCommentId(comment.id)}>
                        <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                         {getCommentStatus(comment) === 'No Changes Needed' ? comment.originalText : comment.mode === 'revert' ? comment.originalText : comment.mode === 'rephrase' ? comment.rephrasedText || 'Processing...' : comment.mode === 'redact' ? comment.redactedText || 'Processing...' : comment.concerning || comment.identifiable ? comment.redactedText || comment.rephrasedText || 'Processing...' : !comment.redactedText && !comment.rephrasedText && !comment.aiReasoning ? 'Not processed yet' : 'No processing needed'}
+                         {comment.text}
                        </p>
                      </div>}
                 </div>
