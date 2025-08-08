@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Download, Edit3, Check, X, User, Filter, Scan, AlertTriangle, Eye, EyeOff, ToggleLeft, ToggleRight, Upload, FileText } from 'lucide-react';
+import { Search, Download, Edit3, Check, X, User, Filter, Scan, AlertTriangle, Eye, EyeOff, ToggleLeft, ToggleRight, Upload, FileText, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -533,30 +533,29 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                           )}
                         </>
                       )}
-                      {(comment.concerning || comment.identifiable) && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex items-center space-x-2 ml-2">
-                              <Checkbox
-                                id={`approved-${comment.id}`}
-                                checked={comment.approved || false}
-                                onCheckedChange={() => toggleCommentCheck(comment.id, 'approved')}
-                              />
-                              <label 
-                                htmlFor={`approved-${comment.id}`}
-                                className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                              >
-                                Approved
-                              </label>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">
-                              Marking as approved just indicates that you are finished looking at this comment. You do not need to approve items for them to appear in the export.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center space-x-2 ml-2">
+                            <Checkbox
+                              id={`approved-${comment.id}`}
+                              checked={comment.approved || false}
+                              onCheckedChange={() => toggleCommentCheck(comment.id, 'approved')}
+                            />
+                            <label 
+                              htmlFor={`approved-${comment.id}`}
+                              className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Approved
+                            </label>
+                            <HelpCircle className="w-3 h-3 text-muted-foreground" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            Marking as approved just indicates that you are finished looking at this comment. You do not need to approve items for them to appear in the export.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
                   
