@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Download, Edit3, Check, X, User, Filter, Scan, AlertTriangle, Eye, EyeOff, ToggleLeft, ToggleRight, Upload, FileText, HelpCircle } from 'lucide-react';
+import { Search, Download, Edit3, Check, X, User, Filter, Scan, AlertTriangle, Eye, EyeOff, ToggleLeft, ToggleRight, Upload, FileText, HelpCircle, Save, FolderOpen, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -7,9 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { CommentData, FileUpload } from './FileUpload';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { useCommentSessions } from '@/hooks/useCommentSessions';
 import * as XLSX from 'xlsx';
 interface CommentEditorProps {
   comments: CommentData[];
@@ -21,6 +26,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   onCommentsUpdate,
   onImportComments
 }) => {
+  const { user } = useAuth();
+  const { sessions, loading: sessionsLoading, saving, loadSessions, saveSession, loadSession, deleteSession, deleteAllSessions } = useCommentSessions();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -33,6 +41,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [hasScanRun, setHasScanRun] = useState(false);
+  
+  // Save/Load dialog state
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [sessionName, setSessionName] = useState('');
   useEffect(() => {
     let filtered = comments.filter(comment => {
       const matchesSearch = comment.text.toLowerCase().includes(searchTerm.toLowerCase()) || comment.originalText.toLowerCase().includes(searchTerm.toLowerCase()) || comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase());
@@ -42,6 +55,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     });
     setFilteredComments(filtered);
   }, [comments, searchTerm, showConcerningOnly, showIdentifiableOnly]);
+
+  // Load sessions when user logs in
+  useEffect(() => {
+    if (user) {
+      loadSessions();
+    }
+  }, [user, loadSessions]);
   const startEditing = (comment: CommentData) => {
     setEditingId(comment.id);
     setEditText(comment.text);
@@ -155,6 +175,37 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       setScanProgress(0);
     }
   };
+  const handleSaveSession = async () => {
+    if (!sessionName.trim()) {
+      toast.error('Please enter a session name');
+      return;
+    }
+
+    const success = await saveSession(sessionName, comments, hasScanRun, defaultMode);
+    if (success) {
+      setShowSaveDialog(false);
+      setSessionName('');
+    }
+  };
+
+  const handleLoadSession = async (sessionId: string) => {
+    const session = await loadSession(sessionId);
+    if (session) {
+      onCommentsUpdate(session.comments_data);
+      setHasScanRun(session.has_scan_run);
+      setDefaultMode(session.default_mode);
+      setShowLoadDialog(false);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    await deleteSession(sessionId);
+  };
+
+  const handleDeleteAllSessions = async () => {
+    await deleteAllSessions();
+  };
+
   const exportToExcel = () => {
     const exportData = comments.map((comment, index) => ({
       'Row': comment.originalRow || index + 1,
@@ -270,6 +321,152 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             <Upload className="w-4 h-4" />
             Import Comments
           </Button>
+          
+          {user && (
+            <>
+              <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="gap-2" disabled={comments.length === 0}>
+                    <Save className="w-4 h-4" />
+                    Save Progress
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Save Session</DialogTitle>
+                    <DialogDescription>
+                      Save your current progress including scan results and edits.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="session-name">Session Name</Label>
+                      <Input
+                        id="session-name"
+                        value={sessionName}
+                        onChange={(e) => setSessionName(e.target.value)}
+                        placeholder="Enter a name for this session"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleSaveSession} disabled={saving}>
+                      {saving ? 'Saving...' : 'Save'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={showLoadDialog} onOpenChange={setShowLoadDialog}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <FolderOpen className="w-4 h-4" />
+                    Load Session
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Load Saved Session</DialogTitle>
+                    <DialogDescription>
+                      Choose a previously saved session to continue working on.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {sessionsLoading ? (
+                      <div className="text-center py-8">Loading sessions...</div>
+                    ) : sessions.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No saved sessions found
+                      </div>
+                    ) : (
+                      sessions.map((session) => (
+                        <Card key={session.id} className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-medium">{session.session_name}</h4>
+                              <p className="text-sm text-muted-foreground">
+                                {session.comments_data?.length || 0} comments • 
+                                {session.has_scan_run ? ' Scanned' : ' Not scanned'} • 
+                                {session.default_mode} mode
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Last updated: {new Date(session.updated_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleLoadSession(session.id)}
+                              >
+                                Load
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="sm" variant="outline">
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Session</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete "{session.session_name}"? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteSession(session.id)}>
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </div>
+                        </Card>
+                      ))
+                    )}
+                    
+                    {sessions.length > 0 && (
+                      <div className="pt-4 border-t">
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="outline" className="w-full gap-2 text-destructive">
+                              <Trash2 className="w-4 h-4" />
+                              Delete All Sessions
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete All Sessions</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete all your saved sessions? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={handleDeleteAllSessions}>
+                                Delete All
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </>
+          )}
+          
+          {!user && comments.length > 0 && (
+            <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md border">
+              💡 Sign in to save your progress
+            </div>
+          )}
           
           <Button onClick={scanComments} disabled={isScanning} className={`gap-2 ${!hasScanRun && !isScanning ? 'animate-very-slow-pulse' : ''}`}>
             <Scan className="w-4 h-4" />

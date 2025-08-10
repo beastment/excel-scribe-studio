@@ -80,6 +80,39 @@ export type Database = {
         }
         Relationships: []
       }
+      comment_sessions: {
+        Row: {
+          comments_data: Json
+          created_at: string
+          default_mode: string
+          has_scan_run: boolean
+          id: string
+          session_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          comments_data: Json
+          created_at?: string
+          default_mode?: string
+          has_scan_run?: boolean
+          id?: string
+          session_name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          comments_data?: Json
+          created_at?: string
+          default_mode?: string
+          has_scan_run?: boolean
+          id?: string
+          session_name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       maintenance_mode: {
         Row: {
           id: string
