@@ -33,6 +33,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+        
+        // Update last_login_at when user signs in
+        if (event === 'SIGNED_IN' && session?.user) {
+          setTimeout(() => {
+            supabase
+              .from('profiles')
+              .update({ last_login_at: new Date().toISOString() })
+              .eq('user_id', session.user.id)
+              .then(({ error }) => {
+                if (error) {
+                  console.error('Error updating last_login_at:', error);
+                }
+              });
+          }, 0);
+        }
+        
         setLoading(false);
       }
     );
