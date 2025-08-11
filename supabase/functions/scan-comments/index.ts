@@ -253,7 +253,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     const awsRegion = Deno.env.get('AWS_REGION') || 'us-east-1';
 
     // Create AWS signature
-    const service = 'bedrock-runtime';
+    const service = 'bedrock';
     const host = `bedrock-runtime.${awsRegion}.amazonaws.com`;
     const endpoint = `https://${host}/model/${model}/invoke`;
 
