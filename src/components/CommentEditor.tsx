@@ -531,7 +531,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         <div>
           <h2 className="text-2xl font-bold mb-1">Comment Editor</h2>
           <p className="text-muted-foreground">
-            {filteredComments.length} of {comments.length} comments
+            {filteredComments.length} comments
             {concerningCount > 0 && ` • ${concerningCount} concerning`}
             {identifiableCount > 0 && ` • ${identifiableCount} identifiable`}
           </p>
