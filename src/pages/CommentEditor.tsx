@@ -6,218 +6,194 @@ import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 const Index = () => {
   const [comments, setComments] = useState<CommentData[]>([]);
-  
   const handleDataLoaded = (newComments: CommentData[]) => {
     setComments(newComments);
   };
-  
   const handleCommentsUpdate = (updatedComments: CommentData[]) => {
     setComments(updatedComments);
   };
-
   const loadDemoData = () => {
-    const demoComments: CommentData[] = [
-      {
-        id: '1',
-        originalText: 'The management team really needs to improve their communication skills. John Smith in HR is particularly difficult to work with.',
-        text: 'The management team really needs to improve their communication skills. John Smith in HR is particularly difficult to work with.',
-        author: 'Anonymous',
-        originalRow: 1,
-        concerning: false,
-        identifiable: true,
-        demographics: 'Engineering'
-      },
-      {
-        id: '2', 
-        originalText: 'I love working here! The flexible schedule and remote work options have been life-changing.',
-        text: 'I love working here! The flexible schedule and remote work options have been life-changing.',
-        author: 'Anonymous',
-        originalRow: 2,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Marketing'
-      },
-      {
-        id: '3',
-        originalText: 'The new manager in accounting, Sarah Johnson (employee ID 12345), has been making inappropriate comments about female employees. This needs to be addressed immediately.',
-        text: 'The new manager in accounting, Sarah Johnson (employee ID 12345), has been making inappropriate comments about female employees. This needs to be addressed immediately.',
-        author: 'Anonymous',
-        originalRow: 3,
-        concerning: true,
-        identifiable: true,
-        demographics: 'Finance'
-      },
-      {
-        id: '4',
-        originalText: 'Great company culture and benefits package. The health insurance coverage is excellent.',
-        text: 'Great company culture and benefits package. The health insurance coverage is excellent.',
-        author: 'Anonymous',
-        originalRow: 4,
-        concerning: false,
-        identifiable: false,
-        demographics: 'HR'
-      },
-      {
-        id: '5',
-        originalText: 'I feel unsafe coming to work due to threats from my supervisor Mike Wilson. He said he would "make my life hell" if I didn\'t work overtime without pay.',
-        text: 'I feel unsafe coming to work due to threats from my supervisor Mike Wilson. He said he would "make my life hell" if I didn\'t work overtime without pay.',
-        author: 'Anonymous',
-        originalRow: 5,
-        concerning: true,
-        identifiable: true,
-        demographics: 'Operations'
-      },
-      {
-        id: '6',
-        originalText: 'The office coffee machine is always broken. Can we please get it fixed?',
-        text: 'The office coffee machine is always broken. Can we please get it fixed?',
-        author: 'Anonymous',
-        originalRow: 6,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Sales'
-      },
-      {
-        id: '7',
-        originalText: 'My direct report told me about drug use during work hours by employees in the warehouse. I witnessed Tom Anderson (badge #789) smoking what appeared to be marijuana during lunch break.',
-        text: 'My direct report told me about drug use during work hours by employees in the warehouse. I witnessed Tom Anderson (badge #789) smoking what appeared to be marijuana during lunch break.',
-        author: 'Anonymous',
-        originalRow: 7,
-        concerning: true,
-        identifiable: true,
-        demographics: 'Management'
-      },
-      {
-        id: '8',
-        originalText: 'The training programs have been very helpful for my professional development.',
-        text: 'The training programs have been very helpful for my professional development.',
-        author: 'Anonymous',
-        originalRow: 8,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Engineering'
-      },
-      {
-        id: '9',
-        originalText: 'There have been multiple incidents of theft from employee lockers. Security cameras caught Jennifer Lee from customer service taking items from other people\'s belongings.',
-        text: 'There have been multiple incidents of theft from employee lockers. Security cameras caught Jennifer Lee from customer service taking items from other people\'s belongings.',
-        author: 'Anonymous',
-        originalRow: 9,
-        concerning: true,
-        identifiable: true,
-        demographics: 'Security'
-      },
-      {
-        id: '10',
-        originalText: 'The new parking policy is unfair to employees who don\'t live close to the office.',
-        text: 'The new parking policy is unfair to employees who don\'t live close to the office.',
-        author: 'Anonymous',
-        originalRow: 10,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Marketing'
-      },
-      {
-        id: '11',
-        originalText: 'I enjoy the collaborative work environment and my team members are supportive.',
-        text: 'I enjoy the collaborative work environment and my team members are supportive.',
-        author: 'Anonymous',
-        originalRow: 11,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Engineering'
-      },
-      {
-        id: '12',
-        originalText: 'The annual performance review process needs improvement. My manager Rebecca Williams provides very little useful feedback.',
-        text: 'The annual performance review process needs improvement. My manager Rebecca Williams provides very little useful feedback.',
-        author: 'Anonymous',
-        originalRow: 12,
-        concerning: false,
-        identifiable: true,
-        demographics: 'Finance'
-      },
-      {
-        id: '13',
-        originalText: 'I love the company picnic every summer! It\'s a great way to connect with colleagues.',
-        text: 'I love the company picnic every summer! It\'s a great way to connect with colleagues.',
-        author: 'Anonymous',
-        originalRow: 13,
-        concerning: false,
-        identifiable: false,
-        demographics: 'HR'
-      },
-      {
-        id: '14',
-        originalText: 'There are serious safety violations in the manufacturing area. Equipment operator David Chen (SSN: 123-45-6789) doesn\'t follow proper procedures and someone is going to get hurt.',
-        text: 'There are serious safety violations in the manufacturing area. Equipment operator David Chen (SSN: 123-45-6789) doesn\'t follow proper procedures and someone is going to get hurt.',
-        author: 'Anonymous',
-        originalRow: 14,
-        concerning: true,
-        identifiable: true,
-        demographics: 'Manufacturing'
-      },
-      {
-        id: '15',
-        originalText: 'The work-life balance here is excellent. I appreciate the mental health days.',
-        text: 'The work-life balance here is excellent. I appreciate the mental health days.',
-        author: 'Anonymous',
-        originalRow: 15,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Marketing'
-      },
-      {
-        id: '16',
-        originalText: 'Please provide more opportunities for career advancement and promotion.',
-        text: 'Please provide more opportunities for career advancement and promotion.',
-        author: 'Anonymous',
-        originalRow: 16,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Sales'
-      },
-      {
-        id: '17',
-        originalText: 'The IT department is very responsive when we have technical issues.',
-        text: 'The IT department is very responsive when we have technical issues.',
-        author: 'Anonymous',
-        originalRow: 17,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Operations'
-      },
-      {
-        id: '18',
-        originalText: 'I\'ve witnessed discrimination against older employees. Manager Lisa Rodriguez (phone: 555-0123) made ageist comments saying "we need fresh blood, not these old dinosaurs".',
-        text: 'I\'ve witnessed discrimination against older employees. Manager Lisa Rodriguez (phone: 555-0123) made ageist comments saying "we need fresh blood, not these old dinosaurs".',
-        author: 'Anonymous',
-        originalRow: 18,
-        concerning: true,
-        identifiable: true,
-        demographics: 'Management'
-      },
-      {
-        id: '19',
-        originalText: 'The company\'s commitment to sustainability is impressive and motivating.',
-        text: 'The company\'s commitment to sustainability is impressive and motivating.',
-        author: 'Anonymous',
-        originalRow: 19,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Engineering'
-      },
-      {
-        id: '20',
-        originalText: 'Can we please get better chairs? My back is killing me after long days at the computer.',
-        text: 'Can we please get better chairs? My back is killing me after long days at the computer.',
-        author: 'Anonymous',
-        originalRow: 20,
-        concerning: false,
-        identifiable: false,
-        demographics: 'Finance'
-      }
-    ];
+    const demoComments: CommentData[] = [{
+      id: '1',
+      originalText: 'The management team really needs to improve their communication skills. John Smith in HR is particularly difficult to work with.',
+      text: 'The management team really needs to improve their communication skills. John Smith in HR is particularly difficult to work with.',
+      author: 'Anonymous',
+      originalRow: 1,
+      concerning: false,
+      identifiable: true,
+      demographics: 'Engineering'
+    }, {
+      id: '2',
+      originalText: 'I love working here! The flexible schedule and remote work options have been life-changing.',
+      text: 'I love working here! The flexible schedule and remote work options have been life-changing.',
+      author: 'Anonymous',
+      originalRow: 2,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Marketing'
+    }, {
+      id: '3',
+      originalText: 'The new manager in accounting, Sarah Johnson (employee ID 12345), has been making inappropriate comments about female employees. This needs to be addressed immediately.',
+      text: 'The new manager in accounting, Sarah Johnson (employee ID 12345), has been making inappropriate comments about female employees. This needs to be addressed immediately.',
+      author: 'Anonymous',
+      originalRow: 3,
+      concerning: true,
+      identifiable: true,
+      demographics: 'Finance'
+    }, {
+      id: '4',
+      originalText: 'Great company culture and benefits package. The health insurance coverage is excellent.',
+      text: 'Great company culture and benefits package. The health insurance coverage is excellent.',
+      author: 'Anonymous',
+      originalRow: 4,
+      concerning: false,
+      identifiable: false,
+      demographics: 'HR'
+    }, {
+      id: '5',
+      originalText: 'I feel unsafe coming to work due to threats from my supervisor Mike Wilson. He said he would "make my life hell" if I didn\'t work overtime without pay.',
+      text: 'I feel unsafe coming to work due to threats from my supervisor Mike Wilson. He said he would "make my life hell" if I didn\'t work overtime without pay.',
+      author: 'Anonymous',
+      originalRow: 5,
+      concerning: true,
+      identifiable: true,
+      demographics: 'Operations'
+    }, {
+      id: '6',
+      originalText: 'The office coffee machine is always broken. Can we please get it fixed?',
+      text: 'The office coffee machine is always broken. Can we please get it fixed?',
+      author: 'Anonymous',
+      originalRow: 6,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Sales'
+    }, {
+      id: '7',
+      originalText: 'My direct report told me about drug use during work hours by employees in the warehouse. I witnessed Tom Anderson (badge #789) smoking what appeared to be marijuana during lunch break.',
+      text: 'My direct report told me about drug use during work hours by employees in the warehouse. I witnessed Tom Anderson (badge #789) smoking what appeared to be marijuana during lunch break.',
+      author: 'Anonymous',
+      originalRow: 7,
+      concerning: true,
+      identifiable: true,
+      demographics: 'Management'
+    }, {
+      id: '8',
+      originalText: 'The training programs have been very helpful for my professional development.',
+      text: 'The training programs have been very helpful for my professional development.',
+      author: 'Anonymous',
+      originalRow: 8,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Engineering'
+    }, {
+      id: '9',
+      originalText: 'There have been multiple incidents of theft from employee lockers. Security cameras caught Jennifer Lee from customer service taking items from other people\'s belongings.',
+      text: 'There have been multiple incidents of theft from employee lockers. Security cameras caught Jennifer Lee from customer service taking items from other people\'s belongings.',
+      author: 'Anonymous',
+      originalRow: 9,
+      concerning: true,
+      identifiable: true,
+      demographics: 'Security'
+    }, {
+      id: '10',
+      originalText: 'The new parking policy is unfair to employees who don\'t live close to the office.',
+      text: 'The new parking policy is unfair to employees who don\'t live close to the office.',
+      author: 'Anonymous',
+      originalRow: 10,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Marketing'
+    }, {
+      id: '11',
+      originalText: 'I enjoy the collaborative work environment and my team members are supportive.',
+      text: 'I enjoy the collaborative work environment and my team members are supportive.',
+      author: 'Anonymous',
+      originalRow: 11,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Engineering'
+    }, {
+      id: '12',
+      originalText: 'The annual performance review process needs improvement. My manager Rebecca Williams provides very little useful feedback.',
+      text: 'The annual performance review process needs improvement. My manager Rebecca Williams provides very little useful feedback.',
+      author: 'Anonymous',
+      originalRow: 12,
+      concerning: false,
+      identifiable: true,
+      demographics: 'Finance'
+    }, {
+      id: '13',
+      originalText: 'I love the company picnic every summer! It\'s a great way to connect with colleagues.',
+      text: 'I love the company picnic every summer! It\'s a great way to connect with colleagues.',
+      author: 'Anonymous',
+      originalRow: 13,
+      concerning: false,
+      identifiable: false,
+      demographics: 'HR'
+    }, {
+      id: '14',
+      originalText: 'There are serious safety violations in the manufacturing area. Equipment operator David Chen (SSN: 123-45-6789) doesn\'t follow proper procedures and someone is going to get hurt.',
+      text: 'There are serious safety violations in the manufacturing area. Equipment operator David Chen (SSN: 123-45-6789) doesn\'t follow proper procedures and someone is going to get hurt.',
+      author: 'Anonymous',
+      originalRow: 14,
+      concerning: true,
+      identifiable: true,
+      demographics: 'Manufacturing'
+    }, {
+      id: '15',
+      originalText: 'The work-life balance here is excellent. I appreciate the mental health days.',
+      text: 'The work-life balance here is excellent. I appreciate the mental health days.',
+      author: 'Anonymous',
+      originalRow: 15,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Marketing'
+    }, {
+      id: '16',
+      originalText: 'Please provide more opportunities for career advancement and promotion.',
+      text: 'Please provide more opportunities for career advancement and promotion.',
+      author: 'Anonymous',
+      originalRow: 16,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Sales'
+    }, {
+      id: '17',
+      originalText: 'The IT department is very responsive when we have technical issues.',
+      text: 'The IT department is very responsive when we have technical issues.',
+      author: 'Anonymous',
+      originalRow: 17,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Operations'
+    }, {
+      id: '18',
+      originalText: 'I\'ve witnessed discrimination against older employees. Manager Lisa Rodriguez (phone: 555-0123) made ageist comments saying "we need fresh blood, not these old dinosaurs".',
+      text: 'I\'ve witnessed discrimination against older employees. Manager Lisa Rodriguez (phone: 555-0123) made ageist comments saying "we need fresh blood, not these old dinosaurs".',
+      author: 'Anonymous',
+      originalRow: 18,
+      concerning: true,
+      identifiable: true,
+      demographics: 'Management'
+    }, {
+      id: '19',
+      originalText: 'The company\'s commitment to sustainability is impressive and motivating.',
+      text: 'The company\'s commitment to sustainability is impressive and motivating.',
+      author: 'Anonymous',
+      originalRow: 19,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Engineering'
+    }, {
+      id: '20',
+      originalText: 'Can we please get better chairs? My back is killing me after long days at the computer.',
+      text: 'Can we please get better chairs? My back is killing me after long days at the computer.',
+      author: 'Anonymous',
+      originalRow: 20,
+      concerning: false,
+      identifiable: false,
+      demographics: 'Finance'
+    }];
 
     // Clear any cached AI results and reset to clean state
     const cleanDemoComments = demoComments.map(comment => ({
@@ -231,7 +207,6 @@ const Index = () => {
       approved: false,
       hideAiResponse: false
     }));
-
     handleDataLoaded(cleanDemoComments);
     toast.success('Demo data loaded successfully! 20 employee survey comments imported.');
   };
@@ -255,11 +230,7 @@ const Index = () => {
               Upload your comment files (.xlsx, .xls, .csv) and automatically remove sensitive information while preserving tone and context. Powered by enterprise-grade AI.
             </p>
             
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto">
-              <p className="text-sm text-blue-800 font-medium text-center">
-                🔒 Your data remains yours and will never be used for training AI models
-              </p>
-            </div>
+            
           </div>
         </div>
       </section>
@@ -273,11 +244,7 @@ const Index = () => {
                 Get Started
               </h2>
               <div className="flex flex-col items-center gap-4 mb-6">
-                <Button 
-                  onClick={loadDemoData}
-                  variant="outline"
-                  className="gap-2"
-                >
+                <Button onClick={loadDemoData} variant="outline" className="gap-2">
                   <FileText className="w-4 h-4" />
                   Load Demo File
                 </Button>
