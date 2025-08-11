@@ -236,7 +236,7 @@ const Index = () => {
       </section>
 
       {/* Main Content */}
-      <section className="py-12 bg-white">
+      <section className="py-12 bg-muted/50">
         <div className="w-full px-6">
           <div className="w-full space-y-12">
             {comments.length === 0 ? <div className="animate-slide-up">
