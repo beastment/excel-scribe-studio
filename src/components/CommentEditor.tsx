@@ -51,6 +51,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [hasScanRun, setHasScanRun] = useState(false);
+  const [selectedDemographic, setSelectedDemographic] = useState<string | null>(null);
 
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -75,10 +76,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       const matchesSearch = comment.text.toLowerCase().includes(searchTerm.toLowerCase()) || comment.originalText.toLowerCase().includes(searchTerm.toLowerCase()) || comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesConcerning = showConcerningOnly ? comment.concerning : true;
       const matchesIdentifiable = showIdentifiableOnly ? comment.identifiable : true;
-      return matchesSearch && matchesConcerning && matchesIdentifiable;
+      const matchesDemographic = selectedDemographic ? comment.demographics === selectedDemographic : true;
+      return matchesSearch && matchesConcerning && matchesIdentifiable && matchesDemographic;
     });
     setFilteredComments(filtered);
-  }, [comments, searchTerm, showConcerningOnly, showIdentifiableOnly]);
+  }, [comments, searchTerm, showConcerningOnly, showIdentifiableOnly, selectedDemographic]);
 
   // Load sessions when user logs in
   useEffect(() => {
@@ -570,7 +572,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     </div>
                     <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
                       {comment.demographics ? <div className="text-foreground leading-relaxed text-sm sm:text-base">
-                          <div className="font-medium">{comment.demographics}</div>
+                          <div className="flex items-center gap-2">
+                            <Checkbox 
+                              checked={selectedDemographic === comment.demographics}
+                              onCheckedChange={(checked) => {
+                                setSelectedDemographic(checked ? comment.demographics! : null);
+                              }}
+                              className="h-3 w-3"
+                            />
+                            <div className="font-medium">{comment.demographics}</div>
+                          </div>
                           <div className="text-muted-foreground text-xs mt-1">
                             {demographicCounts[comment.demographics]} comments
                           </div>
