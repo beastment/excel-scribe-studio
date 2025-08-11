@@ -212,7 +212,7 @@ const Index = () => {
   };
   return <div className="pt-20">
       {/* Header */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 to-blue-50 py-8 lg:py-12">
+      <section className="relative overflow-hidden bg-gradient-to-br from-background to-muted py-8 lg:py-12">
         <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10"></div>
         
         <div className="max-w-7xl mx-auto px-6">
