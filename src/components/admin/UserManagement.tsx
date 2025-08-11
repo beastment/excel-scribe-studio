@@ -306,10 +306,10 @@ export const UserManagement: React.FC = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Last Updated</TableHead>
                 <TableHead>Last Login</TableHead>
+                <TableHead>Role</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
                 <TableHead className="text-right">Subscriptions</TableHead>
               </TableRow>
@@ -328,14 +328,6 @@ export const UserManagement: React.FC = () => {
                         {user.full_name || 'Unknown User'}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant={user.role === 'admin' ? 'default' : 'secondary'}
-                        className={user.role === 'admin' ? 'bg-yellow-100 text-yellow-800' : ''}
-                      >
-                        {user.role}
-                      </Badge>
-                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDate(user.created_at)}
                     </TableCell>
@@ -345,23 +337,24 @@ export const UserManagement: React.FC = () => {
                     <TableCell className="text-sm text-muted-foreground">
                       {user.last_login_at ? formatDate(user.last_login_at) : 'Never'}
                     </TableCell>
+                    <TableCell>
+                      <Select
+                        value={user.role}
+                        onValueChange={(value: 'admin' | 'user' | 'partner') => updateUserRole(user.user_id, value)}
+                        disabled={updating === user.user_id}
+                      >
+                        <SelectTrigger className="w-24 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="partner">Partner</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center gap-2 justify-end">
-                        <Select
-                          value={user.role}
-                          onValueChange={(value: 'admin' | 'user' | 'partner') => updateUserRole(user.user_id, value)}
-                          disabled={updating === user.user_id}
-                        >
-                          <SelectTrigger className="w-24 h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="user">User</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                            <SelectItem value="partner">Partner</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        
                         <Button
                           variant="outline"
                           size="sm"

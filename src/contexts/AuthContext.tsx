@@ -31,23 +31,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        console.log('Auth state change:', event, session?.user?.id);
         setSession(session);
         setUser(session?.user ?? null);
         
         // Update last_login_at when user signs in
         if (event === 'SIGNED_IN' && session?.user) {
-          console.log('Updating last_login_at for user:', session.user.id);
           setTimeout(() => {
             supabase
               .from('profiles')
               .update({ last_login_at: new Date().toISOString() })
               .eq('user_id', session.user.id)
-              .then(({ error, data }) => {
+              .then(({ error }) => {
                 if (error) {
                   console.error('Error updating last_login_at:', error);
-                } else {
-                  console.log('Successfully updated last_login_at:', data);
                 }
               });
           }, 0);
