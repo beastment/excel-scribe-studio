@@ -14,6 +14,7 @@ interface AppConfiguration {
   description: string | null;
   is_enabled: boolean;
   is_hidden: boolean;
+  position: number | null;
 }
 
 interface UserProfile {
@@ -111,12 +112,16 @@ const Home = () => {
     }
   };
 
-  // Merge static app data with database configurations
-  const apps = appConfigs.map(config => ({
-    id: config.app_id,
-    ...staticApps[config.app_id as keyof typeof staticApps],
-    is_enabled: config.is_enabled
-  })).filter(app => app.name); // Filter out any apps that don't have static data
+  // Merge static app data with database configurations and automatically re-arrange
+  const apps = appConfigs
+    .map(config => ({
+      id: config.app_id,
+      ...staticApps[config.app_id as keyof typeof staticApps],
+      is_enabled: config.is_enabled,
+      position: config.position
+    }))
+    .filter(app => app.name) // Filter out any apps that don't have static data
+    .sort((a, b) => (a.position || 0) - (b.position || 0)); // Sort by position to maintain order
 
   if (loading) {
     return (
