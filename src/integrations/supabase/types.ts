@@ -87,6 +87,7 @@ export type Database = {
           default_mode: string
           has_scan_run: boolean
           id: string
+          scroll_position: number | null
           session_name: string
           updated_at: string
           user_id: string
@@ -97,6 +98,7 @@ export type Database = {
           default_mode?: string
           has_scan_run?: boolean
           id?: string
+          scroll_position?: number | null
           session_name: string
           updated_at?: string
           user_id: string
@@ -107,6 +109,7 @@ export type Database = {
           default_mode?: string
           has_scan_run?: boolean
           id?: string
+          scroll_position?: number | null
           session_name?: string
           updated_at?: string
           user_id?: string

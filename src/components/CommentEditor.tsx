@@ -47,6 +47,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   const [sessionName, setSessionName] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Set default session name to current date/time when dialog opens
+  const getCurrentDateTimeString = () => {
+    const now = new Date();
+    return now.toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).replace(/[\/,]/g, '-').replace(/\s/g, '_');
+  };
   useEffect(() => {
     let filtered = comments.filter(comment => {
       const matchesSearch = comment.text.toLowerCase().includes(searchTerm.toLowerCase()) || comment.originalText.toLowerCase().includes(searchTerm.toLowerCase()) || comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase());
@@ -338,7 +351,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             <>
               <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="gap-2" disabled={comments.length === 0}>
+                  <Button 
+                    variant="outline" 
+                    className="gap-2" 
+                    disabled={comments.length === 0}
+                    onClick={() => setSessionName(getCurrentDateTimeString())}
+                  >
                     <Save className="w-4 h-4" />
                     Save Progress
                   </Button>
