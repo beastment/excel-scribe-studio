@@ -509,6 +509,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         </div>
         
         <div className="flex flex-wrap gap-2">
+          <Button onClick={exportToExcel} variant="outline" className="gap-2">
+            <Download className="w-4 h-4" />
+            Export
+          </Button>
           <Button onClick={() => setShowConcerningOnly(!showConcerningOnly)} variant={showConcerningOnly ? "default" : "outline"} className="gap-2">
             <AlertTriangle className="w-4 h-4" />
             {showConcerningOnly ? 'Show All' : 'Show Concerning Only'}
@@ -516,10 +520,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           <Button onClick={() => setShowIdentifiableOnly(!showIdentifiableOnly)} variant={showIdentifiableOnly ? "default" : "outline"} className="gap-2">
             {showIdentifiableOnly ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             {showIdentifiableOnly ? 'Show All' : 'Show Identifiable Only'}
-          </Button>
-          <Button onClick={exportToExcel} variant="outline" className="gap-2">
-            <Download className="w-4 h-4" />
-            Export
           </Button>
         </div>
       </div>
@@ -538,7 +538,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       {/* Search */}
       <div className="relative mb-6">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-        <Input placeholder="Search comments or authors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+        <Input placeholder="Search comments..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
       </div>
 
       {/* Comments List */}
