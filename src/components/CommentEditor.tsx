@@ -554,7 +554,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-[200px_1fr_1fr] xl:gap-x-6' : 'xl:grid-cols-2'}`}>
                 {/* Demographics Column (conditional) */}
                 {hasDemographics && <div className="space-y-2 xl:mr-[-16px]">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 h-6">
                       <h4 className="text-sm font-medium text-muted-foreground">Demographics</h4>
                     </div>
                     <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
@@ -570,10 +570,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   </div>}
                 {/* Original Comment Column */}
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 h-6">
                     <h4 className="text-sm font-medium text-muted-foreground">Original Comment</h4>
                   </div>
-                  <div className="flex items-center gap-6 mb-3">
+                  <div className="flex items-center gap-6 h-8">
                     <div className="flex items-center space-x-2 pointer-events-none">
                       <Checkbox id={`concerning-${comment.id}`} checked={comment.concerning || false} />
                       <label htmlFor={`concerning-${comment.id}`} className="text-sm font-medium leading-none">
