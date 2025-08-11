@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { User, LogOut, LayoutDashboard, ChevronDown } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export const Navigation = () => {
   const { user, signOut } = useAuth();
@@ -44,6 +45,8 @@ export const Navigation = () => {
               Contact
             </Link>
 
+            <ThemeToggle />
+            
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
