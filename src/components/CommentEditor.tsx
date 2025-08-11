@@ -316,11 +316,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       <div className="w-full max-w-none">
       {/* Header */}
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-6">
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setShowImportDialog(!showImportDialog)} variant="outline" className="gap-2">
-            <Upload className="w-4 h-4" />
-            Import Comments
-          </Button>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setShowImportDialog(!showImportDialog)} variant="outline" className="gap-2">
+              <Upload className="w-4 h-4" />
+              Import Comments
+            </Button>
           
           {user && (
             <>
@@ -461,17 +462,33 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               </Dialog>
             </>
           )}
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={scanComments} disabled={isScanning} className={`gap-2 ${!hasScanRun && !isScanning ? 'animate-very-slow-pulse' : ''}`}>
+              <Scan className="w-4 h-4" />
+              {isScanning ? 'Scanning...' : 'Scan Comments'}
+            </Button>
+          
+            {/* Default Mode Toggle */}
+            <div className="flex items-center gap-2 px-3 py-2 border rounded-md">
+              <span className="text-sm font-medium">Default Mode:</span>
+              <div className="flex items-center gap-1">
+                <Button variant={defaultMode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => setDefaultMode('redact')} className="h-7 text-xs">
+                  Redact
+                </Button>
+                <Button variant={defaultMode === 'rephrase' ? 'default' : 'ghost'} size="sm" onClick={() => setDefaultMode('rephrase')} className="h-7 text-xs">
+                  Rephrase
+                </Button>
+              </div>
+            </div>
+          </div>
           
           {!user && comments.length > 0 && (
             <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md border">
               💡 Sign in to save your progress
             </div>
           )}
-          
-          <Button onClick={scanComments} disabled={isScanning} className={`gap-2 ${!hasScanRun && !isScanning ? 'animate-very-slow-pulse' : ''}`}>
-            <Scan className="w-4 h-4" />
-            {isScanning ? 'Scanning...' : 'Scan Comments'}
-          </Button>
           
           {/* Progress Indicator */}
           {isScanning && <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/30">
@@ -480,19 +497,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 Processing comments... {Math.round(scanProgress)}%
               </span>
             </div>}
-          
-          {/* Default Mode Toggle */}
-          <div className="flex items-center gap-2 px-3 py-2 border rounded-md">
-            <span className="text-sm font-medium">Default Mode:</span>
-            <div className="flex items-center gap-1">
-              <Button variant={defaultMode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => setDefaultMode('redact')} className="h-7 text-xs">
-                Redact
-              </Button>
-              <Button variant={defaultMode === 'rephrase' ? 'default' : 'ghost'} size="sm" onClick={() => setDefaultMode('rephrase')} className="h-7 text-xs">
-                Rephrase
-              </Button>
-            </div>
-          </div>
         </div>
         
         <div>
@@ -541,15 +545,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       <div className="space-y-4">
         {filteredComments.map((comment, index) => <Card key={comment.id} className={`p-4 sm:p-6 hover:shadow-md transition-all duration-300 animate-fade-in ${comment.approved ? 'bg-green-50 border-green-300 dark:bg-green-950/30 dark:border-green-800/50' : comment.concerning ? 'bg-red-100 border-red-300 dark:bg-red-950/30 dark:border-red-800/50' : comment.identifiable && !comment.concerning ? 'bg-red-50 border-red-200 dark:bg-red-950/10 dark:border-red-800/20' : ''}`}>
             <div className="space-y-4">
-              {/* Comment Header */}
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <Badge variant="secondary" className="text-xs">
-                    Row {comment.originalRow || index + 1}
-                  </Badge>
-                </div>
-              </div>
-
               {/* Three Column Layout (with optional demographics) */}
               <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-[200px_1fr_1fr] xl:gap-x-6' : 'xl:grid-cols-2'}`}>
                 {/* Demographics Column (conditional) */}
@@ -557,8 +552,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     <div className="flex items-center gap-2 h-6">
                       <h4 className="text-sm font-medium text-muted-foreground">Demographics</h4>
                     </div>
-                    {/* Empty spacer to match the checkbox row in original comment column */}
-                    <div className="h-8"></div>
+                    <div className="flex items-center gap-2 h-8">
+                      <Badge variant="secondary" className="text-xs">
+                        Row {comment.originalRow || index + 1}
+                      </Badge>
+                    </div>
                     <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
                       {comment.demographics ? <div className="text-foreground leading-relaxed text-sm sm:text-base">
                           <div className="font-medium">{comment.demographics}</div>
