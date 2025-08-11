@@ -509,7 +509,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         </div>
         
         <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 justify-end">
             <Button onClick={exportToExcel} variant="outline" className="gap-2">
               <Download className="w-4 h-4" />
               Export
