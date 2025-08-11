@@ -15,6 +15,7 @@ import { CommentData, FileUpload } from './FileUpload';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCommentSessions } from '@/hooks/useCommentSessions';
+import { useUserRole } from '@/hooks/useUserRole';
 import * as XLSX from 'xlsx';
 interface CommentEditorProps {
   comments: CommentData[];
@@ -29,6 +30,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const {
     user
   } = useAuth();
+  const { isAdmin } = useUserRole();
   const {
     sessions,
     loading: sessionsLoading,
@@ -52,6 +54,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [hasScanRun, setHasScanRun] = useState(false);
   const [selectedDemographic, setSelectedDemographic] = useState<string | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
 
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -537,6 +540,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               {showIdentifiableOnly ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               {showIdentifiableOnly ? 'Show All' : 'Show Identifiable Only'}
             </Button>
+            {isAdmin && (
+              <Button onClick={() => setDebugMode(!debugMode)} variant={debugMode ? "default" : "outline"} className="gap-2">
+                {debugMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {debugMode ? 'Hide Debug' : 'Debug Mode'}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -619,13 +628,80 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       {comment.originalText}
                     </p>
                   </div>
-                    <div className="space-y-3 mt-4">
-                    {comment.aiReasoning && !comment.hideAiResponse && getCommentStatus(comment) !== 'No Changes Needed' && <div className="p-2 rounded-lg bg-muted/50 border">
-                        <p className="text-xs text-muted-foreground">
-                          <strong>AI:</strong> {comment.aiReasoning}
-                        </p>
-                      </div>}
-                  </div>
+                     <div className="space-y-3 mt-4">
+                     {comment.aiReasoning && !comment.hideAiResponse && getCommentStatus(comment) !== 'No Changes Needed' && <div className="p-2 rounded-lg bg-muted/50 border">
+                         <p className="text-xs text-muted-foreground">
+                           <strong>AI:</strong> {comment.aiReasoning}
+                         </p>
+                       </div>}
+                       
+                       {/* Debug Mode - Show AI scan details for admins */}
+                       {debugMode && isAdmin && comment.debugInfo && (
+                         <div className="space-y-2">
+                           <h5 className="text-xs font-semibold text-muted-foreground">Debug Information:</h5>
+                           
+                           {comment.debugInfo.scanAResult && (
+                             <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
+                               <p className="text-xs font-medium text-blue-900 dark:text-blue-100">Scan A Result:</p>
+                               <p className="text-xs text-blue-800 dark:text-blue-200">
+                                 Concerning: {comment.debugInfo.scanAResult.concerning ? 'Yes' : 'No'} | 
+                                 Identifiable: {comment.debugInfo.scanAResult.identifiable ? 'Yes' : 'No'}
+                               </p>
+                               {comment.debugInfo.scanAResult.reasoning && (
+                                 <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                                   {comment.debugInfo.scanAResult.reasoning}
+                                 </p>
+                               )}
+                             </div>
+                           )}
+                           
+                           {comment.debugInfo.scanBResult && (
+                             <div className="p-2 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50">
+                               <p className="text-xs font-medium text-green-900 dark:text-green-100">Scan B Result:</p>
+                               <p className="text-xs text-green-800 dark:text-green-200">
+                                 Concerning: {comment.debugInfo.scanBResult.concerning ? 'Yes' : 'No'} | 
+                                 Identifiable: {comment.debugInfo.scanBResult.identifiable ? 'Yes' : 'No'}
+                               </p>
+                               {comment.debugInfo.scanBResult.reasoning && (
+                                 <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                                   {comment.debugInfo.scanBResult.reasoning}
+                                 </p>
+                               )}
+                             </div>
+                           )}
+                           
+                           {comment.debugInfo.adjudicationResult && (
+                             <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50">
+                               <p className="text-xs font-medium text-purple-900 dark:text-purple-100">Adjudicator Result:</p>
+                               <p className="text-xs text-purple-800 dark:text-purple-200">
+                                 Concerning: {comment.debugInfo.adjudicationResult.concerning ? 'Yes' : 'No'} | 
+                                 Identifiable: {comment.debugInfo.adjudicationResult.identifiable ? 'Yes' : 'No'}
+                               </p>
+                               {comment.debugInfo.adjudicationResult.reasoning && (
+                                 <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                                   {comment.debugInfo.adjudicationResult.reasoning}
+                                 </p>
+                               )}
+                             </div>
+                           )}
+                           
+                           {comment.debugInfo.needsAdjudication && (
+                             <div className="p-2 rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800/50">
+                               <p className="text-xs font-medium text-yellow-900 dark:text-yellow-100">
+                                 ⚠️ Adjudication Required (Scan A and B disagreed)
+                               </p>
+                             </div>
+                           )}
+                           
+                           {comment.debugInfo.error && (
+                             <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50">
+                               <p className="text-xs font-medium text-red-900 dark:text-red-100">Error:</p>
+                               <p className="text-xs text-red-800 dark:text-red-200">{comment.debugInfo.error}</p>
+                             </div>
+                           )}
+                         </div>
+                       )}
+                   </div>
                 </div>
 
                 {/* Final Version Column */}

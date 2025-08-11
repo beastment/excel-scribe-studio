@@ -27,6 +27,14 @@ export interface CommentData {
   mode?: 'redact' | 'rephrase' | 'revert' | 'edit';
   demographics?: string;
   hideAiResponse?: boolean;
+  debugInfo?: {
+    scanAResult?: { concerning: boolean; identifiable: boolean; reasoning?: string };
+    scanBResult?: { concerning: boolean; identifiable: boolean; reasoning?: string };
+    adjudicationResult?: { concerning: boolean; identifiable: boolean; reasoning?: string };
+    needsAdjudication?: boolean;
+    finalDecision?: { concerning: boolean; identifiable: boolean; reasoning?: string };
+    error?: string;
+  };
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
