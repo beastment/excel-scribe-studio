@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { MaintenanceToggle } from '@/components/admin/MaintenanceToggle';
 import { UserManagement } from '@/components/admin/UserManagement';
 import { AppManagement } from '@/components/admin/AppManagement';
+import { AIConfigurationManagement } from '@/components/admin/AIConfigurationManagement';
 
 interface UserProfile {
   id: string;
@@ -192,6 +193,9 @@ const Dashboard = () => {
             <h2 className="text-2xl font-bold text-foreground mb-6">Admin Controls</h2>
             <div className="grid lg:grid-cols-1 gap-8 mb-8">
               <AppManagement />
+            </div>
+            <div className="grid lg:grid-cols-1 gap-8 mb-8">
+              <AIConfigurationManagement />
             </div>
             <div className="grid lg:grid-cols-2 gap-8 mb-8">
               <MaintenanceToggle />

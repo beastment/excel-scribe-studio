@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_configurations: {
+        Row: {
+          analysis_prompt: string
+          created_at: string
+          id: string
+          model: string
+          provider: string
+          redact_prompt: string
+          rephrase_prompt: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          analysis_prompt?: string
+          created_at?: string
+          id?: string
+          model?: string
+          provider?: string
+          redact_prompt?: string
+          rephrase_prompt?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          analysis_prompt?: string
+          created_at?: string
+          id?: string
+          model?: string
+          provider?: string
+          redact_prompt?: string
+          rephrase_prompt?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       app_configurations: {
         Row: {
           app_id: string
