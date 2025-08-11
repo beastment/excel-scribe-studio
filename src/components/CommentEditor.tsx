@@ -573,26 +573,26 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-medium text-muted-foreground">Original Comment</h4>
                   </div>
+                  <div className="flex items-center gap-6 mb-3">
+                    <div className="flex items-center space-x-2 pointer-events-none">
+                      <Checkbox id={`concerning-${comment.id}`} checked={comment.concerning || false} />
+                      <label htmlFor={`concerning-${comment.id}`} className="text-sm font-medium leading-none">
+                        Concerning
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2 pointer-events-none">
+                      <Checkbox id={`identifiable-${comment.id}`} checked={comment.identifiable || false} />
+                      <label htmlFor={`identifiable-${comment.id}`} className="text-sm font-medium leading-none">
+                        Identifiable
+                      </label>
+                    </div>
+                  </div>
                   <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
                     <p className="text-foreground leading-relaxed text-sm sm:text-base">
                       {comment.originalText}
                     </p>
                   </div>
                     <div className="space-y-3 mt-4">
-                      <div className="flex items-center gap-6">
-                        <div className="flex items-center space-x-2 pointer-events-none">
-                          <Checkbox id={`concerning-${comment.id}`} checked={comment.concerning || false} />
-                          <label htmlFor={`concerning-${comment.id}`} className="text-sm font-medium leading-none">
-                            Concerning
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2 pointer-events-none">
-                          <Checkbox id={`identifiable-${comment.id}`} checked={comment.identifiable || false} />
-                          <label htmlFor={`identifiable-${comment.id}`} className="text-sm font-medium leading-none">
-                            Identifiable
-                          </label>
-                        </div>
-                      </div>
                     {comment.aiReasoning && !comment.hideAiResponse && getCommentStatus(comment) !== 'No Changes Needed' && <div className="p-2 rounded-lg bg-muted/50 border">
                         <p className="text-xs text-muted-foreground">
                           <strong>AI:</strong> {comment.aiReasoning}
