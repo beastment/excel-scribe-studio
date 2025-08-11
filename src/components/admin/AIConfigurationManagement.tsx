@@ -28,7 +28,7 @@ const MODELS = {
     { value: 'gpt-4o', label: 'GPT-4o' }
   ],
   bedrock: [
-    { value: 'anthropic.claude-3-5-sonnet-20241022-v2:0', label: 'Claude 3.5 Sonnet v2' },
+    { value: 'anthropic.claude-v2:1', label: 'Claude Sonnet 4' },
     { value: 'anthropic.claude-3-haiku-20240307-v1:0', label: 'Claude 3 Haiku' },
     { value: 'amazon.titan-text-lite-v1', label: 'Amazon Titan Text G1 - Lite' }
   ]
