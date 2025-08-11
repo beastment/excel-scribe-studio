@@ -26,9 +26,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   onCommentsUpdate,
   onImportComments
 }) => {
-  const { user } = useAuth();
-  const { sessions, loading: sessionsLoading, saving, loadSessions, saveSession, loadSession, deleteSession, deleteAllSessions } = useCommentSessions();
-  
+  const {
+    user
+  } = useAuth();
+  const {
+    sessions,
+    loading: sessionsLoading,
+    saving,
+    loadSessions,
+    saveSession,
+    loadSession,
+    deleteSession,
+    deleteAllSessions
+  } = useCommentSessions();
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -41,7 +51,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [hasScanRun, setHasScanRun] = useState(false);
-  
+
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
@@ -83,14 +93,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const handleTextChange = (commentId: string, newText: string) => {
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
-
     const updatedComments = comments.map(c => c.id === commentId ? {
       ...c,
       text: newText,
       // Automatically switch to edit mode when user starts typing something different
       mode: newText !== c.originalText && newText !== c.redactedText && newText !== c.rephrasedText ? 'edit' : c.mode,
       // Hide AI response when user starts editing and the comment originally had "No Changes Needed" status
-      hideAiResponse: c.hideAiResponse || (newText !== c.originalText && c.aiReasoning && !c.concerning && !c.identifiable)
+      hideAiResponse: c.hideAiResponse || newText !== c.originalText && c.aiReasoning && !c.concerning && !c.identifiable
     } : c);
     onCommentsUpdate(updatedComments);
   };
@@ -194,7 +203,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       toast.error('Please enter a session name');
       return;
     }
-
     const scrollPosition = scrollContainerRef.current?.scrollTop || 0;
     const success = await saveSession(sessionName, comments, hasScanRun, defaultMode, scrollPosition);
     if (success) {
@@ -202,7 +210,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       setSessionName('');
     }
   };
-
   const handleLoadSession = async (sessionId: string) => {
     const session = await loadSession(sessionId);
     if (session) {
@@ -210,7 +217,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       setHasScanRun(session.has_scan_run);
       setDefaultMode(session.default_mode);
       setShowLoadDialog(false);
-      
+
       // Restore scroll position after a brief delay to ensure content is rendered
       if (session.scroll_position && scrollContainerRef.current) {
         setTimeout(() => {
@@ -221,15 +228,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
     }
   };
-
   const handleDeleteSession = async (sessionId: string) => {
     await deleteSession(sessionId);
   };
-
   const handleDeleteAllSessions = async () => {
     await deleteAllSessions();
   };
-
   const exportToExcel = () => {
     const exportData = comments.map((comment, index) => ({
       'Row': comment.originalRow || index + 1,
@@ -283,7 +287,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     if (!comment.aiReasoning) {
       return 'No Changes Needed';
     }
-    
+
     // Check if comment has been manually edited and differs from both original AND AI suggestions
     if (comment.mode === 'edit' || comment.text !== comment.originalText && comment.text !== comment.redactedText && comment.text !== comment.rephrasedText) {
       return 'Edited';
@@ -347,16 +351,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               Import Comments
             </Button>
           
-          {user && (
-            <>
+          {user && <>
               <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
                 <DialogTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    className="gap-2" 
-                    disabled={comments.length === 0}
-                    onClick={() => setSessionName(getCurrentDateTimeString())}
-                  >
+                  <Button variant="outline" className="gap-2" disabled={comments.length === 0} onClick={() => setSessionName(getCurrentDateTimeString())}>
                     <Save className="w-4 h-4" />
                     Save Progress
                   </Button>
@@ -371,12 +369,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   <div className="space-y-4">
                     <div>
                       <Label htmlFor="session-name">Session Name</Label>
-                      <Input
-                        id="session-name"
-                        value={sessionName}
-                        onChange={(e) => setSessionName(e.target.value)}
-                        placeholder="Enter a name for this session"
-                      />
+                      <Input id="session-name" value={sessionName} onChange={e => setSessionName(e.target.value)} placeholder="Enter a name for this session" />
                     </div>
                   </div>
                   <DialogFooter>
@@ -405,15 +398,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 max-h-96 overflow-y-auto">
-                    {sessionsLoading ? (
-                      <div className="text-center py-8">Loading sessions...</div>
-                    ) : sessions.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
+                    {sessionsLoading ? <div className="text-center py-8">Loading sessions...</div> : sessions.length === 0 ? <div className="text-center py-8 text-muted-foreground">
                         No saved sessions found
-                      </div>
-                    ) : (
-                      sessions.map((session) => (
-                        <Card key={session.id} className="p-4">
+                      </div> : sessions.map(session => <Card key={session.id} className="p-4">
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <h4 className="font-medium">{session.session_name}</h4>
@@ -427,10 +414,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                               </p>
                             </div>
                             <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => handleLoadSession(session.id)}
-                              >
+                              <Button size="sm" onClick={() => handleLoadSession(session.id)}>
                                 Load
                               </Button>
                               <AlertDialog>
@@ -456,12 +440,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                               </AlertDialog>
                             </div>
                           </div>
-                        </Card>
-                      ))
-                    )}
+                        </Card>)}
                     
-                    {sessions.length > 0 && (
-                      <div className="pt-4 border-t">
+                    {sessions.length > 0 && <div className="pt-4 border-t">
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="outline" className="w-full gap-2 text-destructive">
@@ -484,13 +465,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
-                      </div>
-                    )}
+                      </div>}
                   </div>
                 </DialogContent>
               </Dialog>
-            </>
-          )}
+            </>}
           </div>
           
           <div className="flex flex-wrap gap-2">
@@ -513,11 +492,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             </div>
           </div>
           
-          {!user && comments.length > 0 && (
-            <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md border">
+          {!user && comments.length > 0 && <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md border">
               💡 Sign in to save your progress
-            </div>
-          )}
+            </div>}
           
           {/* Progress Indicator */}
           {isScanning && <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/30">
@@ -529,8 +506,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         </div>
         
         <div>
-          <h2 className="text-2xl font-bold mb-1">Comment Editor</h2>
-          <p className="text-muted-foreground text-center">
+          <h2 className="text-2xl font-bold mb-1 px-0 mx-[80px]">Comment Editor</h2>
+          <p className="text-muted-foreground text-center px-0 mx-[21px]">
             {filteredComments.length} comments
             {concerningCount > 0 && ` • ${concerningCount} concerning`}
             {identifiableCount > 0 && ` • ${identifiableCount} identifiable`}
@@ -688,21 +665,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                    
                    {/* Content Area */}
                    {comment.mode === 'edit' || focusedCommentId === comment.id ? <div className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
-                       <Textarea 
-                         value={comment.text} 
-                         onChange={e => {
-                           handleTextChange(comment.id, e.target.value);
-                         }} 
-                         onFocus={() => {
-                           setFocusedCommentId(comment.id);
-                         }} 
-                         onBlur={() => {
-                           setFocusedCommentId(null);
-                         }} 
-                         autoFocus={focusedCommentId === comment.id}
-                         className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0" 
-                         placeholder="Edit your comment..." 
-                       />
+                       <Textarea value={comment.text} onChange={e => {
+                      handleTextChange(comment.id, e.target.value);
+                    }} onFocus={() => {
+                      setFocusedCommentId(comment.id);
+                    }} onBlur={() => {
+                      setFocusedCommentId(null);
+                    }} autoFocus={focusedCommentId === comment.id} className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0" placeholder="Edit your comment..." />
                      </div> : <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors" onClick={() => setFocusedCommentId(comment.id)}>
                         <p className="text-foreground leading-relaxed text-sm sm:text-base">
                           {comment.text}
