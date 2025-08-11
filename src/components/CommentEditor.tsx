@@ -285,6 +285,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     return acc;
   }, {} as Record<string, number>);
   const getCommentStatus = (comment: CommentData) => {
+    // If no scan has been run yet, show "Scan Required"
+    if (!hasScanRun) {
+      return 'Scan Required';
+    }
+
     // If the comment was never processed by AI (no aiReasoning), keep it as "No Changes Needed"
     if (!comment.aiReasoning) {
       return 'No Changes Needed';
