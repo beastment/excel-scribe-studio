@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { BrainCircuit, Save, RotateCcw } from 'lucide-react';
 
 interface AIConfiguration {
   id: string;
+  scanner_type: string;
   provider: string;
   model: string;
   analysis_prompt: string;
@@ -34,36 +36,45 @@ const MODELS = {
   ]
 };
 
+const SCANNER_CONFIGS = [
+  { type: 'scan_a', label: 'Scan A', description: 'Primary AI scanner for comment analysis' },
+  { type: 'scan_b', label: 'Scan B', description: 'Secondary AI scanner for validation' },
+  { type: 'adjudicator', label: 'Adjudicator', description: 'AI system to resolve conflicts between scanners' }
+];
+
 export const AIConfigurationManagement = () => {
   const { toast } = useToast();
-  const [config, setConfig] = useState<AIConfiguration | null>(null);
+  const [configs, setConfigs] = useState<Record<string, AIConfiguration>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState('scan_a');
 
   useEffect(() => {
-    fetchConfiguration();
+    fetchConfigurations();
   }, []);
 
-  const fetchConfiguration = async () => {
+  const fetchConfigurations = async () => {
     try {
       const { data, error } = await supabase
         .from('ai_configurations')
         .select('*')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+        .order('scanner_type');
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching AI configuration:', error);
+      if (error) {
+        console.error('Error fetching AI configurations:', error);
         toast({
           title: "Error",
-          description: "Failed to load AI configuration",
+          description: "Failed to load AI configurations",
           variant: "destructive",
         });
         return;
       }
 
-      setConfig(data);
+      const configMap: Record<string, AIConfiguration> = {};
+      data?.forEach(config => {
+        configMap[config.scanner_type] = config;
+      });
+      setConfigs(configMap);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -71,7 +82,8 @@ export const AIConfigurationManagement = () => {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (scannerType: string) => {
+    const config = configs[scannerType];
     if (!config) return;
 
     setSaving(true);
@@ -87,7 +99,7 @@ export const AIConfigurationManagement = () => {
         console.error('Error saving AI configuration:', error);
         toast({
           title: "Error",
-          description: "Failed to save AI configuration",
+          description: `Failed to save ${SCANNER_CONFIGS.find(s => s.type === scannerType)?.label} configuration`,
           variant: "destructive",
         });
         return;
@@ -95,7 +107,7 @@ export const AIConfigurationManagement = () => {
 
       toast({
         title: "Success",
-        description: "AI configuration saved successfully",
+        description: `${SCANNER_CONFIGS.find(s => s.type === scannerType)?.label} configuration saved successfully`,
       });
     } catch (error) {
       console.error('Error:', error);
@@ -109,12 +121,130 @@ export const AIConfigurationManagement = () => {
     }
   };
 
-  const handleReset = () => {
-    fetchConfiguration();
+  const handleReset = (scannerType: string) => {
+    fetchConfigurations();
     toast({
       title: "Reset",
-      description: "Configuration reset to saved values",
+      description: `${SCANNER_CONFIGS.find(s => s.type === scannerType)?.label} configuration reset to saved values`,
     });
+  };
+
+  const updateConfig = (scannerType: string, updates: Partial<AIConfiguration>) => {
+    setConfigs(prev => ({
+      ...prev,
+      [scannerType]: {
+        ...prev[scannerType],
+        ...updates
+      }
+    }));
+  };
+
+  const renderConfigurationTab = (scannerConfig: typeof SCANNER_CONFIGS[0]) => {
+    const config = configs[scannerConfig.type];
+    
+    if (!config) {
+      return (
+        <div className="space-y-4">
+          <p className="text-muted-foreground">No configuration found for {scannerConfig.label}</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <p className="text-sm text-muted-foreground">{scannerConfig.description}</p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor={`provider-${scannerConfig.type}`}>AI Provider</Label>
+            <Select
+              value={config.provider}
+              onValueChange={(value) => {
+                const newModel = MODELS[value as keyof typeof MODELS]?.[0]?.value || '';
+                updateConfig(scannerConfig.type, { provider: value, model: newModel });
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {PROVIDERS.map((provider) => (
+                  <SelectItem key={provider.value} value={provider.value}>
+                    {provider.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`model-${scannerConfig.type}`}>Model</Label>
+            <Select
+              value={config.model}
+              onValueChange={(value) => updateConfig(scannerConfig.type, { model: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent>
+                {MODELS[config.provider as keyof typeof MODELS]?.map((model) => (
+                  <SelectItem key={model.value} value={model.value}>
+                    {model.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`analysis_prompt-${scannerConfig.type}`}>Analysis Prompt</Label>
+          <Textarea
+            id={`analysis_prompt-${scannerConfig.type}`}
+            value={config.analysis_prompt}
+            onChange={(e) => updateConfig(scannerConfig.type, { analysis_prompt: e.target.value })}
+            rows={8}
+            placeholder="Enter the prompt used for analyzing comments..."
+            className="font-mono text-sm"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`redact_prompt-${scannerConfig.type}`}>Redaction Prompt</Label>
+          <Textarea
+            id={`redact_prompt-${scannerConfig.type}`}
+            value={config.redact_prompt}
+            onChange={(e) => updateConfig(scannerConfig.type, { redact_prompt: e.target.value })}
+            rows={4}
+            placeholder="Enter the prompt used for redacting comments..."
+            className="font-mono text-sm"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`rephrase_prompt-${scannerConfig.type}`}>Rephrase Prompt</Label>
+          <Textarea
+            id={`rephrase_prompt-${scannerConfig.type}`}
+            value={config.rephrase_prompt}
+            onChange={(e) => updateConfig(scannerConfig.type, { rephrase_prompt: e.target.value })}
+            rows={4}
+            placeholder="Enter the prompt used for rephrasing comments..."
+            className="font-mono text-sm"
+          />
+        </div>
+
+        <div className="flex gap-3 pt-4">
+          <Button onClick={() => handleSave(scannerConfig.type)} disabled={saving}>
+            <Save className="w-4 h-4 mr-2" />
+            {saving ? 'Saving...' : `Save ${scannerConfig.label}`}
+          </Button>
+          <Button variant="outline" onClick={() => handleReset(scannerConfig.type)}>
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Reset
+          </Button>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -133,22 +263,6 @@ export const AIConfigurationManagement = () => {
     );
   }
 
-  if (!config) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BrainCircuit className="w-5 h-5" />
-            AI Configuration
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">No AI configuration found</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -157,96 +271,22 @@ export const AIConfigurationManagement = () => {
           AI Configuration
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="provider">AI Provider</Label>
-            <Select
-              value={config.provider}
-              onValueChange={(value) => {
-                const newModel = MODELS[value as keyof typeof MODELS]?.[0]?.value || '';
-                setConfig({ ...config, provider: value, model: newModel });
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {PROVIDERS.map((provider) => (
-                  <SelectItem key={provider.value} value={provider.value}>
-                    {provider.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
-            <Select
-              value={config.model}
-              onValueChange={(value) => setConfig({ ...config, model: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent>
-                {MODELS[config.provider as keyof typeof MODELS]?.map((model) => (
-                  <SelectItem key={model.value} value={model.value}>
-                    {model.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="analysis_prompt">Analysis Prompt</Label>
-          <Textarea
-            id="analysis_prompt"
-            value={config.analysis_prompt}
-            onChange={(e) => setConfig({ ...config, analysis_prompt: e.target.value })}
-            rows={8}
-            placeholder="Enter the prompt used for analyzing comments..."
-            className="font-mono text-sm"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="redact_prompt">Redaction Prompt</Label>
-          <Textarea
-            id="redact_prompt"
-            value={config.redact_prompt}
-            onChange={(e) => setConfig({ ...config, redact_prompt: e.target.value })}
-            rows={4}
-            placeholder="Enter the prompt used for redacting comments..."
-            className="font-mono text-sm"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="rephrase_prompt">Rephrase Prompt</Label>
-          <Textarea
-            id="rephrase_prompt"
-            value={config.rephrase_prompt}
-            onChange={(e) => setConfig({ ...config, rephrase_prompt: e.target.value })}
-            rows={4}
-            placeholder="Enter the prompt used for rephrasing comments..."
-            className="font-mono text-sm"
-          />
-        </div>
-
-        <div className="flex gap-3 pt-4">
-          <Button onClick={handleSave} disabled={saving}>
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? 'Saving...' : 'Save Configuration'}
-          </Button>
-          <Button variant="outline" onClick={handleReset}>
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Reset
-          </Button>
-        </div>
+      <CardContent>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            {SCANNER_CONFIGS.map((scannerConfig) => (
+              <TabsTrigger key={scannerConfig.type} value={scannerConfig.type}>
+                {scannerConfig.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          
+          {SCANNER_CONFIGS.map((scannerConfig) => (
+            <TabsContent key={scannerConfig.type} value={scannerConfig.type} className="mt-6">
+              {renderConfigurationTab(scannerConfig)}
+            </TabsContent>
+          ))}
+        </Tabs>
       </CardContent>
     </Card>
   );

@@ -23,19 +23,19 @@ export type Database = {
           provider: string
           redact_prompt: string
           rephrase_prompt: string
+          scanner_type: string
           updated_at: string
-          updated_by: string | null
         }
         Insert: {
-          analysis_prompt?: string
+          analysis_prompt: string
           created_at?: string
           id?: string
-          model?: string
-          provider?: string
-          redact_prompt?: string
-          rephrase_prompt?: string
+          model: string
+          provider: string
+          redact_prompt: string
+          rephrase_prompt: string
+          scanner_type: string
           updated_at?: string
-          updated_by?: string | null
         }
         Update: {
           analysis_prompt?: string
@@ -45,8 +45,8 @@ export type Database = {
           provider?: string
           redact_prompt?: string
           rephrase_prompt?: string
+          scanner_type?: string
           updated_at?: string
-          updated_by?: string | null
         }
         Relationships: []
       }

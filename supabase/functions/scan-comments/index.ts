@@ -25,114 +25,145 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get AI configuration
-    const { data: config, error: configError } = await supabase
+    // Fetch all scanner configurations
+    const { data: configs, error: configError } = await supabase
       .from('ai_configurations')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      .select('*');
 
     if (configError) {
-      console.error('Error fetching AI configuration:', configError);
-      throw new Error('Failed to fetch AI configuration');
+      console.error('Failed to fetch AI configurations:', configError);
+      throw new Error('Failed to load AI configurations');
     }
 
-    if (!config) {
-      throw new Error('No AI configuration found');
+    if (!configs || configs.length === 0) {
+      throw new Error('No AI configurations found');
     }
 
-    // Validate required API keys based on provider
-    if (config.provider === 'openai') {
-      const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-      if (!openAIApiKey) {
-        throw new Error('OpenAI API key not configured');
+    const scanA = configs.find(c => c.scanner_type === 'scan_a');
+    const scanB = configs.find(c => c.scanner_type === 'scan_b');
+    const adjudicator = configs.find(c => c.scanner_type === 'adjudicator');
+
+    if (!scanA || !scanB || !adjudicator) {
+      throw new Error('Missing required scanner configurations');
+    }
+
+    // Validate API keys based on providers
+    const providers = [scanA.provider, scanB.provider, adjudicator.provider];
+    for (const provider of providers) {
+      if (provider === 'openai' && !Deno.env.get('OPENAI_API_KEY')) {
+        throw new Error('OpenAI API key is required');
       }
-    } else if (config.provider === 'bedrock') {
-      const awsAccessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
-      const awsSecretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-      const awsRegion = Deno.env.get('AWS_REGION');
-      if (!awsAccessKey || !awsSecretKey || !awsRegion) {
-        throw new Error('AWS credentials not configured');
+      if (provider === 'bedrock') {
+        if (!Deno.env.get('AWS_ACCESS_KEY_ID') || !Deno.env.get('AWS_SECRET_ACCESS_KEY') || !Deno.env.get('AWS_REGION')) {
+          throw new Error('AWS credentials are required for Bedrock');
+        }
       }
     }
 
     const scannedComments = [];
+    let summary = { total: comments.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
 
-    // Process comments in batches to avoid rate limits
     for (const comment of comments) {
-      console.log(`Scanning comment ${comment.id}...`);
-      
-      const analysisPrompt = config.analysis_prompt.replace('{comment}', comment.text);
-
       try {
-        const result = await callAI(config.provider, config.model, analysisPrompt, 'analysis');
-        
-        if (!result || typeof result.concerning === 'undefined' || typeof result.identifiable === 'undefined') {
-          throw new Error('Invalid AI response format');
-        }
-        
-        let redactedText = '';
-        let rephrasedText = '';
-        
-        // If the comment is flagged, generate redacted and rephrased versions
-        if (result.concerning || result.identifiable) {
-          // Generate redacted version
-          const redactPrompt = config.redact_prompt.replace('{comment}', comment.text);
-          const redactedResponse = await callAI(config.provider, config.model, redactPrompt, 'text');
-          if (redactedResponse) {
-            redactedText = redactedResponse.trim();
-          }
+        console.log(`Processing comment ${comment.id}...`);
 
-          // Generate rephrased version
-          const rephrasePrompt = config.rephrase_prompt.replace('{comment}', comment.text);
-          const rephrasedResponse = await callAI(config.provider, config.model, rephrasePrompt, 'text');
-          if (rephrasedResponse) {
-            rephrasedText = rephrasedResponse.trim();
-          }
+        // Run Scan A and Scan B in parallel
+        const [scanAResult, scanBResult] = await Promise.all([
+          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, comment.text, 'analysis'),
+          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, comment.text, 'analysis')
+        ]);
+
+        let finalResult = null;
+        let adjudicationResult = null;
+        let needsAdjudication = false;
+
+        // Check if Scan A and Scan B results differ
+        if (scanAResult.concerning !== scanBResult.concerning || 
+            scanAResult.identifiable !== scanBResult.identifiable) {
+          needsAdjudication = true;
+          summary.needsAdjudication++;
+
+          // Call adjudicator
+          const adjudicatorPrompt = `${adjudicator.analysis_prompt}
+
+Original comment: "${comment.text}"
+
+Scan A Result: ${JSON.stringify(scanAResult)}
+Scan B Result: ${JSON.stringify(scanBResult)}`;
+
+          adjudicationResult = await callAI(
+            adjudicator.provider, 
+            adjudicator.model, 
+            adjudicatorPrompt, 
+            '', 
+            'analysis'
+          );
+
+          finalResult = adjudicationResult;
+        } else {
+          // Scan A and Scan B agree, use Scan A result
+          finalResult = scanAResult;
         }
-        
-        // Determine the final text based on the mode (or defaultMode for initial scans)
-        const mode = comment.mode || defaultMode;
-        let finalText = comment.text;
-        
-        // If the comment is flagged and we have processed versions, use them based on mode
-        if (result.concerning || result.identifiable) {
-          if (mode === 'redact' && redactedText) {
-            finalText = redactedText;
-          } else if (mode === 'rephrase' && rephrasedText) {
-            finalText = rephrasedText;
-          }
-          // For 'revert' mode or if no processed text available, keep original
+
+        // Update summary
+        if (finalResult.concerning) summary.concerning++;
+        if (finalResult.identifiable) summary.identifiable++;
+
+        let redactedText = null;
+        let rephrasedText = null;
+
+        // If flagged, run redaction and rephrase prompts
+        if (finalResult.concerning || finalResult.identifiable) {
+          const activeConfig = needsAdjudication ? adjudicator : scanA;
+          
+          [redactedText, rephrasedText] = await Promise.all([
+            callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, comment.text, 'text'),
+            callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, comment.text, 'text')
+          ]);
         }
-        
-        scannedComments.push({
+
+        const processedComment = {
           ...comment,
-          concerning: result.concerning || false,
-          identifiable: result.identifiable || false,
-          aiReasoning: result.reasoning,
-          redactedText: redactedText,
-          rephrasedText: rephrasedText,
-          text: finalText,
-          mode: mode,
-          approved: false
-        });
+          concerning: finalResult.concerning,
+          identifiable: finalResult.identifiable,
+          aiReasoning: finalResult.reasoning,
+          redactedText,
+          rephrasedText,
+          mode: finalResult.concerning || finalResult.identifiable ? defaultMode : 'original',
+          approved: false,
+          hideAiResponse: false,
+          // Debug information for admin users
+          debugInfo: {
+            scanAResult,
+            scanBResult,
+            adjudicationResult,
+            needsAdjudication,
+            finalDecision: finalResult
+          }
+        };
 
-        // Small delay to respect rate limits (increased for multiple API calls)
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Set final text based on mode
+        if (processedComment.mode === 'redact' && redactedText) {
+          processedComment.text = redactedText;
+        } else if (processedComment.mode === 'rephrase' && rephrasedText) {
+          processedComment.text = rephrasedText;
+        }
 
+        scannedComments.push(processedComment);
       } catch (error) {
-        console.error(`Error scanning comment ${comment.id}:`, error);
-        // Keep original comment if scanning fails
+        console.error(`Error processing comment ${comment.id}:`, error);
+        // Include the original comment with error info
         scannedComments.push({
           ...comment,
           concerning: false,
           identifiable: false,
-          aiReasoning: 'Scan failed',
-          redactedText: '',
-          rephrasedText: '',
-          mode: defaultMode,
-          approved: false
+          aiReasoning: `Error processing: ${error.message}`,
+          mode: 'original',
+          approved: false,
+          hideAiResponse: false,
+          debugInfo: {
+            error: error.message
+          }
         });
       }
     }
@@ -159,20 +190,25 @@ serve(async (req) => {
   }
 
   // Helper function to call AI services
-  async function callAI(provider: string, model: string, prompt: string, responseType: 'analysis' | 'text') {
+  async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text') {
     if (provider === 'openai') {
-      return await callOpenAI(model, prompt, responseType);
+      return await callOpenAI(model, prompt, commentText, responseType);
     } else if (provider === 'bedrock') {
-      return await callBedrock(model, prompt, responseType);
+      return await callBedrock(model, prompt, commentText, responseType);
     } else {
       throw new Error(`Unsupported AI provider: ${provider}`);
     }
   }
 
   // OpenAI API call
-  async function callOpenAI(model: string, prompt: string, responseType: 'analysis' | 'text') {
+  async function callOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text') {
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
     
+    const messages = [
+      { role: 'system', content: prompt },
+      { role: 'user', content: commentText }
+    ];
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -181,40 +217,37 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: model,
-        messages: [
-          {
-            role: 'system',
-            content: responseType === 'analysis' 
-              ? 'You are an expert at analyzing employee feedback for safety concerns and identifiable information. Be conservative with "concerning" - only flag genuine safety issues. For "identifiable", ignore positive identifications like praise.'
-              : 'You are an expert at processing employee feedback text. Follow the instructions precisely.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: responseType === 'analysis' ? 0.1 : 0.2,
-        max_tokens: responseType === 'analysis' ? 200 : 300
+        messages: messages,
+        temperature: 0.1,
       }),
     });
 
     if (!response.ok) {
-      console.error(`OpenAI API error: ${response.status}`);
-      throw new Error('OpenAI API request failed');
+      const errorText = await response.text();
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
     const content = data.choices[0].message.content;
-    
+
     if (responseType === 'analysis') {
-      return JSON.parse(content);
+      try {
+        return JSON.parse(content);
+      } catch {
+        // Fallback parsing
+        return {
+          concerning: content.toLowerCase().includes('true') && content.toLowerCase().includes('concerning'),
+          identifiable: content.toLowerCase().includes('true') && content.toLowerCase().includes('identifiable'),
+          reasoning: content
+        };
+      }
     } else {
       return content;
     }
   }
 
   // AWS Bedrock API call
-  async function callBedrock(model: string, prompt: string, responseType: 'analysis' | 'text') {
+  async function callBedrock(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text') {
     const awsAccessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
     const awsSecretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
     const awsRegion = Deno.env.get('AWS_REGION') || 'us-east-1';
@@ -227,23 +260,16 @@ serve(async (req) => {
     let requestBody;
     if (model.startsWith('anthropic.claude')) {
       requestBody = JSON.stringify({
-        anthropic_version: "bedrock-2023-05-31",
-        max_tokens: responseType === 'analysis' ? 200 : 300,
-        temperature: responseType === 'analysis' ? 0.1 : 0.2,
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ]
+        prompt: `\n\nHuman: ${prompt}\n\n${commentText}\n\nAssistant:`,
+        max_tokens_to_sample: 1000,
+        temperature: 0.1,
       });
     } else if (model.startsWith('amazon.titan')) {
       requestBody = JSON.stringify({
-        inputText: prompt,
+        inputText: `${prompt}\n\n${commentText}`,
         textGenerationConfig: {
-          maxTokenCount: responseType === 'analysis' ? 200 : 300,
-          temperature: responseType === 'analysis' ? 0.1 : 0.2,
-          topP: 0.9
+          maxTokenCount: 1000,
+          temperature: 0.1,
         }
       });
     } else {
@@ -278,13 +304,22 @@ serve(async (req) => {
     
     let content;
     if (model.startsWith('anthropic.claude')) {
-      content = data.content[0].text;
+      content = data.completion;
     } else if (model.startsWith('amazon.titan')) {
       content = data.results[0].outputText;
     }
 
     if (responseType === 'analysis') {
-      return JSON.parse(content);
+      try {
+        return JSON.parse(content);
+      } catch {
+        // Fallback parsing
+        return {
+          concerning: content.toLowerCase().includes('true') && content.toLowerCase().includes('concerning'),
+          identifiable: content.toLowerCase().includes('true') && content.toLowerCase().includes('identifiable'),
+          reasoning: content
+        };
+      }
     } else {
       return content;
     }
