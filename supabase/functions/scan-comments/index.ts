@@ -252,10 +252,14 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     const awsSecretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
     const awsRegion = Deno.env.get('AWS_REGION') || 'us-east-1';
 
-    // Create AWS signature
-    const service = 'bedrock';
-    const host = `bedrock-runtime.${awsRegion}.amazonaws.com`;
-    const endpoint = `https://${host}/model/${model}/invoke`;
+    console.log(`Bedrock call - Model: ${model}, Region: ${awsRegion}, AccessKey: ${awsAccessKey ? 'present' : 'missing'}`);
+
+    if (!awsAccessKey || !awsSecretKey) {
+      throw new Error('AWS credentials not configured');
+    }
+
+    // Use AWS SDK v3 style endpoint for Bedrock
+    const endpoint = `https://bedrock-runtime.${awsRegion}.amazonaws.com/model/${model}/invoke`;
 
     let requestBody;
     if (model.startsWith('anthropic.claude')) {
@@ -276,21 +280,46 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
       throw new Error(`Unsupported Bedrock model: ${model}`);
     }
 
-    // Simple AWS4 signature (basic implementation)
+    // Create proper AWS v4 signature
+    const host = `bedrock-runtime.${awsRegion}.amazonaws.com`;
+    const service = 'bedrock';
     const now = new Date();
     const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, '');
     const dateStamp = amzDate.substr(0, 8);
     
-    const headers = {
-      'Authorization': await createAWSSignature(awsAccessKey, awsSecretKey, awsRegion, service, host, 'POST', '/', '', requestBody, amzDate, dateStamp),
-      'Content-Type': 'application/json',
-      'X-Amz-Date': amzDate,
-      'X-Amz-Target': 'com.amazon.bedrock.client.BedrockRuntime.InvokeModel'
-    };
-
+    const canonicalUri = `/model/${model}/invoke`;
+    const canonicalQuerystring = '';
+    const canonicalHeaders = `host:${host}\nx-amz-date:${amzDate}\n`;
+    const signedHeaders = 'host;x-amz-date';
+    
+    // Hash the payload
+    const payloadHash = await sha256(requestBody);
+    
+    // Create canonical request
+    const canonicalRequest = `POST\n${canonicalUri}\n${canonicalQuerystring}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+    
+    // Create string to sign
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const credentialScope = `${dateStamp}/${awsRegion}/${service}/aws4_request`;
+    const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${await sha256(canonicalRequest)}`;
+    
+    // Calculate signature
+    const signingKey = await getSignatureKey(awsSecretKey, dateStamp, awsRegion, service);
+    const signature = await hmacSha256(signingKey, stringToSign);
+    
+    // Create authorization header
+    const authorizationHeader = `${algorithm} Credential=${awsAccessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+    
+    console.log(`Bedrock request to: ${endpoint}`);
+    console.log(`Authorization: ${authorizationHeader}`);
+    
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers,
+      headers: {
+        'Authorization': authorizationHeader,
+        'Content-Type': 'application/json',
+        'X-Amz-Date': amzDate
+      },
       body: requestBody
     });
 
