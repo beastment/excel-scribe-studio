@@ -263,11 +263,27 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
 
     let requestBody;
     if (model.startsWith('anthropic.claude')) {
-      requestBody = JSON.stringify({
-        prompt: `\n\nHuman: ${prompt}\n\n${commentText}\n\nAssistant:`,
-        max_tokens_to_sample: 1000,
-        temperature: 0.1,
-      });
+      // For Claude 3.5+ models, use the messages API format
+      if (model.includes('claude-3') || model.includes('sonnet-4') || model.includes('haiku-3') || model.includes('opus-3')) {
+        requestBody = JSON.stringify({
+          anthropic_version: "bedrock-2023-05-31",
+          max_tokens: 1000,
+          temperature: 0.1,
+          messages: [
+            {
+              role: "user",
+              content: `${prompt}\n\n${commentText}`
+            }
+          ]
+        });
+      } else {
+        // Legacy Claude models
+        requestBody = JSON.stringify({
+          prompt: `\n\nHuman: ${prompt}\n\n${commentText}\n\nAssistant:`,
+          max_tokens_to_sample: 1000,
+          temperature: 0.1,
+        });
+      }
     } else if (model.startsWith('amazon.titan')) {
       requestBody = JSON.stringify({
         inputText: `${prompt}\n\n${commentText}`,
@@ -333,7 +349,13 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     
     let content;
     if (model.startsWith('anthropic.claude')) {
-      content = data.completion;
+      // For Claude 3.5+ models, use the new response format
+      if (model.includes('claude-3') || model.includes('sonnet-4') || model.includes('haiku-3') || model.includes('opus-3')) {
+        content = data.content?.[0]?.text || data.completion;
+      } else {
+        // Legacy Claude models
+        content = data.completion;
+      }
     } else if (model.startsWith('amazon.titan')) {
       content = data.results[0].outputText;
     }
