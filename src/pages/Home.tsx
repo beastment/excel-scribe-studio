@@ -183,7 +183,7 @@ const Home = () => {
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">Choose from our suite of specialized applications, each designed to supercharge a specific part of your feedback analysis workflow. No need to change providers, our offerings leverage your existing survey platform.</p>
           </div>
           
-          <div className="grid lg:grid-cols-2 gap-8">
+          <div className={`grid gap-8 ${apps.length === 1 ? 'lg:grid-cols-1 max-w-2xl mx-auto' : apps.length === 3 ? 'lg:grid-cols-2 xl:grid-cols-3' : 'lg:grid-cols-2'}`}>
             {apps.map((app, index) => {
               const isDisabled = !app.is_enabled;
               const isAdmin = userProfile?.role === 'admin';
