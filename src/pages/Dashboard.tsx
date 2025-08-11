@@ -191,9 +191,6 @@ const Dashboard = () => {
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-foreground mb-6">Admin Controls</h2>
             <div className="grid lg:grid-cols-1 gap-8 mb-8">
-              <UserManagement />
-            </div>
-            <div className="grid lg:grid-cols-1 gap-8 mb-8">
               <AppManagement />
             </div>
             <div className="grid lg:grid-cols-2 gap-8 mb-8">
@@ -293,6 +290,13 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* User Management - moved to bottom */}
+        {profile?.role === 'admin' && (
+          <div className="mt-8">
+            <UserManagement />
+          </div>
+        )}
       </div>
     </div>
   );

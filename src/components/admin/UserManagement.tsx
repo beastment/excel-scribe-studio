@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Users, Crown, User, Trash2, RefreshCw, ChevronDown, ChevronRight, Mail, AlertTriangle, Link2 } from 'lucide-react';
+import { Users, Crown, User, Trash2, RefreshCw, ChevronDown, ChevronRight, Mail, AlertTriangle, Link2, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SubscriptionManagement } from './SubscriptionManagement';
@@ -44,6 +44,9 @@ interface UserProfile {
   email?: string; // We'll need to fetch this separately
 }
 
+type SortField = 'full_name' | 'created_at' | 'updated_at' | 'last_login_at';
+type SortDirection = 'asc' | 'desc';
+
 export const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +55,8 @@ export const UserManagement: React.FC = () => {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [resending, setResending] = useState<string | null>(null);
   const [generatingLink, setGeneratingLink] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const { toast } = useToast();
 
   const fetchUsers = async () => {
@@ -59,7 +64,7 @@ export const UserManagement: React.FC = () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order(sortField, { ascending: sortDirection === 'asc' });
 
       if (error) {
         console.error('Error fetching users:', error);
@@ -264,9 +269,23 @@ export const UserManagement: React.FC = () => {
     setExpandedUsers(newExpanded);
   };
 
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />;
+  };
+
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [sortField, sortDirection]);
 
   if (loading) {
     return (
@@ -305,10 +324,42 @@ export const UserManagement: React.FC = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Last Updated</TableHead>
-                <TableHead>Last Login</TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-muted/50 select-none"
+                  onClick={() => handleSort('full_name')}
+                >
+                  <div className="flex items-center gap-1">
+                    Name
+                    {getSortIcon('full_name')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-muted/50 select-none"
+                  onClick={() => handleSort('created_at')}
+                >
+                  <div className="flex items-center gap-1">
+                    Created
+                    {getSortIcon('created_at')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-muted/50 select-none"
+                  onClick={() => handleSort('updated_at')}
+                >
+                  <div className="flex items-center gap-1">
+                    Last Updated
+                    {getSortIcon('updated_at')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-muted/50 select-none"
+                  onClick={() => handleSort('last_login_at')}
+                >
+                  <div className="flex items-center gap-1">
+                    Last Login
+                    {getSortIcon('last_login_at')}
+                  </div>
+                </TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
                 <TableHead className="text-right">Subscriptions</TableHead>
