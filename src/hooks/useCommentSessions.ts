@@ -11,6 +11,7 @@ export interface CommentSession {
   comments_data: CommentData[];
   has_scan_run: boolean;
   default_mode: 'redact' | 'rephrase';
+  scroll_position?: number;
   created_at: string;
   updated_at: string;
 }
@@ -64,7 +65,8 @@ export const useCommentSessions = () => {
     sessionName: string,
     comments: CommentData[],
     hasScanRun: boolean,
-    defaultMode: 'redact' | 'rephrase'
+    defaultMode: 'redact' | 'rephrase',
+    scrollPosition?: number
   ) => {
     if (!user) {
       toast.error('Please sign in to save your progress');
@@ -80,7 +82,8 @@ export const useCommentSessions = () => {
           session_name: sessionName,
           comments_data: comments as unknown as Json,
           has_scan_run: hasScanRun,
-          default_mode: defaultMode
+          default_mode: defaultMode,
+          scroll_position: scrollPosition
         });
 
       if (error) throw error;

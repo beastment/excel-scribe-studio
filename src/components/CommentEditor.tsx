@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, Download, Edit3, Check, X, User, Filter, Scan, AlertTriangle, Eye, EyeOff, ToggleLeft, ToggleRight, Upload, FileText, HelpCircle, Save, FolderOpen, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,6 +46,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   const [sessionName, setSessionName] = useState('');
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let filtered = comments.filter(comment => {
       const matchesSearch = comment.text.toLowerCase().includes(searchTerm.toLowerCase()) || comment.originalText.toLowerCase().includes(searchTerm.toLowerCase()) || comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase());
@@ -181,7 +182,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       return;
     }
 
-    const success = await saveSession(sessionName, comments, hasScanRun, defaultMode);
+    const scrollPosition = scrollContainerRef.current?.scrollTop || 0;
+    const success = await saveSession(sessionName, comments, hasScanRun, defaultMode, scrollPosition);
     if (success) {
       setShowSaveDialog(false);
       setSessionName('');
@@ -195,6 +197,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       setHasScanRun(session.has_scan_run);
       setDefaultMode(session.default_mode);
       setShowLoadDialog(false);
+      
+      // Restore scroll position after a brief delay to ensure content is rendered
+      if (session.scroll_position && scrollContainerRef.current) {
+        setTimeout(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = session.scroll_position!;
+          }
+        }, 100);
+      }
     }
   };
 
@@ -546,7 +557,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       </div>
 
       {/* Comments List - Scrollable Container */}
-      <div className="h-[70vh] overflow-y-auto border rounded-lg bg-background/50 backdrop-blur-sm">
+      <div ref={scrollContainerRef} className="h-[70vh] overflow-y-auto border rounded-lg bg-background/50 backdrop-blur-sm">
         <div className="space-y-4 p-4">
         {filteredComments.map((comment, index) => <Card key={comment.id} className={`p-4 sm:p-6 hover:shadow-md transition-all duration-300 animate-fade-in ${comment.approved ? 'bg-green-50 border-green-300 dark:bg-green-950/30 dark:border-green-800/50' : comment.concerning ? 'bg-red-100 border-red-300 dark:bg-red-950/30 dark:border-red-800/50' : comment.identifiable && !comment.concerning ? 'bg-red-50 border-red-200 dark:bg-red-950/10 dark:border-red-800/20' : ''}`}>
             <div className="space-y-4">
