@@ -605,83 +605,81 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
                 {/* Final Version Column */}
                 <div className="space-y-2">
-                  <div className="h-14 flex flex-col justify-between">
-                    <div className="flex items-center gap-2 h-6">
-                      <h4 className="text-sm font-medium text-muted-foreground">
-                        Final Version (Editable)
-                      </h4>
-                      <Badge variant="secondary" className="text-xs">
-                        {getCommentStatus(comment)}
-                      </Badge>
-                      
-                      {/* Approved checkbox moved here, right after the status badge */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="flex items-center space-x-2 ml-2">
-                            <Checkbox id={`approved-${comment.id}`} checked={comment.approved || false} onCheckedChange={() => toggleCommentCheck(comment.id, 'approved')} />
-                            <label htmlFor={`approved-${comment.id}`} className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                              Approved
-                            </label>
-                            <HelpCircle className="w-3 h-3 text-muted-foreground hover:text-foreground transition-colors cursor-help" />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            Marking as approved just indicates that you are finished looking at this comment. You do not need to approve items for them to appear in the export.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
+                  <div className="flex items-center gap-2 h-6">
+                    <h4 className="text-sm font-medium text-muted-foreground">
+                      Final Version (Editable)
+                    </h4>
+                    <Badge variant="secondary" className="text-xs">
+                      {getCommentStatus(comment)}
+                    </Badge>
                     
-                    {/* Mode Controls */}
-                    <div className="flex items-center gap-1 flex-wrap h-8">
-                      {getCommentStatus(comment) !== 'Scan Required' && <>
-                           {getCommentStatus(comment) === 'No Changes Needed' ? <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
-                              Revert
-                            </Button> : <>
-                              {/* Only show Redact/Rephrase buttons for comments flagged as concerning or identifiable */}
-                              {(comment.concerning || comment.identifiable) && <>
-                                <Button variant={comment.mode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'redact')} className="h-6 text-xs px-2">
-                                  Redact
-                                </Button>
-                                <Button variant={comment.mode === 'rephrase' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'rephrase')} className="h-6 text-xs px-2">
-                                  Rephrase
-                                </Button>
-                              </>}
-                              <Button variant={comment.mode === 'revert' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
-                                Revert
-                              </Button>
-                            </>}
-                        </>}
-                    </div>
+                    {/* Approved checkbox moved here, right after the status badge */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center space-x-2 ml-2">
+                          <Checkbox id={`approved-${comment.id}`} checked={comment.approved || false} onCheckedChange={() => toggleCommentCheck(comment.id, 'approved')} />
+                          <label htmlFor={`approved-${comment.id}`} className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                            Approved
+                          </label>
+                          <HelpCircle className="w-3 h-3 text-muted-foreground hover:text-foreground transition-colors cursor-help" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">
+                          Marking as approved just indicates that you are finished looking at this comment. You do not need to approve items for them to appear in the export.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                   
-                  {/* Content Area */}
-                  {comment.mode === 'edit' || focusedCommentId === comment.id ? <div className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
-                      <Textarea 
-                        value={comment.text} 
-                        onChange={e => {
-                          handleTextChange(comment.id, e.target.value);
-                        }} 
-                        onFocus={() => {
-                          setFocusedCommentId(comment.id);
-                        }} 
-                        onBlur={() => {
-                          setFocusedCommentId(null);
-                        }} 
-                        autoFocus={focusedCommentId === comment.id}
-                        className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0" 
-                        placeholder="Edit your comment..." 
-                      />
-                    </div> : <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors" onClick={() => setFocusedCommentId(comment.id)}>
-                       <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                         {comment.text}
-                       </p>
-                     </div>}
-                </div>
-              </div>
-            </div>
-          </Card>)}
+                   {/* Mode Controls */}
+                   <div className="flex items-center gap-1 flex-wrap h-8">
+                       {getCommentStatus(comment) !== 'Scan Required' && <>
+                            {getCommentStatus(comment) === 'No Changes Needed' ? <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
+                               Revert
+                             </Button> : <>
+                               {/* Only show Redact/Rephrase buttons for comments flagged as concerning or identifiable */}
+                               {(comment.concerning || comment.identifiable) && <>
+                                 <Button variant={comment.mode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'redact')} className="h-6 text-xs px-2">
+                                   Redact
+                                 </Button>
+                                 <Button variant={comment.mode === 'rephrase' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'rephrase')} className="h-6 text-xs px-2">
+                                   Rephrase
+                                 </Button>
+                               </>}
+                               <Button variant={comment.mode === 'revert' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
+                                 Revert
+                               </Button>
+                             </>}
+                         </>}
+                     </div>
+                   
+                   {/* Content Area */}
+                   {comment.mode === 'edit' || focusedCommentId === comment.id ? <div className="p-3 sm:p-4 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors">
+                       <Textarea 
+                         value={comment.text} 
+                         onChange={e => {
+                           handleTextChange(comment.id, e.target.value);
+                         }} 
+                         onFocus={() => {
+                           setFocusedCommentId(comment.id);
+                         }} 
+                         onBlur={() => {
+                           setFocusedCommentId(null);
+                         }} 
+                         autoFocus={focusedCommentId === comment.id}
+                         className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0" 
+                         placeholder="Edit your comment..." 
+                       />
+                     </div> : <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors" onClick={() => setFocusedCommentId(comment.id)}>
+                        <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                          {comment.text}
+                        </p>
+                      </div>}
+                 </div>
+               </div>
+             </div>
+           </Card>)}
       </div>
 
       {filteredComments.length === 0 && searchTerm && <Card className="p-8 text-center">
