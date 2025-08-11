@@ -508,19 +508,23 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           </p>
         </div>
         
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={exportToExcel} variant="outline" className="gap-2">
-            <Download className="w-4 h-4" />
-            Export
-          </Button>
-          <Button onClick={() => setShowConcerningOnly(!showConcerningOnly)} variant={showConcerningOnly ? "default" : "outline"} className="gap-2">
-            <AlertTriangle className="w-4 h-4" />
-            {showConcerningOnly ? 'Show All' : 'Show Concerning Only'}
-          </Button>
-          <Button onClick={() => setShowIdentifiableOnly(!showIdentifiableOnly)} variant={showIdentifiableOnly ? "default" : "outline"} className="gap-2">
-            {showIdentifiableOnly ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            {showIdentifiableOnly ? 'Show All' : 'Show Identifiable Only'}
-          </Button>
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={exportToExcel} variant="outline" className="gap-2">
+              <Download className="w-4 h-4" />
+              Export
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setShowConcerningOnly(!showConcerningOnly)} variant={showConcerningOnly ? "default" : "outline"} className="gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              {showConcerningOnly ? 'Show All' : 'Show Concerning Only'}
+            </Button>
+            <Button onClick={() => setShowIdentifiableOnly(!showIdentifiableOnly)} variant={showIdentifiableOnly ? "default" : "outline"} className="gap-2">
+              {showIdentifiableOnly ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              {showIdentifiableOnly ? 'Show All' : 'Show Identifiable Only'}
+            </Button>
+          </div>
         </div>
       </div>
 
