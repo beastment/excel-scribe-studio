@@ -323,6 +323,16 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     const signingKey = await getSignatureKey(awsSecretKey, dateStamp, awsRegion, service);
     const signature = await hmacSha256(signingKey, stringToSign);
     
+    // Debug logging
+    console.log(`AWS Debug - Model: ${model}`);
+    console.log(`AWS Debug - Region: ${awsRegion}`);
+    console.log(`AWS Debug - Service: ${service}`);
+    console.log(`AWS Debug - Host: ${host}`);
+    console.log(`AWS Debug - CanonicalUri: ${canonicalUri}`);
+    console.log(`AWS Debug - PayloadHash: ${payloadHash}`);
+    console.log(`AWS Debug - StringToSign: ${stringToSign}`);
+    console.log(`AWS Debug - Signature: ${signature}`);
+    
     // Create authorization header
     const authorizationHeader = `${algorithm} Credential=${awsAccessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
     
