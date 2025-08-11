@@ -40,6 +40,7 @@ interface UserProfile {
   role: 'admin' | 'user' | 'partner';
   created_at: string;
   updated_at: string;
+  last_login_at: string | null;
   email?: string; // We'll need to fetch this separately
 }
 
@@ -308,6 +309,7 @@ export const UserManagement: React.FC = () => {
                 <TableHead>Role</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Last Updated</TableHead>
+                <TableHead>Last Login</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
                 <TableHead className="text-right">Subscriptions</TableHead>
               </TableRow>
@@ -339,6 +341,9 @@ export const UserManagement: React.FC = () => {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDate(user.updated_at)}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {user.last_login_at ? formatDate(user.last_login_at) : 'Never'}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center gap-2 justify-end">
@@ -431,7 +436,7 @@ export const UserManagement: React.FC = () => {
                   
                   {expandedUsers.has(user.user_id) && (
                     <TableRow>
-                      <TableCell colSpan={6} className="p-0">
+                      <TableCell colSpan={7} className="p-0">
                         <div className="p-4 bg-gray-50 border-t">
                           <SubscriptionManagement 
                             userId={user.user_id} 

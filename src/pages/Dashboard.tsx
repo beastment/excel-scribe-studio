@@ -190,12 +190,14 @@ const Dashboard = () => {
         {profile?.role === 'admin' && (
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-foreground mb-6">Admin Controls</h2>
-            <div className="grid lg:grid-cols-2 gap-8 mb-8">
-              <MaintenanceToggle />
+            <div className="grid lg:grid-cols-1 gap-8 mb-8">
               <UserManagement />
             </div>
             <div className="grid lg:grid-cols-1 gap-8 mb-8">
               <AppManagement />
+            </div>
+            <div className="grid lg:grid-cols-2 gap-8 mb-8">
+              <MaintenanceToggle />
             </div>
           </div>
         )}
