@@ -219,7 +219,7 @@ const Index = () => {
           <div className="text-center max-w-4xl mx-auto">
             
             
-            <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+            <h1 className="text-4xl lg:text-6xl font-bold text-foreground mb-6 leading-tight">
               Comment
               <span className="bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent"> De-Identification</span>
             </h1>
