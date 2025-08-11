@@ -144,8 +144,7 @@ const CommentDeIdentification = () => {
                 </Badge>
                 <div className="text-4xl font-bold text-gray-900 mb-2">Pay only for what you need</div>
                 <div className="text-gray-600">$1.00 per comment processed for the first 1000 comments
-$0.50 per comment for the next 9,000
-$0.25 for each comment after that</div>
+$0.50 per comment for the next 9,000 $0.25 for each comment after that</div>
               </div>
               
               <div className="space-y-3 mb-8">
