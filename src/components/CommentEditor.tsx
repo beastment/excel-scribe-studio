@@ -557,6 +557,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     <div className="flex items-center gap-2 h-6">
                       <h4 className="text-sm font-medium text-muted-foreground">Demographics</h4>
                     </div>
+                    {/* Empty spacer to match the checkbox row in original comment column */}
+                    <div className="h-8"></div>
                     <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border">
                       {comment.demographics ? <div className="text-foreground leading-relaxed text-sm sm:text-base">
                           <div className="font-medium">{comment.demographics}</div>
@@ -603,8 +605,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
                 {/* Final Version Column */}
                 <div className="space-y-2">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
+                  <div className="h-14 flex flex-col justify-between">
+                    <div className="flex items-center gap-2 h-6">
                       <h4 className="text-sm font-medium text-muted-foreground">
                         Final Version (Editable)
                       </h4>
@@ -632,7 +634,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     </div>
                     
                     {/* Mode Controls */}
-                    <div className="flex items-center gap-1 flex-wrap">
+                    <div className="flex items-center gap-1 flex-wrap h-8">
                       {getCommentStatus(comment) !== 'Scan Required' && <>
                            {getCommentStatus(comment) === 'No Changes Needed' ? <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
                               Revert
