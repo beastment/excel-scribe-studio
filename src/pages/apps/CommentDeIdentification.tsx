@@ -151,7 +151,7 @@ $0.25 for each comment after that</div>
               <div className="space-y-3 mb-8">
                 <div className="flex items-center space-x-2">
                   <Check className="w-4 h-4 text-green-600" />
-                  <span className="text-gray-700">Advanced PII Detection</span>
+                  <span className="text-gray-700">Purchase as many as you need, or just upload your file for a quote</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Check className="w-4 h-4 text-green-600" />
