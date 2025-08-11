@@ -13,6 +13,7 @@ interface AppConfiguration {
   name: string;
   description: string | null;
   is_enabled: boolean;
+  is_hidden: boolean;
 }
 
 interface UserProfile {
@@ -37,6 +38,7 @@ const Home = () => {
       const { data, error } = await supabase
         .from('app_configurations')
         .select('*')
+        .eq('is_hidden', false) // Only fetch non-hidden apps
         .order('position');
 
       if (error) throw error;

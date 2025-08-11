@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Settings, Shield, BrainCircuit, ClipboardList, FileText, GripVertical } from 'lucide-react';
+import { Settings, Shield, BrainCircuit, ClipboardList, FileText, GripVertical, EyeOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
@@ -32,6 +32,7 @@ interface AppConfiguration {
   name: string;
   description: string | null;
   is_enabled: boolean;
+  is_hidden: boolean;
   position: number;
   created_at: string;
   updated_at: string;
@@ -56,9 +57,10 @@ interface SortableAppItemProps {
   app: AppConfiguration;
   updating: string | null;
   onToggleStatus: (appId: string, currentStatus: boolean) => void;
+  onToggleHidden: (appId: string, currentHidden: boolean) => void;
 }
 
-const SortableAppItem = ({ app, updating, onToggleStatus }: SortableAppItemProps) => {
+const SortableAppItem = ({ app, updating, onToggleStatus, onToggleHidden }: SortableAppItemProps) => {
   const {
     attributes,
     listeners,
@@ -100,14 +102,33 @@ const SortableAppItem = ({ app, updating, onToggleStatus }: SortableAppItemProps
         </div>
       </div>
       <div className="flex items-center space-x-3">
-        <Badge variant={app.is_enabled ? "default" : "secondary"}>
-          {app.is_enabled ? 'Enabled' : 'Disabled'}
-        </Badge>
-        <Switch
-          checked={app.is_enabled}
-          onCheckedChange={() => onToggleStatus(app.app_id, app.is_enabled)}
-          disabled={updating === app.app_id}
-        />
+        <div className="flex flex-col space-y-2">
+          <div className="flex items-center space-x-2">
+            <Badge variant={app.is_enabled ? "default" : "secondary"}>
+              {app.is_enabled ? 'Enabled' : 'Disabled'}
+            </Badge>
+            <Switch
+              checked={app.is_enabled}
+              onCheckedChange={() => onToggleStatus(app.app_id, app.is_enabled)}
+              disabled={updating === app.app_id}
+            />
+          </div>
+          <div className="flex items-center space-x-2">
+            <Badge variant={app.is_hidden ? "destructive" : "outline"}>
+              {app.is_hidden ? (
+                <>
+                  <EyeOff className="w-3 h-3 mr-1" />
+                  Hidden
+                </>
+              ) : 'Visible'}
+            </Badge>
+            <Switch
+              checked={app.is_hidden}
+              onCheckedChange={() => onToggleHidden(app.app_id, app.is_hidden)}
+              disabled={updating === app.app_id}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -166,6 +187,31 @@ export const AppManagement = () => {
     } catch (error) {
       console.error('Error updating app status:', error);
       toast.error('Failed to update app status');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const toggleAppHidden = async (appId: string, currentHidden: boolean) => {
+    setUpdating(appId);
+    try {
+      const { error } = await supabase
+        .from('app_configurations')
+        .update({ is_hidden: !currentHidden })
+        .eq('app_id', appId);
+
+      if (error) throw error;
+
+      setApps(apps.map(app => 
+        app.app_id === appId 
+          ? { ...app, is_hidden: !currentHidden }
+          : app
+      ));
+
+      toast.success(`App ${!currentHidden ? 'hidden' : 'made visible'} successfully`);
+    } catch (error) {
+      console.error('Error updating app hidden status:', error);
+      toast.error('Failed to update app hidden status');
     } finally {
       setUpdating(null);
     }
@@ -231,7 +277,7 @@ export const AppManagement = () => {
           App Management
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Enable or disable applications for all users. Drag to reorder.
+          Enable or disable applications for all users. Hidden apps won't appear on the main page for anyone, including admins. Drag to reorder.
         </p>
       </CardHeader>
       <CardContent>
@@ -251,6 +297,7 @@ export const AppManagement = () => {
                   app={app}
                   updating={updating}
                   onToggleStatus={toggleAppStatus}
+                  onToggleHidden={toggleAppHidden}
                 />
               ))}
             </div>

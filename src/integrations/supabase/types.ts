@@ -21,6 +21,7 @@ export type Database = {
           description: string | null
           id: string
           is_enabled: boolean
+          is_hidden: boolean
           name: string
           position: number | null
           updated_at: string
@@ -31,6 +32,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_enabled?: boolean
+          is_hidden?: boolean
           name: string
           position?: number | null
           updated_at?: string
@@ -41,6 +43,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_enabled?: boolean
+          is_hidden?: boolean
           name?: string
           position?: number | null
           updated_at?: string
