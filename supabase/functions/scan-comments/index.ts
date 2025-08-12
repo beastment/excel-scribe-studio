@@ -504,28 +504,51 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             } else if (jsonObjectMatch) {
               jsonContent = jsonObjectMatch[0];
             } else {
-              // Handle numbered list responses for batch analysis
-              if (responseType === 'batch_analysis' && jsonContent.match(/^\s*\d+\./m)) {
-                console.log('Converting numbered list to JSON array');
-                const lines = jsonContent.split('\n').filter(line => line.trim());
-                const results = [];
+              // Handle numbered list responses for both single and batch analysis
+              if (jsonContent.match(/^\s*\d+\./m)) {
+                console.log(`Converting numbered list to ${responseType === 'analysis' ? 'single object' : 'JSON array'}`);
                 
-                for (const line of lines) {
-                  const trimmed = line.trim();
-                  if (trimmed.match(/^\d+\./)) {
-                    // Extract boolean values from numbered responses
-                    const concerning = /concerning[:\s]*(?:true|yes)/i.test(trimmed);
-                    const identifiable = /identifiable[:\s]*(?:true|yes)/i.test(trimmed);
-                    results.push({
+                if (responseType === 'analysis') {
+                  // Handle single analysis numbered response
+                  const concerningMatch = jsonContent.match(/1\.\s*(.+)/);
+                  const identifiableMatch = jsonContent.match(/2\.\s*(.+)/);
+                  
+                  if (concerningMatch && identifiableMatch) {
+                    const concerning = !/not concerning/i.test(concerningMatch[1]);
+                    const identifiable = !/not identifiable/i.test(identifiableMatch[1]);
+                    
+                    // Extract reasoning section if present
+                    const reasoningMatch = jsonContent.match(/reasoning[:\s]*([\s\S]*)/i);
+                    let reasoning = reasoningMatch ? reasoningMatch[1].trim() : jsonContent;
+                    
+                    return {
                       concerning,
                       identifiable,
-                      reasoning: trimmed
-                    });
+                      reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim()
+                    };
                   }
-                }
-                
-                if (results.length > 0) {
-                  return results;
+                } else if (responseType === 'batch_analysis') {
+                  // Handle batch analysis numbered response
+                  const lines = jsonContent.split('\n').filter(line => line.trim());
+                  const results = [];
+                  
+                  for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed.match(/^\d+\./)) {
+                      // Extract boolean values from numbered responses
+                      const concerning = /concerning[:\s]*(?:true|yes)/i.test(trimmed);
+                      const identifiable = /identifiable[:\s]*(?:true|yes)/i.test(trimmed);
+                      results.push({
+                        concerning,
+                        identifiable,
+                        reasoning: trimmed
+                      });
+                    }
+                  }
+                  
+                  if (results.length > 0) {
+                    return results;
+                  }
                 }
               }
               
@@ -771,28 +794,51 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             } else if (jsonObjectMatch) {
               jsonContent = jsonObjectMatch[0];
             } else {
-              // Handle numbered list responses for batch analysis
-              if (responseType === 'batch_analysis' && jsonContent.match(/^\s*\d+\./m)) {
-                console.log('Converting numbered list to JSON array');
-                const lines = jsonContent.split('\n').filter(line => line.trim());
-                const results = [];
+              // Handle numbered list responses for both single and batch analysis
+              if (jsonContent.match(/^\s*\d+\./m)) {
+                console.log(`Converting numbered list to ${responseType === 'analysis' ? 'single object' : 'JSON array'}`);
                 
-                for (const line of lines) {
-                  const trimmed = line.trim();
-                  if (trimmed.match(/^\d+\./)) {
-                    // Extract boolean values from numbered responses
-                    const concerning = /concerning[:\s]*(?:true|yes)/i.test(trimmed);
-                    const identifiable = /identifiable[:\s]*(?:true|yes)/i.test(trimmed);
-                    results.push({
+                if (responseType === 'analysis') {
+                  // Handle single analysis numbered response
+                  const concerningMatch = jsonContent.match(/1\.\s*(.+)/);
+                  const identifiableMatch = jsonContent.match(/2\.\s*(.+)/);
+                  
+                  if (concerningMatch && identifiableMatch) {
+                    const concerning = !/not concerning/i.test(concerningMatch[1]);
+                    const identifiable = !/not identifiable/i.test(identifiableMatch[1]);
+                    
+                    // Extract reasoning section if present
+                    const reasoningMatch = jsonContent.match(/reasoning[:\s]*([\s\S]*)/i);
+                    let reasoning = reasoningMatch ? reasoningMatch[1].trim() : jsonContent;
+                    
+                    return {
                       concerning,
                       identifiable,
-                      reasoning: trimmed
-                    });
+                      reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim()
+                    };
                   }
-                }
-                
-                if (results.length > 0) {
-                  return results;
+                } else if (responseType === 'batch_analysis') {
+                  // Handle batch analysis numbered response
+                  const lines = jsonContent.split('\n').filter(line => line.trim());
+                  const results = [];
+                  
+                  for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed.match(/^\d+\./)) {
+                      // Extract boolean values from numbered responses
+                      const concerning = /concerning[:\s]*(?:true|yes)/i.test(trimmed);
+                      const identifiable = /identifiable[:\s]*(?:true|yes)/i.test(trimmed);
+                      results.push({
+                        concerning,
+                        identifiable,
+                        reasoning: trimmed
+                      });
+                    }
+                  }
+                  
+                  if (results.length > 0) {
+                    return results;
+                  }
                 }
               }
               
