@@ -181,7 +181,7 @@ Scan A Result: ${JSON.stringify(scanAResult)}
 Scan B Result: ${JSON.stringify(scanBResult)}`;
 
             try {
-              adjudicationResult = await callAI(
+              const adjudicationResponse = await callAI(
                 adjudicator.provider, 
                 adjudicator.model, 
                 adjudicatorPrompt, 
@@ -190,6 +190,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
                 'adjudicator',
                 rateLimiters
               );
+              adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
             } catch (error) {
               console.error(`Adjudicator failed for comment ${comment.id}:`, error);
               throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
@@ -339,7 +340,7 @@ Scan A Result: ${JSON.stringify(scanAResult)}
 Scan B Result: ${JSON.stringify(scanBResult)}`;
 
     try {
-      adjudicationResult = await callAI(
+      const adjudicationResponse = await callAI(
         adjudicator.provider, 
         adjudicator.model, 
         adjudicatorPrompt, 
@@ -348,6 +349,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
         'adjudicator',
         rateLimiters
       );
+      adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
     } catch (error) {
       console.error(`Adjudicator failed for comment ${comment.id}:`, error);
       throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
@@ -510,7 +512,11 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         
         // First try to parse as-is
         try {
-          return JSON.parse(jsonContent);
+          const parsed = JSON.parse(jsonContent);
+          return {
+            results: parsed,
+            rawResponse: null // No raw response needed for successful parsing
+          };
         } catch (initialError) {
           // If that fails, try to extract JSON from response
           if (!jsonContent.startsWith('[') && !jsonContent.startsWith('{')) {
@@ -803,7 +809,11 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         
         // First try to parse as-is
         try {
-          return JSON.parse(jsonContent);
+          const parsed = JSON.parse(jsonContent);
+          return {
+            results: parsed,
+            rawResponse: null // No raw response needed for successful parsing
+          };
         } catch (initialError) {
           console.log(`Initial JSON parse failed, trying extraction. Content preview: ${jsonContent.substring(0, 100)}`);
           
@@ -837,7 +847,10 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
           }
           
           if (extractedJson) {
-            return extractedJson;
+            return {
+              results: extractedJson,
+              rawResponse: null
+            };
           }
           
           // Strategy 2: Handle numbered list responses
@@ -858,9 +871,12 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
                 let reasoning = reasoningMatch ? reasoningMatch[1].trim() : jsonContent;
                 
                 return {
-                  concerning,
-                  identifiable,
-                  reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim()
+                  results: {
+                    concerning,
+                    identifiable,
+                    reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim()
+                  },
+                  rawResponse: null
                 };
               }
             } else if (responseType === 'batch_analysis') {
@@ -883,7 +899,10 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
               }
               
               if (results.length > 0) {
-                return results;
+                return {
+                  results: results,
+                  rawResponse: null
+                };
               }
             }
           }
