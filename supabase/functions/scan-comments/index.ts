@@ -246,17 +246,53 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     }
   }
 
-  // AWS Bedrock API call
+  // AWS Bedrock API call with retry logic
   async function callBedrock(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text') {
     const awsAccessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
     const awsSecretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-    const awsRegion = Deno.env.get('AWS_REGION') || 'us-east-1'; // Default to us-east-1 for better Bedrock support
+    const awsRegion = Deno.env.get('AWS_REGION') || 'us-west-2';
 
     console.log(`Bedrock call - Model: ${model}, Region: ${awsRegion}, AccessKey: ${awsAccessKey ? 'present' : 'missing'}`);
 
     if (!awsAccessKey || !awsSecretKey) {
       throw new Error('AWS credentials not configured');
     }
+
+    return await retryWithBackoff(async () => {
+      return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion);
+    }, 3, 1000);
+  }
+
+  // Retry function with exponential backoff
+  async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries: number, baseDelay: number): Promise<T> {
+    let lastError: Error;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error as Error;
+        
+        // Check if it's a rate limit error
+        if (error.message.includes('429') || error.message.includes('Too many requests')) {
+          if (attempt < maxRetries) {
+            const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000; // Add jitter
+            console.log(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        
+        // For non-rate-limit errors, don't retry
+        throw error;
+      }
+    }
+    
+    throw lastError!;
+  }
+
+  // Separate function for making the actual Bedrock request
+  async function makeBedrockRequest(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text', awsAccessKey: string, awsSecretKey: string, awsRegion: string) {
 
     // Use AWS SDK v3 style endpoint for Bedrock
     const endpoint = `https://bedrock-runtime.${awsRegion}.amazonaws.com/model/${model}/invoke`;
