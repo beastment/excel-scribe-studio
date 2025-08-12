@@ -250,7 +250,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
   async function callBedrock(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text') {
     const awsAccessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
     const awsSecretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-    const awsRegion = Deno.env.get('AWS_REGION') || 'us-east-1';
+    const awsRegion = Deno.env.get('AWS_REGION') || 'us-east-1'; // Default to us-east-1 for better Bedrock support
 
     console.log(`Bedrock call - Model: ${model}, Region: ${awsRegion}, AccessKey: ${awsAccessKey ? 'present' : 'missing'}`);
 
