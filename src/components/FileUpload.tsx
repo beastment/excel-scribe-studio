@@ -34,6 +34,11 @@ export interface CommentData {
     needsAdjudication?: boolean;
     finalDecision?: { concerning: boolean; identifiable: boolean; reasoning?: string };
     error?: string;
+    rawResponses?: {
+      scanAResponse?: string;
+      scanBResponse?: string;
+      adjudicationResponse?: string;
+    };
   };
 }
 

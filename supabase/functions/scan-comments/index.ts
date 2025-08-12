@@ -93,9 +93,9 @@ serve(async (req) => {
         console.log(`Sending ${batch.length} comments to AI models for batch analysis`);
 
         // Run Scan A and Scan B in parallel on the entire batch
-        let scanAResults, scanBResults;
+        let scanAResults, scanBResults, scanARawResponse, scanBRawResponse;
         try {
-          [scanAResults, scanBResults] = await Promise.all([
+          const [scanAResponse, scanBResponse] = await Promise.all([
             callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a', rateLimiters).catch(e => {
               console.error(`Scan A failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, e);
               throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
@@ -105,6 +105,12 @@ serve(async (req) => {
               throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
             })
           ]);
+          
+          // Extract results and raw responses for debugging
+          scanAResults = scanAResponse?.results || scanAResponse;
+          scanBResults = scanBResponse?.results || scanBResponse;
+          scanARawResponse = scanAResponse?.rawResponse;
+          scanBRawResponse = scanBResponse?.rawResponse;
         } catch (error) {
           console.error(`Parallel batch scanning failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error);
           throw error;
@@ -125,12 +131,15 @@ serve(async (req) => {
             console.log(`Processing comment ${comment.id} individually...`);
 
             try {
-              const [scanAResult, scanBResult] = await Promise.all([
+              const [scanAResponse, scanBResponse] = await Promise.all([
                 callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters),
                 callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters)
               ]);
 
-              await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters);
+              const scanAResult = scanAResponse?.results || scanAResponse;
+              const scanBResult = scanBResponse?.results || scanBResponse;
+              
+              await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
             } catch (error) {
               console.error(`Individual processing failed for comment ${comment.id}:`, error);
               scannedComments.push({
@@ -215,7 +224,12 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
               scanBResult,
               adjudicationResult,
               needsAdjudication,
-              finalDecision: finalResult
+              finalDecision: finalResult,
+              rawResponses: {
+                scanAResponse: scanARawResponse,
+                scanBResponse: scanBRawResponse,
+                adjudicationResponse: adjudicationResult?.rawResponse
+              }
             }
           };
 
@@ -306,7 +320,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
 });
 
 // Helper function to process individual comments
-async function processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters) {
+async function processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, scanARawResponse?, scanBRawResponse?) {
   let finalResult = null;
   let adjudicationResult = null;
   let needsAdjudication = false;
@@ -383,7 +397,12 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
       scanBResult,
       adjudicationResult,
       needsAdjudication,
-      finalDecision: finalResult
+      finalDecision: finalResult,
+      rawResponses: {
+        scanAResponse: scanARawResponse,
+        scanBResponse: scanBRawResponse,
+        adjudicationResponse: adjudicationResult?.rawResponse
+      }
     }
   };
 
@@ -884,9 +903,12 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             const identifiable = identifiablePositive && !hasNegativeStatement;
             
             return {
-              concerning,
-              identifiable,
-              reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim()
+              results: {
+                concerning,
+                identifiable,
+                reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim()
+              },
+              rawResponse: jsonContent
             };
           } else if (responseType === 'batch_analysis') {
             // For batch, return a single fallback result with enhanced detection
@@ -898,11 +920,14 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             const concerning = concerningPositive && !hasNegativeStatement;
             const identifiable = identifiablePositive && !hasNegativeStatement;
             
-            return [{
-              concerning,
-              identifiable,
-              reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim()
-            }];
+            return {
+              results: [{
+                concerning,
+                identifiable,
+                reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim()
+              }],
+              rawResponse: jsonContent
+            };
           }
           
           throw initialError; // Re-throw original error if we can't handle it

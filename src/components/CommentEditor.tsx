@@ -693,11 +693,45 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                              </div>
                            )}
                            
-                           {comment.debugInfo.error && (
-                             <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50">
-                               <p className="text-xs font-medium text-red-900 dark:text-red-100">Error:</p>
-                               <p className="text-xs text-red-800 dark:text-red-200">{comment.debugInfo.error}</p>
-                             </div>
+                            {comment.debugInfo.error && (
+                              <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50">
+                                <p className="text-xs font-medium text-red-900 dark:text-red-100">Error:</p>
+                                <p className="text-xs text-red-800 dark:text-red-200">{comment.debugInfo.error}</p>
+                              </div>
+                            )}
+
+                            {/* Raw AI Responses - JSON Parse Failure Debug */}
+                            {comment.debugInfo.rawResponses && (
+                              <div className="space-y-2">
+                                <h6 className="text-xs font-semibold text-muted-foreground">Raw AI Responses (JSON Parse Failures):</h6>
+                                
+                                {comment.debugInfo.rawResponses.scanAResponse && (
+                                  <div className="p-2 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50">
+                                    <p className="text-xs font-medium text-orange-900 dark:text-orange-100">Scan A Raw Response:</p>
+                                    <pre className="text-xs text-orange-800 dark:text-orange-200 whitespace-pre-wrap mt-1 max-h-32 overflow-y-auto">
+                                      {comment.debugInfo.rawResponses.scanAResponse}
+                                    </pre>
+                                  </div>
+                                )}
+                                
+                                {comment.debugInfo.rawResponses.scanBResponse && (
+                                  <div className="p-2 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50">
+                                    <p className="text-xs font-medium text-orange-900 dark:text-orange-100">Scan B Raw Response:</p>
+                                    <pre className="text-xs text-orange-800 dark:text-orange-200 whitespace-pre-wrap mt-1 max-h-32 overflow-y-auto">
+                                      {comment.debugInfo.rawResponses.scanBResponse}
+                                    </pre>
+                                  </div>
+                                )}
+                                
+                                {comment.debugInfo.rawResponses.adjudicationResponse && (
+                                  <div className="p-2 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50">
+                                    <p className="text-xs font-medium text-orange-900 dark:text-orange-100">Adjudication Raw Response:</p>
+                                    <pre className="text-xs text-orange-800 dark:text-orange-200 whitespace-pre-wrap mt-1 max-h-32 overflow-y-auto">
+                                      {comment.debugInfo.rawResponses.adjudicationResponse}
+                                    </pre>
+                                  </div>
+                                )}
+                              </div>
                            )}
                          </div>
                        )}
