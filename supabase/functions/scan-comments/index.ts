@@ -629,11 +629,10 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         }
       } catch (parseError) {
         console.error(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
-        // Enhanced fallback parsing for single analysis
-          if (responseType === 'analysis') {
-            const heur = heuristicAnalyze(commentText);
-            return { results: heur, rawResponse: content };
-          }
+        // Enhanced fallback parsing
+        if (responseType === 'analysis') {
+          const heur = heuristicAnalyze(commentText);
+          return { results: heur, rawResponse: content };
         } else {
           // For batch_analysis, return empty array to trigger fallback to individual processing
           console.warn('Batch analysis JSON parsing failed, returning empty array for fallback');
@@ -975,11 +974,10 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         }
       } catch (parseError) {
         console.error(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
-        // Enhanced fallback parsing for single analysis
+        // Enhanced fallback parsing
         if (responseType === 'analysis') {
           const heur = heuristicAnalyze(commentText);
           return { results: heur, rawResponse: content };
-        }
         } else {
           // For batch_analysis, return empty array to trigger fallback to individual processing
           console.warn('Batch analysis JSON parsing failed, returning empty array for fallback');
