@@ -63,125 +63,145 @@ serve(async (req) => {
     const scannedComments = [];
     let summary = { total: comments.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
 
-    for (const comment of comments) {
-      try {
-        console.log(`Processing comment ${comment.id}...`);
+    // Process comments in batches to avoid rate limits
+    const BATCH_SIZE = 3; // Process 3 comments at a time
+    const BATCH_DELAY = 2000; // 2 second delay between batches
 
-        // Run Scan A and Scan B in parallel
-        let scanAResult, scanBResult;
+    for (let i = 0; i < comments.length; i += BATCH_SIZE) {
+      const batch = comments.slice(i, i + BATCH_SIZE);
+      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(comments.length / BATCH_SIZE)} (comments ${i + 1}-${Math.min(i + BATCH_SIZE, comments.length)})`);
+
+      // Process batch in parallel
+      const batchPromises = batch.map(async (comment) => {
         try {
-          [scanAResult, scanBResult] = await Promise.all([
-            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, comment.text, 'analysis').catch(e => {
-              console.error(`Scan A failed for comment ${comment.id}:`, e);
-              throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
-            }),
-            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, comment.text, 'analysis').catch(e => {
-              console.error(`Scan B failed for comment ${comment.id}:`, e);
-              throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
-            })
-          ]);
-        } catch (error) {
-          console.error(`Parallel scanning failed for comment ${comment.id}:`, error);
-          throw error;
-        }
+          console.log(`Processing comment ${comment.id}...`);
 
-        let finalResult = null;
-        let adjudicationResult = null;
-        let needsAdjudication = false;
+          // Run Scan A and Scan B in parallel
+          let scanAResult, scanBResult;
+          try {
+            [scanAResult, scanBResult] = await Promise.all([
+              callAI(scanA.provider, scanA.model, scanA.analysis_prompt, comment.text, 'analysis').catch(e => {
+                console.error(`Scan A failed for comment ${comment.id}:`, e);
+                throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
+              }),
+              callAI(scanB.provider, scanB.model, scanB.analysis_prompt, comment.text, 'analysis').catch(e => {
+                console.error(`Scan B failed for comment ${comment.id}:`, e);
+                throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
+              })
+            ]);
+          } catch (error) {
+            console.error(`Parallel scanning failed for comment ${comment.id}:`, error);
+            throw error;
+          }
 
-        // Check if Scan A and Scan B results differ
-        if (scanAResult.concerning !== scanBResult.concerning || 
-            scanAResult.identifiable !== scanBResult.identifiable) {
-          needsAdjudication = true;
-          summary.needsAdjudication++;
+          let finalResult = null;
+          let adjudicationResult = null;
+          let needsAdjudication = false;
 
-          // Call adjudicator
-          const adjudicatorPrompt = `${adjudicator.analysis_prompt}
+          // Check if Scan A and Scan B results differ
+          if (scanAResult.concerning !== scanBResult.concerning || 
+              scanAResult.identifiable !== scanBResult.identifiable) {
+            needsAdjudication = true;
+
+            // Call adjudicator
+            const adjudicatorPrompt = `${adjudicator.analysis_prompt}
 
 Original comment: "${comment.text}"
 
 Scan A Result: ${JSON.stringify(scanAResult)}
 Scan B Result: ${JSON.stringify(scanBResult)}`;
 
-          try {
-            adjudicationResult = await callAI(
-              adjudicator.provider, 
-              adjudicator.model, 
-              adjudicatorPrompt, 
-              '', 
-              'analysis'
-            );
-          } catch (error) {
-            console.error(`Adjudicator failed for comment ${comment.id}:`, error);
-            throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
+            try {
+              adjudicationResult = await callAI(
+                adjudicator.provider, 
+                adjudicator.model, 
+                adjudicatorPrompt, 
+                '', 
+                'analysis'
+              );
+            } catch (error) {
+              console.error(`Adjudicator failed for comment ${comment.id}:`, error);
+              throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
+            }
+
+            finalResult = adjudicationResult;
+          } else {
+            // Scan A and Scan B agree, use Scan A result
+            finalResult = scanAResult;
           }
 
-          finalResult = adjudicationResult;
-        } else {
-          // Scan A and Scan B agree, use Scan A result
-          finalResult = scanAResult;
-        }
+          let redactedText = null;
+          let rephrasedText = null;
 
-        // Update summary
-        if (finalResult.concerning) summary.concerning++;
-        if (finalResult.identifiable) summary.identifiable++;
-
-        let redactedText = null;
-        let rephrasedText = null;
-
-        // If flagged, run redaction and rephrase prompts
-        if (finalResult.concerning || finalResult.identifiable) {
-          const activeConfig = needsAdjudication ? adjudicator : scanA;
-          
-          [redactedText, rephrasedText] = await Promise.all([
-            callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, comment.text, 'text'),
-            callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, comment.text, 'text')
-          ]);
-        }
-
-        const processedComment = {
-          ...comment,
-          concerning: finalResult.concerning,
-          identifiable: finalResult.identifiable,
-          aiReasoning: finalResult.reasoning,
-          redactedText,
-          rephrasedText,
-          mode: finalResult.concerning || finalResult.identifiable ? defaultMode : 'original',
-          approved: false,
-          hideAiResponse: false,
-          // Debug information for admin users
-          debugInfo: {
-            scanAResult,
-            scanBResult,
-            adjudicationResult,
-            needsAdjudication,
-            finalDecision: finalResult
+          // If flagged, run redaction and rephrase prompts
+          if (finalResult.concerning || finalResult.identifiable) {
+            const activeConfig = needsAdjudication ? adjudicator : scanA;
+            
+            [redactedText, rephrasedText] = await Promise.all([
+              callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, comment.text, 'text'),
+              callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, comment.text, 'text')
+            ]);
           }
-        };
 
-        // Set final text based on mode
-        if (processedComment.mode === 'redact' && redactedText) {
-          processedComment.text = redactedText;
-        } else if (processedComment.mode === 'rephrase' && rephrasedText) {
-          processedComment.text = rephrasedText;
-        }
+          const processedComment = {
+            ...comment,
+            concerning: finalResult.concerning,
+            identifiable: finalResult.identifiable,
+            aiReasoning: finalResult.reasoning,
+            redactedText,
+            rephrasedText,
+            mode: finalResult.concerning || finalResult.identifiable ? defaultMode : 'original',
+            approved: false,
+            hideAiResponse: false,
+            // Debug information for admin users
+            debugInfo: {
+              scanAResult,
+              scanBResult,
+              adjudicationResult,
+              needsAdjudication,
+              finalDecision: finalResult
+            }
+          };
 
-        scannedComments.push(processedComment);
-      } catch (error) {
-        console.error(`Error processing comment ${comment.id}:`, error);
-        // Include the original comment with error info
-        scannedComments.push({
-          ...comment,
-          concerning: false,
-          identifiable: false,
-          aiReasoning: `Error processing: ${error.message}`,
-          mode: 'original',
-          approved: false,
-          hideAiResponse: false,
-          debugInfo: {
-            error: error.message
+          // Set final text based on mode
+          if (processedComment.mode === 'redact' && redactedText) {
+            processedComment.text = redactedText;
+          } else if (processedComment.mode === 'rephrase' && rephrasedText) {
+            processedComment.text = rephrasedText;
           }
-        });
+
+          // Update summary
+          if (finalResult.concerning) summary.concerning++;
+          if (finalResult.identifiable) summary.identifiable++;
+          if (needsAdjudication) summary.needsAdjudication++;
+
+          return processedComment;
+        } catch (error) {
+          console.error(`Error processing comment ${comment.id}:`, error);
+          // Include the original comment with error info
+          return {
+            ...comment,
+            concerning: false,
+            identifiable: false,
+            aiReasoning: `Error processing: ${error.message}`,
+            mode: 'original',
+            approved: false,
+            hideAiResponse: false,
+            debugInfo: {
+              error: error.message
+            }
+          };
+        }
+      });
+
+      // Wait for batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      scannedComments.push(...batchResults);
+
+      // Add delay between batches (except for the last batch)
+      if (i + BATCH_SIZE < comments.length) {
+        console.log(`Waiting ${BATCH_DELAY}ms before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
       }
     }
 
