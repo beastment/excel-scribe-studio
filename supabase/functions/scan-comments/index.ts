@@ -767,7 +767,10 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
       const schema = responseType === 'batch_analysis'
         ? '[{ "concerning": boolean, "identifiable": boolean, "reasoning": string }]'
         : '{ "concerning": boolean, "identifiable": boolean, "reasoning": string }';
-      const strictHeader = `You must respond ONLY with ${schema} wrapped inside <json> and </json> tags. Do not include any prose, explanations, or code fences. No markdown. No preface. Output exactly and only the JSON.`;
+      let strictHeader = `You must respond ONLY with ${schema} wrapped inside <json> and </json> tags. Do not include any prose, explanations, or code fences. No markdown. No preface. Output exactly and only the JSON.`;
+      if (titanStrictRetry) {
+        strictHeader = `STRICT MODE: Return ONLY the JSON payload wrapped in <json>...</json>. Absolutely no extra text before or after. If unsure, output default booleans and concise reasoning.\n\n` + strictHeader;
+      }
       effectivePrompt = `${strictHeader}\n\n${prompt}`;
     }
 
@@ -906,13 +909,24 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
       try {
         // Extract JSON from response if it contains explanatory text
         let jsonContent = content.trim();
+
+        // Titan: prefer sentinel-extracted JSON first
+        if (model.startsWith('amazon.titan')) {
+          const sentinel = /<json>([\s\S]*?)<\/json>/i.exec(jsonContent);
+          if (sentinel && sentinel[1]) {
+            jsonContent = sentinel[1].trim();
+          }
+        }
         
         // Clean up common issues in JSON responses
         jsonContent = jsonContent.replace(/```json\s*/g, '').replace(/```\s*/g, '');
         
         // First try to parse as-is
         try {
-          const parsed = JSON.parse(jsonContent);
+          let parsed = JSON.parse(jsonContent);
+          if (model.startsWith('amazon.titan')) {
+            parsed = normalizeTitanAnalysis(parsed);
+          }
           return {
             results: parsed,
             rawResponse: null // No raw response needed for successful parsing
@@ -921,141 +935,111 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
           console.log(`Initial JSON parse failed, trying extraction. Content preview: ${jsonContent.substring(0, 100)}`);
           
           // Try multiple extraction strategies
-          let extractedJson = null;
+          let extractedJson: any = null;
           
-          // Strategy 1: Extract complete JSON arrays or objects
-          const jsonArrayMatches = jsonContent.match(/\[[\s\S]*?\]/g);
-          const jsonObjectMatches = jsonContent.match(/\{[\s\S]*?\}/g);
-          
-          if (jsonArrayMatches) {
-            // Try the largest valid JSON array
-            for (const match of jsonArrayMatches.sort((a, b) => b.length - a.length)) {
+          // Strategy 1: Extract from explicit <json> ... </json>
+          if (model.startsWith('amazon.titan')) {
+            const m = /<json>([\s\S]*?)<\/json>/i.exec(content);
+            if (m && m[1]) {
               try {
-                extractedJson = JSON.parse(match);
-                break;
-              } catch (e) {
-                continue;
+                extractedJson = JSON.parse(m[1].trim());
+              } catch {}
+            }
+          }
+          
+          // Strategy 2: Extract complete JSON arrays or objects
+          if (extractedJson == null) {
+            const jsonArrayMatches = jsonContent.match(/\[[\s\S]*?\]/g);
+            const jsonObjectMatches = jsonContent.match(/\{[\s\S]*?\}/g);
+            if (jsonArrayMatches) {
+              for (const match of jsonArrayMatches.sort((a, b) => b.length - a.length)) {
+                try { extractedJson = JSON.parse(match); break; } catch {}
               }
             }
-          } else if (jsonObjectMatches) {
-            // Try the largest valid JSON object
-            for (const match of jsonObjectMatches.sort((a, b) => b.length - a.length)) {
-              try {
-                extractedJson = JSON.parse(match);
-                break;
-              } catch (e) {
-                continue;
+            if (extractedJson == null && jsonObjectMatches) {
+              for (const match of jsonObjectMatches.sort((a, b) => b.length - a.length)) {
+                try { extractedJson = JSON.parse(match); break; } catch {}
               }
             }
           }
           
-          if (extractedJson) {
-            return {
-              results: extractedJson,
-              rawResponse: null
-            };
+          if (extractedJson != null) {
+            if (model.startsWith('amazon.titan')) {
+              extractedJson = normalizeTitanAnalysis(extractedJson);
+            }
+            return { results: extractedJson, rawResponse: null };
           }
           
-          // Strategy 2: Handle numbered list responses
+          // Strategy 3: Handle numbered list responses
           if (jsonContent.match(/^\s*\d+\./m)) {
             console.log(`Converting numbered list to ${responseType === 'analysis' ? 'single object' : 'JSON array'}`);
-            
             if (responseType === 'analysis') {
-              // Handle single analysis numbered response
               const concerningMatch = jsonContent.match(/1\.\s*(.+)/);
               const identifiableMatch = jsonContent.match(/2\.\s*(.+)/);
-              
               if (concerningMatch && identifiableMatch) {
                 const concerning = !/not concerning/i.test(concerningMatch[1]);
                 const identifiable = !/not identifiable/i.test(identifiableMatch[1]);
-                
-                // Extract reasoning section if present
                 const reasoningMatch = jsonContent.match(/reasoning[:\s]*([\s\S]*)/i);
                 let reasoning = reasoningMatch ? reasoningMatch[1].trim() : jsonContent;
-                
-                return {
-                  results: {
-                    concerning,
-                    identifiable,
-                    reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim()
-                  },
-                  rawResponse: null
-                };
+                let result: any = { concerning, identifiable, reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim() };
+                if (model.startsWith('amazon.titan')) result = normalizeTitanAnalysis(result);
+                return { results: result, rawResponse: null };
               }
             } else if (responseType === 'batch_analysis') {
-              // Handle batch analysis numbered response
               const lines = jsonContent.split('\n').filter(line => line.trim());
-              const results = [];
-              
+              const results = [] as any[];
               for (const line of lines) {
                 const trimmed = line.trim();
-                if (trimmed.match(/^\d+\./)) {
-                  // Extract boolean values from numbered responses
+                if (/^\d+\./.test(trimmed)) {
                   const concerning = /concerning[:\s]*(?:true|yes)/i.test(trimmed);
                   const identifiable = /identifiable[:\s]*(?:true|yes)/i.test(trimmed);
-                  results.push({
-                    concerning,
-                    identifiable,
-                    reasoning: trimmed
-                  });
+                  results.push({ concerning, identifiable, reasoning: trimmed });
                 }
               }
-              
               if (results.length > 0) {
-                return {
-                  results: results,
-                  rawResponse: null
-                };
+                const finalResults = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(results) : results;
+                return { results: finalResults, rawResponse: null };
               }
             }
           }
+
+          // Titan-only: one strict retry if parsing failed
+          if (model.startsWith('amazon.titan') && !titanStrictRetry) {
+            console.log('Titan parse failed — performing single strict retry');
+            return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, true);
+          }
           
-          // Strategy 3: Enhanced text analysis for better detection
+          // Strategy 4: Enhanced text analysis for better detection
           console.log(`Creating enhanced fallback response for: ${jsonContent.substring(0, 200)}`);
-          
           if (responseType === 'analysis') {
-            // Check for negative statements first to avoid false positives
             const hasNegativeStatement = /no concerning|not concerning|nothing concerning|no identifiable|not identifiable|nothing identifiable|no personally identifiable|false|not present/i.test(jsonContent);
-            
-            // Only flag as concerning if we find positive indicators AND no negative statements
             const concerningPositive = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(jsonContent);
             const identifiablePositive = /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(jsonContent);
-            
             const concerning = concerningPositive && !hasNegativeStatement;
             const identifiable = identifiablePositive && !hasNegativeStatement;
-            
-            return {
-              results: {
-                concerning,
-                identifiable,
-                reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim()
-              },
-              rawResponse: jsonContent
-            };
+            const base = { concerning, identifiable, reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim() };
+            const results = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(base) : base;
+            return { results, rawResponse: jsonContent };
           } else if (responseType === 'batch_analysis') {
-            // For batch, return a single fallback result with enhanced detection
             const hasNegativeStatement = /no concerning|not concerning|nothing concerning|no identifiable|not identifiable|nothing identifiable|no personally identifiable|false|not present/i.test(jsonContent);
-            
             const concerningPositive = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(jsonContent);
             const identifiablePositive = /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(jsonContent);
-            
             const concerning = concerningPositive && !hasNegativeStatement;
             const identifiable = identifiablePositive && !hasNegativeStatement;
-            
-            return {
-              results: [{
-                concerning,
-                identifiable,
-                reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim()
-              }],
-              rawResponse: jsonContent
-            };
+            const base = [{ concerning, identifiable, reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim() }];
+            const results = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(base) : base;
+            return { results, rawResponse: jsonContent };
           }
           
           throw initialError; // Re-throw original error if we can't handle it
         }
       } catch (parseError) {
         console.error(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
+        // Titan-only: one strict retry in outer catch as a last attempt
+        if (model.startsWith('amazon.titan') && !titanStrictRetry) {
+          console.log('Titan parse failed in outer catch — performing single strict retry');
+          return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, true);
+        }
         // Enhanced fallback parsing
         if (responseType === 'analysis') {
           const heur = heuristicAnalyze(commentText);
