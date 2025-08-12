@@ -103,7 +103,7 @@ serve(async (req) => {
     // Calculate batch size based on strictest per-scanner rate limits
     const minRpm = Math.min(...configs.map(c => c.rpm_limit || 10));
     const BATCH_SIZE = Math.min(20, Math.max(1, Math.floor(minRpm / 3))); // Conservative batch size
-    const BATCH_DELAY = Math.max(3000, Math.ceil(60000 / minRpm)); // Ensure we don't exceed RPM
+    const BATCH_DELAY = 0; // Rely on per-request rate limiter; avoid long function runtimes
 
     for (let i = 0; i < comments.length; i += BATCH_SIZE) {
       const batch = comments.slice(i, i + BATCH_SIZE);
@@ -763,24 +763,23 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         return { results: heur, rawResponse: content };
       }
     } else if (responseType === 'batch_text') {
-      try {
-        return JSON.parse(content);
-      } catch (parseError) {
-        console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        // Try to extract a JSON array embedded in prose
-        const cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
-        const first = cleaned.indexOf('[');
-        const last = cleaned.lastIndexOf(']');
-        if (first !== -1 && last > first) {
-          const candidate = cleaned.slice(first, last + 1);
-          try { return JSON.parse(candidate); } catch {}
-        }
-        // Fallback: split into lines and use non-empty items
-        const lines = cleaned.split('\n').map(l => l.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')).filter(Boolean);
-        if (lines.length > 0) return lines;
-        // Last resort: single-item array
-        return [cleaned];
+      const cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
+      // Try direct JSON array
+      if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
+        try { return JSON.parse(cleaned); } catch {}
       }
+      // Try to extract a JSON array embedded in prose
+      const first = cleaned.indexOf('[');
+      const last = cleaned.lastIndexOf(']');
+      if (first !== -1 && last > first) {
+        const candidate = cleaned.slice(first, last + 1);
+        try { return JSON.parse(candidate); } catch {}
+      }
+      // Fallback: split into lines and use non-empty items
+      const lines = cleaned.split('\n').map(l => l.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')).filter(Boolean);
+      if (lines.length > 0) return lines;
+      // Last resort: single-item array
+      return [cleaned];
     } else {
       return content;
     }
@@ -1136,24 +1135,23 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         }
       }
     } else if (responseType === 'batch_text') {
-      try {
-        return JSON.parse(content);
-      } catch (parseError) {
-        console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        // Try to extract a JSON array embedded in prose
-        const cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
-        const first = cleaned.indexOf('[');
-        const last = cleaned.lastIndexOf(']');
-        if (first !== -1 && last > first) {
-          const candidate = cleaned.slice(first, last + 1);
-          try { return JSON.parse(candidate); } catch {}
-        }
-        // Fallback: split into lines and use non-empty items
-        const lines = cleaned.split('\n').map(l => l.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')).filter(Boolean);
-        if (lines.length > 0) return lines;
-        // Last resort: single-item array
-        return [cleaned];
+      const cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
+      // Try direct JSON array
+      if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
+        try { return JSON.parse(cleaned); } catch {}
       }
+      // Try to extract a JSON array embedded in prose
+      const first = cleaned.indexOf('[');
+      const last = cleaned.lastIndexOf(']');
+      if (first !== -1 && last > first) {
+        const candidate = cleaned.slice(first, last + 1);
+        try { return JSON.parse(candidate); } catch {}
+      }
+      // Fallback: split into lines and use non-empty items
+      const lines = cleaned.split('\n').map(l => l.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')).filter(Boolean);
+      if (lines.length > 0) return lines;
+      // Last resort: single-item array
+      return [cleaned];
     } else {
       return content;
     }
