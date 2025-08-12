@@ -873,10 +873,15 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
           console.log(`Creating enhanced fallback response for: ${jsonContent.substring(0, 200)}`);
           
           if (responseType === 'analysis') {
-            // More comprehensive concerning content detection
-            const concerning = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|safety|drug|theft|ageist|make.*life.*hell/i.test(jsonContent);
-            // More comprehensive identifiable information detection  
-            const identifiable = /identifiable[:\s]*(?:true|yes)|john\s+smith|sarah\s+johnson|mike\s+wilson|tom\s+anderson|jennifer\s+lee|rebecca\s+williams|david\s+chen|lisa\s+rodriguez|employee\s+id|badge\s+#|ssn:|phone:|email/i.test(jsonContent);
+            // Check for negative statements first to avoid false positives
+            const hasNegativeStatement = /no concerning|not concerning|nothing concerning|no identifiable|not identifiable|nothing identifiable|no personally identifiable|false|not present/i.test(jsonContent);
+            
+            // Only flag as concerning if we find positive indicators AND no negative statements
+            const concerningPositive = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(jsonContent);
+            const identifiablePositive = /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(jsonContent);
+            
+            const concerning = concerningPositive && !hasNegativeStatement;
+            const identifiable = identifiablePositive && !hasNegativeStatement;
             
             return {
               concerning,
@@ -885,8 +890,13 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             };
           } else if (responseType === 'batch_analysis') {
             // For batch, return a single fallback result with enhanced detection
-            const concerning = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|safety|drug|theft|ageist|make.*life.*hell/i.test(jsonContent);
-            const identifiable = /identifiable[:\s]*(?:true|yes)|john\s+smith|sarah\s+johnson|mike\s+wilson|tom\s+anderson|jennifer\s+lee|rebecca\s+williams|david\s+chen|lisa\s+rodriguez|employee\s+id|badge\s+#|ssn:|phone:|email/i.test(jsonContent);
+            const hasNegativeStatement = /no concerning|not concerning|nothing concerning|no identifiable|not identifiable|nothing identifiable|no personally identifiable|false|not present/i.test(jsonContent);
+            
+            const concerningPositive = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(jsonContent);
+            const identifiablePositive = /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(jsonContent);
+            
+            const concerning = concerningPositive && !hasNegativeStatement;
+            const identifiable = identifiablePositive && !hasNegativeStatement;
             
             return [{
               concerning,
