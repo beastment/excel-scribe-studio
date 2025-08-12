@@ -879,7 +879,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             return {
               concerning,
               identifiable,
-              reasoning: "Fallback analysis due to JSON parsing error: " + jsonContent.substring(0, 200)
+              reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim()
             };
           } else if (responseType === 'batch_analysis') {
             // For batch, return a single fallback result
@@ -889,7 +889,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             return [{
               concerning,
               identifiable,
-              reasoning: "Fallback analysis due to JSON parsing error: " + jsonContent.substring(0, 200)
+              reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim()
             }];
           }
           
