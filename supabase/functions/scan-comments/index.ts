@@ -298,7 +298,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
 
     // Create proper AWS v4 signature
     const host = `bedrock-runtime.${awsRegion}.amazonaws.com`;
-    const service = 'bedrock-runtime'; // Fixed: should be bedrock-runtime, not bedrock
+    const service = 'bedrock'; // Fixed: AWS expects 'bedrock' not 'bedrock-runtime'
     const now = new Date();
     const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, '');
     const dateStamp = amzDate.substr(0, 8);
