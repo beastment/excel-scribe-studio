@@ -50,6 +50,7 @@ const SCANNER_CONFIGS = [
 export const AIConfigurationManagement = () => {
   const { toast } = useToast();
   const [configs, setConfigs] = useState<Record<string, AIConfiguration>>({});
+  const [modelLimits, setModelLimits] = useState<Record<string, { rpm_limit?: number; tpm_limit?: number }>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('scan_a');
@@ -76,10 +77,23 @@ export const AIConfigurationManagement = () => {
       }
 
       const configMap: Record<string, AIConfiguration> = {};
+      const limitsMap: Record<string, { rpm_limit?: number; tpm_limit?: number }> = {};
+      
       data?.forEach(config => {
         configMap[config.scanner_type] = config;
+        
+        // Store limits per model-provider combination
+        const modelKey = `${config.provider}:${config.model}`;
+        if (config.rpm_limit !== null || config.tpm_limit !== null) {
+          limitsMap[modelKey] = {
+            rpm_limit: config.rpm_limit || undefined,
+            tpm_limit: config.tpm_limit || undefined
+          };
+        }
       });
+      
       setConfigs(configMap);
+      setModelLimits(limitsMap);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -109,6 +123,16 @@ export const AIConfigurationManagement = () => {
         });
         return;
       }
+
+      // Update the model limits lookup after successful save
+      const modelKey = `${config.provider}:${config.model}`;
+      setModelLimits(prev => ({
+        ...prev,
+        [modelKey]: {
+          rpm_limit: config.rpm_limit,
+          tpm_limit: config.tpm_limit
+        }
+      }));
 
       toast({
         title: "Success",
@@ -142,6 +166,23 @@ export const AIConfigurationManagement = () => {
         ...updates
       }
     }));
+  };
+
+  const handleModelChange = (scannerType: string, newModel: string) => {
+    const currentConfig = configs[scannerType];
+    if (!currentConfig) return;
+
+    const modelKey = `${currentConfig.provider}:${newModel}`;
+    const savedLimits = modelLimits[modelKey];
+
+    const updates: Partial<AIConfiguration> = { model: newModel };
+    
+    if (savedLimits) {
+      updates.rpm_limit = savedLimits.rpm_limit;
+      updates.tpm_limit = savedLimits.tpm_limit;
+    }
+
+    updateConfig(scannerType, updates);
   };
 
   const renderConfigurationTab = (scannerConfig: typeof SCANNER_CONFIGS[0]) => {
@@ -186,7 +227,7 @@ export const AIConfigurationManagement = () => {
             <Label htmlFor={`model-${scannerConfig.type}`}>Model</Label>
             <Select
               value={config.model}
-              onValueChange={(value) => updateConfig(scannerConfig.type, { model: value })}
+              onValueChange={(value) => handleModelChange(scannerConfig.type, value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select model" />
