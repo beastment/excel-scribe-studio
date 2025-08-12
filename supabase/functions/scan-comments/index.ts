@@ -327,14 +327,16 @@ async function callBedrock(config: any, prompt: string): Promise<any> {
 
   const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
   
+  // Create timestamp and signature together
   const now = new Date();
   const timestamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const authHeader = await createAwsSignature(url, body, region, timestamp);
   
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': await createAwsSignature(url, body, region),
+      'Authorization': authHeader,
       'X-Amz-Date': timestamp,
       'Host': new URL(url).host,
     },
@@ -351,7 +353,7 @@ async function callBedrock(config: any, prompt: string): Promise<any> {
 }
 
 // Create AWS signature for Bedrock
-async function createAwsSignature(url: string, body: string, region: string): Promise<string> {
+async function createAwsSignature(url: string, body: string, region: string, timestamp: string): Promise<string> {
   const accessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
   const secretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
   
@@ -359,11 +361,7 @@ async function createAwsSignature(url: string, body: string, region: string): Pr
     throw new Error('AWS credentials missing');
   }
 
-  // AWS v4 signing implementation
-  const now = new Date();
-  const dateString = now.toISOString().split('T')[0].replace(/-/g, '');
-  const timestampString = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
-  
+  const dateString = timestamp.split('T')[0];
   const service = 'bedrock';
   const algorithm = 'AWS4-HMAC-SHA256';
   const credentialScope = `${dateString}/${region}/${service}/aws4_request`;
@@ -372,7 +370,7 @@ async function createAwsSignature(url: string, body: string, region: string): Pr
   const urlParts = new URL(url);
   const canonicalUri = urlParts.pathname;
   const canonicalQueryString = '';
-  const canonicalHeaders = `host:${urlParts.host}\nx-amz-date:${timestampString}\n`;
+  const canonicalHeaders = `host:${urlParts.host}\nx-amz-date:${timestamp}\n`;
   const signedHeaders = 'host;x-amz-date';
   
   // Hash the payload
@@ -391,13 +389,13 @@ async function createAwsSignature(url: string, body: string, region: string): Pr
   const canonicalRequestHash = await sha256(canonicalRequest);
   const stringToSign = [
     algorithm,
-    timestampString,
+    timestamp,
     credentialScope,
     canonicalRequestHash
   ].join('\n');
   
   // Calculate signature
-  const kDate = await hmacSha256(`AWS4${secretKey}`, dateString);
+  const kDate = await hmacSha256(new TextEncoder().encode(`AWS4${secretKey}`), dateString);
   const kRegion = await hmacSha256(kDate, region);
   const kService = await hmacSha256(kRegion, service);
   const kSigning = await hmacSha256(kService, 'aws4_request');
@@ -419,12 +417,11 @@ async function sha256(data: string): Promise<string> {
     .join('');
 }
 
-async function hmacSha256(key: ArrayBuffer | string, data: string): Promise<ArrayBuffer> {
+async function hmacSha256(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
   const encoder = new TextEncoder();
-  const keyBuffer = typeof key === 'string' ? encoder.encode(key) : key;
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    keyBuffer,
+    key,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
