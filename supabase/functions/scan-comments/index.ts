@@ -150,41 +150,70 @@ async function processBatch(batch: any[], configs: any[], defaultMode: string, b
     });
   }
 
-  // Apply redaction/rephrasing if needed
-  if (defaultMode === 'redact' && redactionConfig) {
-    const needsRedaction = batch.filter(c => c.identifiable);
-    if (needsRedaction.length > 0) {
-      try {
-        console.log(`Rephrasing ${needsRedaction.length} comments with identifiable information...`);
-        const redactedTexts = await performRedaction(needsRedaction, redactionConfig);
-        needsRedaction.forEach((comment, idx) => {
-          if (redactedTexts[idx] && typeof redactedTexts[idx] === 'string') {
-            comment.text = redactedTexts[idx];
-            comment.debugInfo = { ...comment.debugInfo, rephrasedBy: 'AI', originalPreserved: true };
-            console.log(`Rephrased comment ${comment.id || idx}: "${comment.originalText}" -> "${comment.text}"`);
-          }
-        });
-        console.log(`Rephrasing complete for ${needsRedaction.length} comments`);
-      } catch (error) {
-        console.error('AI rephrasing failed, using simple redaction:', error);
-        // Apply simple redaction fallback
-        needsRedaction.forEach(comment => {
-          const redacted = applySimpleRedaction(comment.text);
-          if (redacted !== comment.text) {
-            comment.text = redacted;
-            comment.debugInfo = { ...comment.debugInfo, rephrasedBy: 'heuristic', rephrasingError: error.message };
-            console.log(`Simple redaction applied to comment ${comment.id}: "${comment.originalText}" -> "${comment.text}"`);
-          }
-        });
-      }
+  // Generate redacted and rephrased versions for flagged comments
+  const flaggedComments = batch.filter(c => c.concerning || c.identifiable);
+  
+  if (flaggedComments.length > 0 && redactionConfig) {
+    try {
+      console.log(`Generating redacted versions for ${flaggedComments.length} flagged comments...`);
+      const redactedTexts = await performRedaction(flaggedComments, redactionConfig, 'redact');
+      flaggedComments.forEach((comment, idx) => {
+        if (redactedTexts[idx] && typeof redactedTexts[idx] === 'string') {
+          comment.redactedText = redactedTexts[idx];
+          console.log(`Generated redacted version for comment ${comment.id || idx}`);
+        }
+      });
+
+      console.log(`Generating rephrased versions for ${flaggedComments.length} flagged comments...`);
+      const rephrasedTexts = await performRedaction(flaggedComments, redactionConfig, 'rephrase');
+      flaggedComments.forEach((comment, idx) => {
+        if (rephrasedTexts[idx] && typeof rephrasedTexts[idx] === 'string') {
+          comment.rephrasedText = rephrasedTexts[idx];
+          console.log(`Generated rephrased version for comment ${comment.id || idx}`);
+        }
+      });
+      
+    } catch (error) {
+      console.error('AI redaction/rephrasing failed, using simple redaction:', error);
+      // Apply simple redaction fallback
+      flaggedComments.forEach(comment => {
+        comment.redactedText = applySimpleRedaction(comment.originalText || comment.text);
+        comment.rephrasedText = applySimpleRedaction(comment.originalText || comment.text);
+        comment.debugInfo = { ...comment.debugInfo, rephrasedBy: 'heuristic', rephrasingError: error.message };
+      });
     }
   }
+
+  // Set the display text based on defaultMode
+  batch.forEach(comment => {
+    if (comment.concerning || comment.identifiable) {
+      if (defaultMode === 'redact' && comment.redactedText) {
+        comment.text = comment.redactedText;
+        comment.mode = 'redact';
+      } else if (defaultMode === 'rephrase' && comment.rephrasedText) {
+        comment.text = comment.rephrasedText;
+        comment.mode = 'rephrase';
+      } else {
+        comment.mode = 'revert';
+      }
+    } else {
+      comment.mode = 'revert';
+    }
+    
+    // Set AI reasoning for display
+    if (comment.aiResponse) {
+      comment.aiReasoning = comment.aiResponse;
+    }
+  });
 
   // Add debug info to all comments in batch
   batch.forEach((comment, idx) => {
     comment.debugInfo = {
       batchIndex: batchStartIndex + idx,
       processingTime: new Date().toISOString(),
+      hasRedactedText: !!comment.redactedText,
+      hasRephrasedText: !!comment.rephrasedText,
+      finalMode: comment.mode,
       ...comment.debugInfo
     };
   });
@@ -205,11 +234,17 @@ async function analyzeForIdentifiable(comments: any[], config: any): Promise<any
 }
 
 // Perform redaction on comments
-async function performRedaction(comments: any[], config: any): Promise<string[]> {
+async function performRedaction(comments: any[], config: any, mode: 'redact' | 'rephrase' = 'rephrase'): Promise<string[]> {
   const texts = comments.map(c => c.originalText || c.text);
-  const prompt = `Rephrase these comments to remove personally identifiable information while maintaining the original meaning, tone, and level of concern. Return a parallel list of rephrased comments in the exact same order as the input.\n\n${JSON.stringify(texts)}`;
   
-  console.log(`Calling ${config.provider}:${config.model} for redaction of ${texts.length} comments`);
+  let prompt: string;
+  if (mode === 'redact') {
+    prompt = `Redact personally identifiable information from these comments while maintaining the original meaning and tone. Replace names, IDs, phone numbers, etc. with generic placeholders like [NAME], [ID], [PHONE]. Return a parallel list of redacted comments in the exact same order as the input.\n\n${JSON.stringify(texts)}`;
+  } else {
+    prompt = `Rephrase these comments to remove personally identifiable information while maintaining the original meaning, tone, and level of concern. Return a parallel list of rephrased comments in the exact same order as the input.\n\n${JSON.stringify(texts)}`;
+  }
+  
+  console.log(`Calling ${config.provider}:${config.model} for ${mode} of ${texts.length} comments`);
   const result = await callAIModel(config, prompt);
   
   // Parse the result as an array of strings
@@ -217,10 +252,10 @@ async function performRedaction(comments: any[], config: any): Promise<string[]>
   
   // Extract just the text if we got objects, otherwise use as-is
   if (Array.isArray(parsed)) {
-    return parsed.map(item => typeof item === 'string' ? item : (item.text || item.rephrased || texts[parsed.indexOf(item)]));
+    return parsed.map(item => typeof item === 'string' ? item : (item.text || item.rephrased || item.redacted || texts[parsed.indexOf(item)]));
   }
   
-  console.warn('Redaction result was not an array, using original texts');
+  console.warn(`${mode} result was not an array, using original texts`);
   return texts; // Fallback to original if parsing fails completely
 }
 
@@ -399,25 +434,40 @@ function processWithHeuristics(comments: any[], defaultMode: string): any[] {
   console.log('Using heuristic processing as fallback');
   
   return comments.map(comment => {
+    const concerning = checkConcerningHeuristic(comment.text);
+    const identifiable = checkIdentifiableHeuristic(comment.text);
+    
     const processed = {
       ...comment,
-      concerning: checkConcerningHeuristic(comment.text),
-      identifiable: checkIdentifiableHeuristic(comment.text),
+      concerning,
+      identifiable,
       aiResponse: 'Processed using heuristic analysis (AI unavailable)',
+      aiReasoning: 'Processed using heuristic analysis (AI unavailable)',
       debugInfo: {
         processingMethod: 'heuristic',
         fallbackReason: 'AI analysis failed'
       }
     };
 
-    // Apply simple redaction if needed
-    if (defaultMode === 'redact' && processed.identifiable) {
-      const redacted = applySimpleRedaction(processed.text);
-      if (redacted !== processed.text) {
-        processed.originalText = processed.text;
-        processed.text = redacted;
-        processed.debugInfo.rephrasedBy = 'heuristic';
+    // Generate redacted and rephrased versions for flagged comments
+    if (concerning || identifiable) {
+      processed.redactedText = applySimpleRedaction(processed.originalText || processed.text);
+      processed.rephrasedText = applySimpleRedaction(processed.originalText || processed.text);
+      
+      // Set display text based on mode
+      if (defaultMode === 'redact') {
+        processed.text = processed.redactedText;
+        processed.mode = 'redact';
+      } else if (defaultMode === 'rephrase') {
+        processed.text = processed.rephrasedText;
+        processed.mode = 'rephrase';
+      } else {
+        processed.mode = 'revert';
       }
+      
+      processed.debugInfo.rephrasedBy = 'heuristic';
+    } else {
+      processed.mode = 'revert';
     }
 
     return processed;
