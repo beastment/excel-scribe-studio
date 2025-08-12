@@ -755,11 +755,21 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
     throw lastError!;
   }
 
-  // Separate function for making the actual Bedrock request
-  async function makeBedrockRequest(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', awsAccessKey: string, awsSecretKey: string, awsRegion: string) {
+// Separate function for making the actual Bedrock request
+  async function makeBedrockRequest(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', awsAccessKey: string, awsSecretKey: string, awsRegion: string, titanStrictRetry: boolean = false) {
 
     // Use AWS SDK v3 style endpoint for Bedrock
     const endpoint = `https://bedrock-runtime.${awsRegion}.amazonaws.com/model/${model}/invoke`;
+
+    // For Titan analysis requests, enforce strict JSON envelope and deterministic output
+    let effectivePrompt = prompt;
+    if (model.startsWith('amazon.titan') && (responseType === 'analysis' || responseType === 'batch_analysis')) {
+      const schema = responseType === 'batch_analysis'
+        ? '[{ "concerning": boolean, "identifiable": boolean, "reasoning": string }]'
+        : '{ "concerning": boolean, "identifiable": boolean, "reasoning": string }';
+      const strictHeader = `You must respond ONLY with ${schema} wrapped inside <json> and </json> tags. Do not include any prose, explanations, or code fences. No markdown. No preface. Output exactly and only the JSON.`;
+      effectivePrompt = `${strictHeader}\n\n${prompt}`;
+    }
 
     let requestBody;
     if (model.startsWith('anthropic.claude')) {
@@ -786,10 +796,13 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
       }
     } else if (model.startsWith('amazon.titan')) {
       requestBody = JSON.stringify({
-        inputText: `${prompt}\n\n${commentText}`,
+        inputText: `${effectivePrompt}\n\n${commentText}`,
         textGenerationConfig: {
           maxTokenCount: 1000,
-          temperature: 0.1,
+          temperature: 0,
+          topP: 0.1,
+          topK: 20,
+          stopSequences: ["</json>"]
         }
       });
     } else if (model.startsWith('mistral.')) {
@@ -1064,6 +1077,27 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
     } else {
       return content;
     }
+  }
+
+  // Titan-specific normalizer to coerce fields and clean outputs
+  function normalizeTitanAnalysis(data: any) {
+    const toBool = (v: any) => {
+      if (typeof v === 'boolean') return v;
+      if (typeof v === 'string') {
+        const s = v.trim().toLowerCase();
+        if (['true', 'yes', 'y', '1'].includes(s)) return true;
+        if (['false', 'no', 'n', '0'].includes(s)) return false;
+      }
+      if (typeof v === 'number') return v !== 0;
+      return !!v;
+    };
+    const normalizeOne = (o: any) => ({
+      concerning: toBool(o?.concerning),
+      identifiable: toBool(o?.identifiable),
+      reasoning: typeof o?.reasoning === 'string' ? o.reasoning.trim() : JSON.stringify(o?.reasoning ?? '')
+    });
+    if (Array.isArray(data)) return data.map(normalizeOne);
+    return normalizeOne(data);
   }
 
   // Basic AWS signature creation
