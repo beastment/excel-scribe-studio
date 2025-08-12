@@ -802,9 +802,8 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         inputText: `${effectivePrompt}\n\n${commentText}`,
         textGenerationConfig: {
           maxTokenCount: 1000,
-          temperature: 0,
+          temperature: 0.1,
           topP: 0.1,
-          topK: 20,
           stopSequences: ["</json>"]
         }
       });
