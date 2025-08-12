@@ -457,6 +457,44 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+// Heuristic analyzer used when the model response is unusable
+function heuristicAnalyze(text: string): { concerning: boolean; identifiable: boolean; reasoning: string } {
+  const t = text.replace(/[\r\n\t]/g, ' ').trim();
+
+  // Concerning content indicators
+  const concerningIndicators = [
+    /harass|inappropriate|threat|violence|unsafe|violation|illegal|discriminat|bully|steal|theft|drug/i,
+  ];
+
+  // PII indicators
+  const piiPatterns = [
+    /\b\d{3}-\d{2}-\d{4}\b/i, // SSN
+    /(?:\+?\d{1,2}\s*)?(?:\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/i, // Phone
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i, // Email
+    /(employee\s*id|badge\s*#?\s*\d+)/i, // Employee ID / Badge
+  ];
+
+  let concerning = concerningIndicators.some(rx => rx.test(t));
+  let identifiable = piiPatterns.some(rx => rx.test(t));
+
+  // Simple two-capitalized-words name heuristic (only if context suggests workplace)
+  if (!identifiable) {
+    const hasFullName = /\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/.test(t);
+    const hasContext = /(HR|manager|supervisor|accounting|customer service|warehouse)/i.test(t);
+    if (hasFullName && hasContext) identifiable = true;
+  }
+
+  const reasons: string[] = [];
+  if (concerning) reasons.push('Concerning content indicators present');
+  if (identifiable) reasons.push('Personally identifiable information indicators present');
+
+  return {
+    concerning,
+    identifiable,
+    reasoning: reasons.length ? reasons.join('; ') : 'No concerning content or PII detected by heuristic fallback.'
+  };
+}
+
 // Helper function to call AI services with rate limiting
 async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>) {
   // Estimate tokens for this request
@@ -547,9 +585,12 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
                     let reasoning = reasoningMatch ? reasoningMatch[1].trim() : jsonContent;
                     
                     return {
-                      concerning,
-                      identifiable,
-                      reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim()
+                      results: {
+                        concerning,
+                        identifiable,
+                        reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim()
+                      },
+                      rawResponse: null
                     };
                   }
                 } else if (responseType === 'batch_analysis') {
@@ -572,7 +613,10 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
                   }
                   
                   if (results.length > 0) {
-                    return results;
+                    return {
+                      results: results,
+                      rawResponse: null
+                    };
                   }
                 }
               }
@@ -586,32 +630,10 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
       } catch (parseError) {
         console.error(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
         // Enhanced fallback parsing for single analysis
-        if (responseType === 'analysis') {
-          const cleanContent = content.replace(/[\r\n\t]/g, ' ').trim();
-          
-          // Try to extract boolean values from various response formats
-          let concerning = false;
-          let identifiable = false;
-          
-          // Look for concerning indicators
-          if (/concerning[:\s]*(?:true|yes|1)/i.test(cleanContent) || 
-              /1[.)\s]*concerning[:\s]*(?:true|yes)/i.test(cleanContent) ||
-              /harassment|threat|illegal|safety|violation/i.test(cleanContent)) {
-            concerning = true;
+          if (responseType === 'analysis') {
+            const heur = heuristicAnalyze(commentText);
+            return { results: heur, rawResponse: content };
           }
-          
-          // Look for identifiable indicators  
-          if (/identifiable[:\s]*(?:true|yes|1)/i.test(cleanContent) ||
-              /2[.)\s]*identifiable[:\s]*(?:true|yes)/i.test(cleanContent) ||
-              /name|email|id|contact|location|personal/i.test(cleanContent)) {
-            identifiable = true;
-          }
-          
-          return {
-            concerning,
-            identifiable,
-            reasoning: cleanContent
-          };
         } else {
           // For batch_analysis, return empty array to trigger fallback to individual processing
           console.warn('Batch analysis JSON parsing failed, returning empty array for fallback');
@@ -955,31 +977,9 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         console.error(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
         // Enhanced fallback parsing for single analysis
         if (responseType === 'analysis') {
-          const cleanContent = content.replace(/[\r\n\t]/g, ' ').trim();
-          
-          // Try to extract boolean values from various response formats
-          let concerning = false;
-          let identifiable = false;
-          
-          // Look for concerning indicators
-          if (/concerning[:\s]*(?:true|yes|1)/i.test(cleanContent) || 
-              /1[.)\s]*concerning[:\s]*(?:true|yes)/i.test(cleanContent) ||
-              /harassment|threat|illegal|safety|violation/i.test(cleanContent)) {
-            concerning = true;
-          }
-          
-          // Look for identifiable indicators  
-          if (/identifiable[:\s]*(?:true|yes|1)/i.test(cleanContent) ||
-              /2[.)\s]*identifiable[:\s]*(?:true|yes)/i.test(cleanContent) ||
-              /name|email|id|contact|location|personal/i.test(cleanContent)) {
-            identifiable = true;
-          }
-          
-          return {
-            concerning,
-            identifiable,
-            reasoning: cleanContent
-          };
+          const heur = heuristicAnalyze(commentText);
+          return { results: heur, rawResponse: content };
+        }
         } else {
           // For batch_analysis, return empty array to trigger fallback to individual processing
           console.warn('Batch analysis JSON parsing failed, returning empty array for fallback');
