@@ -144,6 +144,7 @@ serve(async (req) => {
               console.error(`Individual processing failed for comment ${comment.id}:`, error);
               scannedComments.push({
                 ...comment,
+                text: comment.originalText || comment.text,
                 concerning: false,
                 identifiable: false,
                 aiReasoning: `Error processing: ${error.message}`,
@@ -226,14 +227,16 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
           if (needsAdjudication) summary.needsAdjudication++;
 
           // Store intermediate results
+          const finalMode = (finalResult.concerning || finalResult.identifiable) ? defaultMode : 'original';
           const processedComment = {
             ...comment,
+            text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
             concerning: finalResult.concerning,
             identifiable: finalResult.identifiable,
             aiReasoning: finalResult.reasoning,
             redactedText: null,
             rephrasedText: null,
-            mode: finalResult.concerning || finalResult.identifiable ? defaultMode : 'original',
+            mode: finalMode,
             approved: false,
             hideAiResponse: false,
             debugInfo: {
@@ -320,6 +323,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
         for (const comment of batch) {
           scannedComments.push({
             ...comment,
+            text: comment.originalText || comment.text,
             concerning: false,
             identifiable: false,
             aiReasoning: `Error processing: ${error.message}`,
