@@ -72,7 +72,7 @@ async function processCommentsSync(comments: any[], defaultMode: string): Promis
   const { data: configs, error: configError } = await supabase
     .from('ai_configurations')
     .select('*')
-    .in('scanner_type', ['concerning_scanner', 'identifiable_scanner', 'redaction_scanner']);
+    .in('scanner_type', ['scan_a', 'scan_b', 'adjudicator']);
 
   if (configError || !configs?.length) {
     console.error('No AI configurations found, falling back to heuristics');
@@ -112,12 +112,12 @@ async function processCommentsSync(comments: any[], defaultMode: string): Promis
 
 // Process a single batch of comments
 async function processBatch(batch: any[], configs: any[], defaultMode: string, batchStartIndex: number): Promise<void> {
-  const concerningConfig = configs.find(c => c.scanner_type === 'concerning_scanner');
-  const identifiableConfig = configs.find(c => c.scanner_type === 'identifiable_scanner');
-  const redactionConfig = configs.find(c => c.scanner_type === 'redaction_scanner');
+  const concerningConfig = configs.find(c => c.scanner_type === 'scan_a');
+  const identifiableConfig = configs.find(c => c.scanner_type === 'scan_b');
+  const redactionConfig = configs.find(c => c.scanner_type === 'adjudicator');
 
   if (!concerningConfig || !identifiableConfig) {
-    throw new Error('Missing scanner configurations');
+    throw new Error('Missing required scanner configurations. Please configure both scan_a and scan_b scanners.');
   }
 
   // Analyze for concerning content
@@ -221,14 +221,14 @@ async function processBatch(batch: any[], configs: any[], defaultMode: string, b
 
 // Analyze comments for concerning content
 async function analyzeForConcerning(comments: any[], config: any): Promise<any[]> {
-  const prompt = buildConcerningPrompt(comments, config.system_prompt);
+  const prompt = `${config.analysis_prompt}\n\nComments to analyze:\n${comments.map((c, idx) => `${idx + 1}. ${c.text}`).join('\n')}`;
   const result = await callAIModel(config, prompt);
   return parseAIResponse(result, comments.length);
 }
 
 // Analyze comments for identifiable information
 async function analyzeForIdentifiable(comments: any[], config: any): Promise<any[]> {
-  const prompt = buildIdentifiablePrompt(comments, config.system_prompt);
+  const prompt = `${config.analysis_prompt}\n\nComments to analyze:\n${comments.map((c, idx) => `${idx + 1}. ${c.text}`).join('\n')}`;
   const result = await callAIModel(config, prompt);
   return parseAIResponse(result, comments.length);
 }
@@ -239,9 +239,9 @@ async function performRedaction(comments: any[], config: any, mode: 'redact' | '
   
   let prompt: string;
   if (mode === 'redact') {
-    prompt = `Redact personally identifiable information from these comments while maintaining the original meaning and tone. Replace names, IDs, phone numbers, etc. with generic placeholders like [NAME], [ID], [PHONE]. Return a parallel list of redacted comments in the exact same order as the input.\n\n${JSON.stringify(texts)}`;
+    prompt = `${config.redact_prompt}\n\n${JSON.stringify(texts)}`;
   } else {
-    prompt = `Rephrase these comments to remove personally identifiable information while maintaining the original meaning, tone, and level of concern. Return a parallel list of rephrased comments in the exact same order as the input.\n\n${JSON.stringify(texts)}`;
+    prompt = `${config.rephrase_prompt}\n\n${JSON.stringify(texts)}`;
   }
   
   console.log(`Calling ${config.provider}:${config.model} for ${mode} of ${texts.length} comments`);
@@ -327,11 +327,16 @@ async function callBedrock(config: any, prompt: string): Promise<any> {
 
   const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
   
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': await createAwsSignature(url, body, region),
+      'X-Amz-Date': timestamp,
+      'Host': new URL(url).host,
     },
     body: body,
   });
@@ -347,7 +352,6 @@ async function callBedrock(config: any, prompt: string): Promise<any> {
 
 // Create AWS signature for Bedrock
 async function createAwsSignature(url: string, body: string, region: string): Promise<string> {
-  // Simplified AWS signature - in production you'd want a proper implementation
   const accessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
   const secretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
   
@@ -355,8 +359,77 @@ async function createAwsSignature(url: string, body: string, region: string): Pr
     throw new Error('AWS credentials missing');
   }
 
-  // For now, return a basic auth header - this needs proper AWS v4 signing
-  return `AWS4-HMAC-SHA256 Credential=${accessKey}/${new Date().toISOString().split('T')[0]}/${region}/bedrock/aws4_request, SignedHeaders=host;x-amz-date, Signature=placeholder`;
+  // AWS v4 signing implementation
+  const now = new Date();
+  const dateString = now.toISOString().split('T')[0].replace(/-/g, '');
+  const timestampString = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  
+  const service = 'bedrock';
+  const algorithm = 'AWS4-HMAC-SHA256';
+  const credentialScope = `${dateString}/${region}/${service}/aws4_request`;
+  
+  // Create canonical request
+  const urlParts = new URL(url);
+  const canonicalUri = urlParts.pathname;
+  const canonicalQueryString = '';
+  const canonicalHeaders = `host:${urlParts.host}\nx-amz-date:${timestampString}\n`;
+  const signedHeaders = 'host;x-amz-date';
+  
+  // Hash the payload
+  const payloadHash = await sha256(body);
+  
+  const canonicalRequest = [
+    'POST',
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash
+  ].join('\n');
+  
+  // Create string to sign
+  const canonicalRequestHash = await sha256(canonicalRequest);
+  const stringToSign = [
+    algorithm,
+    timestampString,
+    credentialScope,
+    canonicalRequestHash
+  ].join('\n');
+  
+  // Calculate signature
+  const kDate = await hmacSha256(`AWS4${secretKey}`, dateString);
+  const kRegion = await hmacSha256(kDate, region);
+  const kService = await hmacSha256(kRegion, service);
+  const kSigning = await hmacSha256(kService, 'aws4_request');
+  const signature = await hmacSha256(kSigning, stringToSign);
+  
+  const signatureHex = Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  
+  return `${algorithm} Credential=${accessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+}
+
+// Utility functions for AWS signing
+async function sha256(data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const buffer = await crypto.subtle.digest('SHA-256', encoder.encode(data));
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function hmacSha256(key: ArrayBuffer | string, data: string): Promise<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  const keyBuffer = typeof key === 'string' ? encoder.encode(key) : key;
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBuffer,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  return await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(data));
 }
 
 // Parse AI response into structured format
