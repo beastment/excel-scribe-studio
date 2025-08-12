@@ -766,6 +766,14 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
           temperature: 0.1,
         }
       });
+    } else if (model.startsWith('mistral.')) {
+      // Mistral models on Bedrock use a simple prompt-based schema
+      requestBody = JSON.stringify({
+        prompt: `${prompt}\n\n${commentText}`,
+        max_tokens: 1000,
+        temperature: 0.1,
+        top_p: 0.9
+      });
     } else {
       throw new Error(`Unsupported Bedrock model: ${model}`);
     }
@@ -849,7 +857,10 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         content = data.completion;
       }
     } else if (model.startsWith('amazon.titan')) {
-      content = data.results[0].outputText;
+      content = data.results?.[0]?.outputText || data.outputText || data.completion;
+    } else if (model.startsWith('mistral.')) {
+      // Mistral on Bedrock commonly returns { outputs: [{ text }] }
+      content = data.outputs?.[0]?.text || data.output_text || data.completion || data.generation || data.result || JSON.stringify(data);
     }
 
     if (responseType === 'analysis' || responseType === 'batch_analysis') {
