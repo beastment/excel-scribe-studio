@@ -64,7 +64,9 @@ serve(async (req) => {
     let summary = { total: comments.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
 
     // Rate limiting setup
-    const rateLimiters = new Map();
+    const rateLimiters = new Map<string, any>();
+
+    // Per-scanner limiters (as configured in admin dashboard)
     configs.forEach(config => {
       rateLimiters.set(config.scanner_type, {
         rpmLimit: config.rpm_limit || 10, // Default to 10 RPM if not set
@@ -72,11 +74,33 @@ serve(async (req) => {
         requestsThisMinute: 0,
         tokensThisMinute: 0,
         lastMinuteReset: Date.now(),
-        pendingRequests: []
+        queuePromise: Promise.resolve(),
       });
     });
 
-    // Calculate batch size based on strictest rate limits
+    // Provider+Model level limiter to coordinate shared capacity across scanners using the same model
+    const providerModelAggregates = new Map<string, { rpm: number[]; tpm: number[] }>();
+    configs.forEach(c => {
+      const key = `${c.provider}:${c.model}`;
+      if (!providerModelAggregates.has(key)) {
+        providerModelAggregates.set(key, { rpm: [], tpm: [] });
+      }
+      providerModelAggregates.get(key)!.rpm.push(c.rpm_limit || 10);
+      providerModelAggregates.get(key)!.tpm.push(c.tpm_limit || 50000);
+    });
+    providerModelAggregates.forEach((agg, key) => {
+      // Use the most conservative limits across scanners sharing the same provider+model
+      rateLimiters.set(`provider:${key}`, {
+        rpmLimit: Math.min(...agg.rpm),
+        tpmLimit: Math.min(...agg.tpm),
+        requestsThisMinute: 0,
+        tokensThisMinute: 0,
+        lastMinuteReset: Date.now(),
+        queuePromise: Promise.resolve(),
+      });
+    });
+
+    // Calculate batch size based on strictest per-scanner rate limits
     const minRpm = Math.min(...configs.map(c => c.rpm_limit || 10));
     const BATCH_SIZE = Math.min(20, Math.max(1, Math.floor(minRpm / 3))); // Conservative batch size
     const BATCH_DELAY = Math.max(3000, Math.ceil(60000 / minRpm)); // Ensure we don't exceed RPM
@@ -480,38 +504,42 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
   scannedComments.push(processedComment);
 }
 
-// Rate limiting helper function
-async function enforceRateLimit(scannerType: string, estimatedTokens: number, rateLimiters) {
-  const limiter = rateLimiters.get(scannerType);
+// Rate limiting helper function with per-key serialized queue
+async function enforceRateLimit(key: string, estimatedTokens: number, rateLimiters: Map<string, any>) {
+  const limiter = rateLimiters.get(key);
   if (!limiter) return;
 
-  const now = Date.now();
-  
-  // Reset counters if a minute has passed
-  if (now - limiter.lastMinuteReset >= 60000) {
-    limiter.requestsThisMinute = 0;
-    limiter.tokensThisMinute = 0;
-    limiter.lastMinuteReset = now;
-  }
+  // Chain onto a per-limiter promise to serialize checks/updates
+  limiter.queuePromise = (limiter.queuePromise || Promise.resolve()).then(async () => {
+    const now = Date.now();
 
-  // Check if we would exceed limits
-  const wouldExceedRpm = limiter.requestsThisMinute >= limiter.rpmLimit;
-  const wouldExceedTpm = limiter.tokensThisMinute + estimatedTokens > limiter.tpmLimit;
+    // Reset counters if a minute has passed
+    if (now - limiter.lastMinuteReset >= 60000) {
+      limiter.requestsThisMinute = 0;
+      limiter.tokensThisMinute = 0;
+      limiter.lastMinuteReset = now;
+    }
 
-  if (wouldExceedRpm || wouldExceedTpm) {
-    const timeToWait = 60000 - (now - limiter.lastMinuteReset);
-    console.log(`Rate limit reached for ${scannerType}. Waiting ${Math.ceil(timeToWait / 1000)}s...`);
-    await new Promise(resolve => setTimeout(resolve, timeToWait + 1000)); // Add 1s buffer
-    
-    // Reset after waiting
-    limiter.requestsThisMinute = 0;
-    limiter.tokensThisMinute = 0;
-    limiter.lastMinuteReset = Date.now();
-  }
+    // If limits would be exceeded, wait until the next window + small buffer
+    const wouldExceedRpm = limiter.requestsThisMinute >= limiter.rpmLimit;
+    const wouldExceedTpm = limiter.tokensThisMinute + estimatedTokens > limiter.tpmLimit;
+    if (wouldExceedRpm || wouldExceedTpm) {
+      const timeToWait = Math.max(0, 60000 - (now - limiter.lastMinuteReset));
+      console.log(`Rate limit reached for ${key}. Waiting ${Math.ceil(timeToWait / 1000)}s...`);
+      await new Promise(resolve => setTimeout(resolve, timeToWait + 1000)); // +1s buffer
+      // Reset after waiting
+      limiter.requestsThisMinute = 0;
+      limiter.tokensThisMinute = 0;
+      limiter.lastMinuteReset = Date.now();
+    }
 
-  // Update counters
-  limiter.requestsThisMinute++;
-  limiter.tokensThisMinute += estimatedTokens;
+    // Update counters for this request
+    limiter.requestsThisMinute++;
+    limiter.tokensThisMinute += estimatedTokens;
+  });
+
+  // Wait until our turn in the queue is processed
+  await limiter.queuePromise;
 }
 
 // Helper function to estimate tokens (rough approximation: 1 token ≈ 4 characters)
@@ -562,18 +590,25 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
   // Estimate tokens for this request
   const estimatedTokens = estimateTokens(prompt + commentText);
   
-  // Enforce rate limits if scanner type is provided
-  if (scannerType && rateLimiters) {
-    await enforceRateLimit(scannerType, estimatedTokens, rateLimiters);
-  }
-    if (provider === 'openai') {
-      return await callOpenAI(model, prompt, commentText, responseType);
-    } else if (provider === 'bedrock') {
-      return await callBedrock(model, prompt, commentText, responseType);
-    } else {
-      throw new Error(`Unsupported AI provider: ${provider}`);
+  // Enforce both provider+model and per-scanner limits if available
+  if (rateLimiters) {
+    const providerKey = `provider:${provider}:${model}`;
+    if (rateLimiters.has(providerKey)) {
+      await enforceRateLimit(providerKey, estimatedTokens, rateLimiters);
+    }
+    if (scannerType && rateLimiters.has(scannerType)) {
+      await enforceRateLimit(scannerType, estimatedTokens, rateLimiters);
     }
   }
+
+  if (provider === 'openai') {
+    return await callOpenAI(model, prompt, commentText, responseType);
+  } else if (provider === 'bedrock') {
+    return await callBedrock(model, prompt, commentText, responseType);
+  } else {
+    throw new Error(`Unsupported AI provider: ${provider}`);
+  }
+}
 
   // OpenAI API call
   async function callOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text') {
