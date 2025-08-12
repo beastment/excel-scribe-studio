@@ -303,7 +303,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, '');
     const dateStamp = amzDate.substr(0, 8);
     
-    const canonicalUri = `/model/${model}/invoke`;
+    const canonicalUri = `/model/${encodeURIComponent(model)}/invoke`;
     const canonicalQuerystring = '';
     const canonicalHeaders = `host:${host}\nx-amz-date:${amzDate}\n`;
     const signedHeaders = 'host;x-amz-date';
