@@ -163,6 +163,22 @@ serve(async (req) => {
           const scanAResult = scanAResults[j];
           const scanBResult = scanBResults[j];
 
+          // Heuristic safety net
+          const heur = heuristicAnalyze(comment.text);
+          const patchResult = (r: any) => {
+            if (!r) return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
+            if (typeof r.concerning !== 'boolean') r.concerning = heur.concerning;
+            if (typeof r.identifiable !== 'boolean') r.identifiable = heur.identifiable;
+            if (!r.concerning && !r.identifiable && (heur.concerning || heur.identifiable)) {
+              r.concerning = r.concerning || heur.concerning;
+              r.identifiable = r.identifiable || heur.identifiable;
+              r.reasoning = (r.reasoning ? r.reasoning + ' ' : '') + 'Heuristic suggests flags: ' + heur.reasoning;
+            }
+            return r;
+          };
+          patchResult(scanAResult);
+          patchResult(scanBResult);
+
           let finalResult = null;
           let adjudicationResult = null;
           let needsAdjudication = false;
@@ -325,6 +341,22 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
   let finalResult = null;
   let adjudicationResult = null;
   let needsAdjudication = false;
+
+  // Heuristic safety net
+  const heur = heuristicAnalyze(comment.text);
+  const patchResult = (r: any) => {
+    if (!r) return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
+    if (typeof r.concerning !== 'boolean') r.concerning = heur.concerning;
+    if (typeof r.identifiable !== 'boolean') r.identifiable = heur.identifiable;
+    if (!r.concerning && !r.identifiable && (heur.concerning || heur.identifiable)) {
+      r.concerning = r.concerning || heur.concerning;
+      r.identifiable = r.identifiable || heur.identifiable;
+      r.reasoning = (r.reasoning ? r.reasoning + ' ' : '') + 'Heuristic suggests flags: ' + heur.reasoning;
+    }
+    return r;
+  };
+  scanAResult = patchResult(scanAResult);
+  scanBResult = patchResult(scanBResult);
 
   // Check if Scan A and Scan B results differ
   if (scanAResult.concerning !== scanBResult.concerning || 
