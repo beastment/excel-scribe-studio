@@ -803,8 +803,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         textGenerationConfig: {
           maxTokenCount: 1000,
           temperature: 0.1,
-          topP: 0.1,
-          stopSequences: ["</json>"]
+          topP: 0.1
         }
       });
     } else if (model.startsWith('mistral.')) {
