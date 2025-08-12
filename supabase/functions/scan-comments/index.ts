@@ -260,26 +260,52 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
           const activeConfig = scanA; // Use scan_a config for batch operations
 
           try {
-            const [redactedTexts, rephrasedTexts] = await Promise.all([
-              callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters),
-              callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters)
-            ]);
+            // For Bedrock Mistral, prefer per-item processing for higher reliability
+            if (activeConfig.provider === 'bedrock' && activeConfig.model.startsWith('mistral.')) {
+              let idx = 0;
+              for (let k = scannedComments.length - batch.length; k < scannedComments.length; k++) {
+                if (scannedComments[k].concerning || scannedComments[k].identifiable) {
+                  try {
+                    const [red, reph] = await Promise.all([
+                      callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters),
+                      callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters)
+                    ]);
+                    scannedComments[k].redactedText = red;
+                    scannedComments[k].rephrasedText = reph;
 
-            // Apply redacted and rephrased texts
-            let flaggedIndex = 0;
-            for (let k = scannedComments.length - batch.length; k < scannedComments.length; k++) {
-              if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                scannedComments[k].redactedText = redactedTexts[flaggedIndex];
-                scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex];
-                
-                // Set final text based on mode
-                if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
-                  scannedComments[k].text = redactedTexts[flaggedIndex];
-                } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
-                  scannedComments[k].text = rephrasedTexts[flaggedIndex];
+                    if (scannedComments[k].mode === 'redact' && red) {
+                      scannedComments[k].text = red;
+                    } else if (scannedComments[k].mode === 'rephrase' && reph) {
+                      scannedComments[k].text = reph;
+                    }
+                  } catch (perItemErr) {
+                    console.warn(`Per-item redaction/rephrasing failed for comment index ${k}:`, perItemErr);
+                  }
+                  idx++;
                 }
-                
-                flaggedIndex++;
+              }
+            } else {
+              const [redactedTexts, rephrasedTexts] = await Promise.all([
+                callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters),
+                callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters)
+              ]);
+
+              // Apply redacted and rephrased texts
+              let flaggedIndex = 0;
+              for (let k = scannedComments.length - batch.length; k < scannedComments.length; k++) {
+                if (scannedComments[k].concerning || scannedComments[k].identifiable) {
+                  scannedComments[k].redactedText = redactedTexts[flaggedIndex];
+                  scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex];
+                  
+                  // Set final text based on mode
+                  if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
+                    scannedComments[k].text = redactedTexts[flaggedIndex];
+                  } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
+                    scannedComments[k].text = rephrasedTexts[flaggedIndex];
+                  }
+                  
+                  flaggedIndex++;
+                }
               }
             }
           } catch (error) {
