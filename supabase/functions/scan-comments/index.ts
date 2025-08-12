@@ -353,7 +353,14 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Bedrock API error: ${response.status} - ${errorText}`);
-      throw new Error('Bedrock API request failed');
+      console.error(`Bedrock request details:`, {
+        endpoint,
+        model,
+        region: awsRegion,
+        authHeader: authorizationHeader.substring(0, 50) + '...',
+        requestBodyLength: requestBody.length
+      });
+      throw new Error(`Bedrock API request failed: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
