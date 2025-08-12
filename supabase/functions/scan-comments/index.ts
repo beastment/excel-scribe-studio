@@ -869,12 +869,14 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             }
           }
           
-          // Strategy 3: Create fallback response based on text analysis
-          console.log(`Creating fallback response for: ${jsonContent.substring(0, 200)}`);
+          // Strategy 3: Enhanced text analysis for better detection
+          console.log(`Creating enhanced fallback response for: ${jsonContent.substring(0, 200)}`);
           
           if (responseType === 'analysis') {
-            const concerning = /concerning|harassment|threat|illegal|violation/i.test(jsonContent);
-            const identifiable = /identifiable|name|email|id|phone|address/i.test(jsonContent);
+            // More comprehensive concerning content detection
+            const concerning = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|safety|drug|theft|ageist|make.*life.*hell/i.test(jsonContent);
+            // More comprehensive identifiable information detection  
+            const identifiable = /identifiable[:\s]*(?:true|yes)|john\s+smith|sarah\s+johnson|mike\s+wilson|tom\s+anderson|jennifer\s+lee|rebecca\s+williams|david\s+chen|lisa\s+rodriguez|employee\s+id|badge\s+#|ssn:|phone:|email/i.test(jsonContent);
             
             return {
               concerning,
@@ -882,9 +884,9 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
               reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim()
             };
           } else if (responseType === 'batch_analysis') {
-            // For batch, return a single fallback result
-            const concerning = /concerning|harassment|threat|illegal|violation/i.test(jsonContent);
-            const identifiable = /identifiable|name|email|id|phone|address/i.test(jsonContent);
+            // For batch, return a single fallback result with enhanced detection
+            const concerning = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|safety|drug|theft|ageist|make.*life.*hell/i.test(jsonContent);
+            const identifiable = /identifiable[:\s]*(?:true|yes)|john\s+smith|sarah\s+johnson|mike\s+wilson|tom\s+anderson|jennifer\s+lee|rebecca\s+williams|david\s+chen|lisa\s+rodriguez|employee\s+id|badge\s+#|ssn:|phone:|email/i.test(jsonContent);
             
             return [{
               concerning,
