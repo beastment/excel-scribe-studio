@@ -767,8 +767,19 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        // If not valid JSON, split by lines or return array with single item
-        return content.split('\n').filter(line => line.trim().length > 0);
+        // Try to extract a JSON array embedded in prose
+        const cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
+        const first = cleaned.indexOf('[');
+        const last = cleaned.lastIndexOf(']');
+        if (first !== -1 && last > first) {
+          const candidate = cleaned.slice(first, last + 1);
+          try { return JSON.parse(candidate); } catch {}
+        }
+        // Fallback: split into lines and use non-empty items
+        const lines = cleaned.split('\n').map(l => l.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')).filter(Boolean);
+        if (lines.length > 0) return lines;
+        // Last resort: single-item array
+        return [cleaned];
       }
     } else {
       return content;
@@ -1129,8 +1140,19 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        // If not valid JSON, split by lines or return array with single item
-        return content.split('\n').filter(line => line.trim().length > 0);
+        // Try to extract a JSON array embedded in prose
+        const cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
+        const first = cleaned.indexOf('[');
+        const last = cleaned.lastIndexOf(']');
+        if (first !== -1 && last > first) {
+          const candidate = cleaned.slice(first, last + 1);
+          try { return JSON.parse(candidate); } catch {}
+        }
+        // Fallback: split into lines and use non-empty items
+        const lines = cleaned.split('\n').map(l => l.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')).filter(Boolean);
+        if (lines.length > 0) return lines;
+        // Last resort: single-item array
+        return [cleaned];
       }
     } else {
       return content;
