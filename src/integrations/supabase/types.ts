@@ -23,7 +23,9 @@ export type Database = {
           provider: string
           redact_prompt: string
           rephrase_prompt: string
+          rpm_limit: number | null
           scanner_type: string
+          tpm_limit: number | null
           updated_at: string
         }
         Insert: {
@@ -34,7 +36,9 @@ export type Database = {
           provider: string
           redact_prompt: string
           rephrase_prompt: string
+          rpm_limit?: number | null
           scanner_type: string
+          tpm_limit?: number | null
           updated_at?: string
         }
         Update: {
@@ -45,7 +49,9 @@ export type Database = {
           provider?: string
           redact_prompt?: string
           rephrase_prompt?: string
+          rpm_limit?: number | null
           scanner_type?: string
+          tpm_limit?: number | null
           updated_at?: string
         }
         Relationships: []

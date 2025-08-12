@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
@@ -17,6 +18,8 @@ interface AIConfiguration {
   analysis_prompt: string;
   redact_prompt: string;
   rephrase_prompt: string;
+  rpm_limit?: number;
+  tpm_limit?: number;
 }
 
 const PROVIDERS = [
@@ -30,9 +33,11 @@ const MODELS = {
     { value: 'gpt-4o', label: 'GPT-4o' }
   ],
   bedrock: [
-    { value: 'anthropic.claude-v2:1', label: 'Claude Sonnet 4' },
+    { value: 'amazon.titan-text-lite-v1', label: 'Titan Text G1 - Lite' },
+    { value: 'amazon.titan-text-express-v1', label: 'Titan Text G1 - Express' },
     { value: 'anthropic.claude-3-haiku-20240307-v1:0', label: 'Claude 3 Haiku' },
-    { value: 'amazon.titan-text-lite-v1', label: 'Amazon Titan Text G1 - Lite' }
+    { value: 'anthropic.claude-3-5-sonnet-20241022-v2:0', label: 'Claude 3.5 Sonnet v2' },
+    { value: 'mistral.mistral-large-2402-v1:0', label: 'Mistral Large (24.02)' }
   ]
 };
 
@@ -194,6 +199,32 @@ export const AIConfigurationManagement = () => {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor={`rpm-${scannerConfig.type}`}>RPM Limit</Label>
+            <Input
+              id={`rpm-${scannerConfig.type}`}
+              type="number"
+              value={config.rpm_limit || ''}
+              onChange={(e) => updateConfig(scannerConfig.type, { rpm_limit: e.target.value ? parseInt(e.target.value) : undefined })}
+              placeholder="Requests per minute"
+              min="0"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`tpm-${scannerConfig.type}`}>TPM Limit</Label>
+            <Input
+              id={`tpm-${scannerConfig.type}`}
+              type="number"
+              value={config.tpm_limit || ''}
+              onChange={(e) => updateConfig(scannerConfig.type, { tpm_limit: e.target.value ? parseInt(e.target.value) : undefined })}
+              placeholder="Tokens per minute"
+              min="0"
+            />
           </div>
         </div>
 
