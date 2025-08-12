@@ -298,7 +298,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
 
     // Create proper AWS v4 signature
     const host = `bedrock-runtime.${awsRegion}.amazonaws.com`;
-    const service = 'bedrock';
+    const service = 'bedrock-runtime'; // Fixed: should be bedrock-runtime, not bedrock
     const now = new Date();
     const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, '');
     const dateStamp = amzDate.substr(0, 8);
@@ -332,6 +332,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     console.log(`AWS Debug - PayloadHash: ${payloadHash}`);
     console.log(`AWS Debug - StringToSign: ${stringToSign}`);
     console.log(`AWS Debug - Signature: ${signature}`);
+    console.log(`AWS Debug - RequestBody: ${requestBody}`);
     
     // Create authorization header
     const authorizationHeader = `${algorithm} Credential=${awsAccessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
