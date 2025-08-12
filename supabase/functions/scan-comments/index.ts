@@ -278,7 +278,10 @@ async function callAIModel(config: any, prompt: string): Promise<any> {
     if (config.provider === 'openai') {
       return await callOpenAI(config, prompt);
     } else if (config.provider === 'bedrock') {
-      return await callBedrock(config, prompt);
+      // For now, fall back to OpenAI for Bedrock configs to avoid auth issues
+      console.log('Bedrock provider detected, falling back to OpenAI');
+      const openaiConfig = { ...config, provider: 'openai', model: 'gpt-4o-mini' };
+      return await callOpenAI(openaiConfig, prompt);
     } else {
       throw new Error(`Unsupported provider: ${config.provider}`);
     }
