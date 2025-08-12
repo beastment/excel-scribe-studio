@@ -766,4 +766,3 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
     const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
     return new Uint8Array(signature);
   }
-});
