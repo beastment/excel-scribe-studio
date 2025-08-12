@@ -536,13 +536,33 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
           return JSON.parse(jsonContent);
         }
       } catch (parseError) {
-        console.warn(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
-        // Fallback parsing for single analysis
+        console.error(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
+        // Enhanced fallback parsing for single analysis
         if (responseType === 'analysis') {
+          const cleanContent = content.replace(/[\r\n\t]/g, ' ').trim();
+          
+          // Try to extract boolean values from various response formats
+          let concerning = false;
+          let identifiable = false;
+          
+          // Look for concerning indicators
+          if (/concerning[:\s]*(?:true|yes|1)/i.test(cleanContent) || 
+              /1[.)\s]*concerning[:\s]*(?:true|yes)/i.test(cleanContent) ||
+              /harassment|threat|illegal|safety|violation/i.test(cleanContent)) {
+            concerning = true;
+          }
+          
+          // Look for identifiable indicators  
+          if (/identifiable[:\s]*(?:true|yes|1)/i.test(cleanContent) ||
+              /2[.)\s]*identifiable[:\s]*(?:true|yes)/i.test(cleanContent) ||
+              /name|email|id|contact|location|personal/i.test(cleanContent)) {
+            identifiable = true;
+          }
+          
           return {
-            concerning: content.toLowerCase().includes('true') && content.toLowerCase().includes('concerning'),
-            identifiable: content.toLowerCase().includes('true') && content.toLowerCase().includes('identifiable'),
-            reasoning: content
+            concerning,
+            identifiable,
+            reasoning: cleanContent
           };
         } else {
           // For batch_analysis, return empty array to trigger fallback to individual processing
@@ -783,13 +803,33 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
           return JSON.parse(jsonContent);
         }
       } catch (parseError) {
-        console.warn(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
-        // Fallback parsing for single analysis
+        console.error(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
+        // Enhanced fallback parsing for single analysis
         if (responseType === 'analysis') {
+          const cleanContent = content.replace(/[\r\n\t]/g, ' ').trim();
+          
+          // Try to extract boolean values from various response formats
+          let concerning = false;
+          let identifiable = false;
+          
+          // Look for concerning indicators
+          if (/concerning[:\s]*(?:true|yes|1)/i.test(cleanContent) || 
+              /1[.)\s]*concerning[:\s]*(?:true|yes)/i.test(cleanContent) ||
+              /harassment|threat|illegal|safety|violation/i.test(cleanContent)) {
+            concerning = true;
+          }
+          
+          // Look for identifiable indicators  
+          if (/identifiable[:\s]*(?:true|yes|1)/i.test(cleanContent) ||
+              /2[.)\s]*identifiable[:\s]*(?:true|yes)/i.test(cleanContent) ||
+              /name|email|id|contact|location|personal/i.test(cleanContent)) {
+            identifiable = true;
+          }
+          
           return {
-            concerning: content.toLowerCase().includes('true') && content.toLowerCase().includes('concerning'),
-            identifiable: content.toLowerCase().includes('true') && content.toLowerCase().includes('identifiable'),
-            reasoning: content
+            concerning,
+            identifiable,
+            reasoning: cleanContent
           };
         } else {
           // For batch_analysis, return empty array to trigger fallback to individual processing
