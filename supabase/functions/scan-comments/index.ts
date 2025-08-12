@@ -25,14 +25,26 @@ serve(async (req) => {
     // Return immediate response with processed results
     const processedComments = await processCommentsSync(comments, defaultMode);
 
+    // Calculate summary
+    const summary = {
+      total: comments.length,
+      concerning: processedComments.filter(c => c.concerning).length,
+      identifiable: processedComments.filter(c => c.identifiable).length,
+      rephrased: processedComments.filter(c => c.text !== c.originalText).length
+    };
+
+    console.log(`Processing complete. Summary:`, summary);
+
     return new Response(JSON.stringify({
       success: true,
       message: `Successfully processed ${comments.length} comments`,
       comments: processedComments,
-      summary: {
-        total: comments.length,
-        concerning: processedComments.filter(c => c.concerning).length,
-        identifiable: processedComments.filter(c => c.identifiable).length
+      summary: summary,
+      debugInfo: {
+        timestamp: new Date().toISOString(),
+        mode: defaultMode,
+        batchSize: 5,
+        fallbackUsed: processedComments.some(c => c.aiResponse?.includes('heuristic'))
       }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -71,22 +83,26 @@ async function processCommentsSync(comments: any[], defaultMode: string): Promis
   const BATCH_SIZE = 5; // Very small batch size
   const processedComments = [...comments];
 
+  // Preserve original text for comparison
+  processedComments.forEach(comment => {
+    if (!comment.originalText) {
+      comment.originalText = comment.text;
+    }
+  });
+
   for (let i = 0; i < comments.length; i += BATCH_SIZE) {
-    const batch = comments.slice(i, i + BATCH_SIZE);
-    console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(comments.length / BATCH_SIZE)}`);
+    const batch = processedComments.slice(i, i + BATCH_SIZE);
+    console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(comments.length / BATCH_SIZE)} with ${batch.length} comments`);
 
     try {
       await processBatch(batch, configs, defaultMode, i);
-      // Copy results back to main array
-      batch.forEach((comment, idx) => {
-        processedComments[i + idx] = comment;
-      });
+      console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1} completed successfully`);
     } catch (error) {
       console.error(`Batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`, error);
       // Fall back to heuristics for this batch
       const heuristicResults = processWithHeuristics(batch, defaultMode);
       heuristicResults.forEach((comment, idx) => {
-        processedComments[i + idx] = comment;
+        Object.assign(batch[idx], comment);
       });
     }
   }
@@ -106,48 +122,72 @@ async function processBatch(batch: any[], configs: any[], defaultMode: string, b
 
   // Analyze for concerning content
   try {
+    console.log(`Analyzing ${batch.length} comments for concerning content...`);
     const concerningResults = await analyzeForConcerning(batch, concerningConfig);
     applyResults(batch, concerningResults, 'concerning');
+    console.log(`Concerning analysis complete. Found ${batch.filter(c => c.concerning).length} concerning comments`);
   } catch (error) {
     console.error('Concerning analysis failed:', error);
     // Apply heuristic fallback for concerning
     batch.forEach(comment => {
       comment.concerning = checkConcerningHeuristic(comment.text);
+      comment.debugInfo = { ...comment.debugInfo, concerningMethod: 'heuristic', concerningError: error.message };
     });
   }
 
   // Analyze for identifiable information
   try {
+    console.log(`Analyzing ${batch.length} comments for identifiable information...`);
     const identifiableResults = await analyzeForIdentifiable(batch, identifiableConfig);
     applyResults(batch, identifiableResults, 'identifiable');
+    console.log(`Identifiable analysis complete. Found ${batch.filter(c => c.identifiable).length} identifiable comments`);
   } catch (error) {
     console.error('Identifiable analysis failed:', error);
     // Apply heuristic fallback for identifiable
     batch.forEach(comment => {
       comment.identifiable = checkIdentifiableHeuristic(comment.text);
+      comment.debugInfo = { ...comment.debugInfo, identifiableMethod: 'heuristic', identifiableError: error.message };
     });
   }
 
-  // Apply redaction if needed
+  // Apply redaction/rephrasing if needed
   if (defaultMode === 'redact' && redactionConfig) {
     const needsRedaction = batch.filter(c => c.identifiable);
     if (needsRedaction.length > 0) {
       try {
+        console.log(`Rephrasing ${needsRedaction.length} comments with identifiable information...`);
         const redactedTexts = await performRedaction(needsRedaction, redactionConfig);
         needsRedaction.forEach((comment, idx) => {
-          if (redactedTexts[idx]) {
+          if (redactedTexts[idx] && typeof redactedTexts[idx] === 'string') {
             comment.text = redactedTexts[idx];
+            comment.debugInfo = { ...comment.debugInfo, rephrasedBy: 'AI', originalPreserved: true };
+            console.log(`Rephrased comment ${comment.id || idx}: "${comment.originalText}" -> "${comment.text}"`);
           }
         });
+        console.log(`Rephrasing complete for ${needsRedaction.length} comments`);
       } catch (error) {
-        console.error('Redaction failed:', error);
+        console.error('AI rephrasing failed, using simple redaction:', error);
         // Apply simple redaction fallback
         needsRedaction.forEach(comment => {
-          comment.text = applySimpleRedaction(comment.text);
+          const redacted = applySimpleRedaction(comment.text);
+          if (redacted !== comment.text) {
+            comment.text = redacted;
+            comment.debugInfo = { ...comment.debugInfo, rephrasedBy: 'heuristic', rephrasingError: error.message };
+            console.log(`Simple redaction applied to comment ${comment.id}: "${comment.originalText}" -> "${comment.text}"`);
+          }
         });
       }
     }
   }
+
+  // Add debug info to all comments in batch
+  batch.forEach((comment, idx) => {
+    comment.debugInfo = {
+      batchIndex: batchStartIndex + idx,
+      processingTime: new Date().toISOString(),
+      ...comment.debugInfo
+    };
+  });
 }
 
 // Analyze comments for concerning content
@@ -166,11 +206,22 @@ async function analyzeForIdentifiable(comments: any[], config: any): Promise<any
 
 // Perform redaction on comments
 async function performRedaction(comments: any[], config: any): Promise<string[]> {
-  const texts = comments.map(c => c.text);
+  const texts = comments.map(c => c.originalText || c.text);
   const prompt = `Rephrase these comments to remove personally identifiable information while maintaining the original meaning, tone, and level of concern. Return a parallel list of rephrased comments in the exact same order as the input.\n\n${JSON.stringify(texts)}`;
   
+  console.log(`Calling ${config.provider}:${config.model} for redaction of ${texts.length} comments`);
   const result = await callAIModel(config, prompt);
-  return Array.isArray(result) ? result : texts; // Fallback to original if parsing fails
+  
+  // Parse the result as an array of strings
+  const parsed = parseAIResponse(result, texts.length);
+  
+  // Extract just the text if we got objects, otherwise use as-is
+  if (Array.isArray(parsed)) {
+    return parsed.map(item => typeof item === 'string' ? item : (item.text || item.rephrased || texts[parsed.indexOf(item)]));
+  }
+  
+  console.warn('Redaction result was not an array, using original texts');
+  return texts; // Fallback to original if parsing fails completely
 }
 
 // Build prompt for concerning content analysis
@@ -331,11 +382,13 @@ function applyResults(comments: any[], results: any[], field: string): void {
     if (idx < comments.length) {
       if (typeof result === 'boolean') {
         comments[idx][field] = result;
+        comments[idx].debugInfo = { ...comments[idx].debugInfo, [`${field}Method`]: 'AI-boolean' };
       } else if (typeof result === 'object' && result !== null) {
         comments[idx][field] = Boolean(result[field]);
         if (result.reasoning) {
           comments[idx].aiResponse = result.reasoning;
         }
+        comments[idx].debugInfo = { ...comments[idx].debugInfo, [`${field}Method`]: 'AI-detailed' };
       }
     }
   });
@@ -345,15 +398,30 @@ function applyResults(comments: any[], results: any[], field: string): void {
 function processWithHeuristics(comments: any[], defaultMode: string): any[] {
   console.log('Using heuristic processing as fallback');
   
-  return comments.map(comment => ({
-    ...comment,
-    concerning: checkConcerningHeuristic(comment.text),
-    identifiable: checkIdentifiableHeuristic(comment.text),
-    text: defaultMode === 'redact' && checkIdentifiableHeuristic(comment.text) 
-      ? applySimpleRedaction(comment.text) 
-      : comment.text,
-    aiResponse: 'Processed using heuristic analysis (AI unavailable)'
-  }));
+  return comments.map(comment => {
+    const processed = {
+      ...comment,
+      concerning: checkConcerningHeuristic(comment.text),
+      identifiable: checkIdentifiableHeuristic(comment.text),
+      aiResponse: 'Processed using heuristic analysis (AI unavailable)',
+      debugInfo: {
+        processingMethod: 'heuristic',
+        fallbackReason: 'AI analysis failed'
+      }
+    };
+
+    // Apply simple redaction if needed
+    if (defaultMode === 'redact' && processed.identifiable) {
+      const redacted = applySimpleRedaction(processed.text);
+      if (redacted !== processed.text) {
+        processed.originalText = processed.text;
+        processed.text = redacted;
+        processed.debugInfo.rephrasedBy = 'heuristic';
+      }
+    }
+
+    return processed;
+  });
 }
 
 // Heuristic check for concerning content
