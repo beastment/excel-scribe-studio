@@ -96,11 +96,11 @@ serve(async (req) => {
         let scanAResults, scanBResults;
         try {
           [scanAResults, scanBResults] = await Promise.all([
-            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a').catch(e => {
+            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a', rateLimiters).catch(e => {
               console.error(`Scan A failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, e);
               throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
             }),
-            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', 'scan_b').catch(e => {
+            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', 'scan_b', rateLimiters).catch(e => {
               console.error(`Scan B failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, e);
               throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
             })
@@ -126,11 +126,11 @@ serve(async (req) => {
 
             try {
               const [scanAResult, scanBResult] = await Promise.all([
-                callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a'),
-                callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b')
+                callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters),
+                callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters)
               ]);
 
-              await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments);
+              await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters);
             } catch (error) {
               console.error(`Individual processing failed for comment ${comment.id}:`, error);
               scannedComments.push({
@@ -178,7 +178,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
                 adjudicatorPrompt, 
                 '', 
                 'analysis',
-                'adjudicator'
+                'adjudicator',
+                rateLimiters
               );
             } catch (error) {
               console.error(`Adjudicator failed for comment ${comment.id}:`, error);
@@ -229,8 +230,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
 
           try {
             const [redactedTexts, rephrasedTexts] = await Promise.all([
-              callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a'),
-              callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a')
+              callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters),
+              callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters)
             ]);
 
             // Apply redacted and rephrased texts
@@ -301,147 +302,148 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  }
+});
 
-  // Helper function to process individual comments
-  async function processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments) {
-    let finalResult = null;
-    let adjudicationResult = null;
-    let needsAdjudication = false;
+// Helper function to process individual comments
+async function processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters) {
+  let finalResult = null;
+  let adjudicationResult = null;
+  let needsAdjudication = false;
 
-    // Check if Scan A and Scan B results differ
-    if (scanAResult.concerning !== scanBResult.concerning || 
-        scanAResult.identifiable !== scanBResult.identifiable) {
-      needsAdjudication = true;
+  // Check if Scan A and Scan B results differ
+  if (scanAResult.concerning !== scanBResult.concerning || 
+      scanAResult.identifiable !== scanBResult.identifiable) {
+    needsAdjudication = true;
 
-      // Call adjudicator
-      const adjudicatorPrompt = `${adjudicator.analysis_prompt.replace('these comments', 'this comment').replace('parallel list', 'single JSON object')}
+    // Call adjudicator
+    const adjudicatorPrompt = `${adjudicator.analysis_prompt.replace('these comments', 'this comment').replace('parallel list', 'single JSON object')}
 
 Original comment: "${comment.text}"
 
 Scan A Result: ${JSON.stringify(scanAResult)}
 Scan B Result: ${JSON.stringify(scanBResult)}`;
 
-      try {
-        adjudicationResult = await callAI(
-          adjudicator.provider, 
-          adjudicator.model, 
-          adjudicatorPrompt, 
-          '', 
-          'analysis',
-          'adjudicator'
-        );
-      } catch (error) {
-        console.error(`Adjudicator failed for comment ${comment.id}:`, error);
-        throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
-      }
-
-      finalResult = adjudicationResult;
-    } else {
-      // Scan A and Scan B agree, use Scan A result
-      finalResult = scanAResult;
+    try {
+      adjudicationResult = await callAI(
+        adjudicator.provider, 
+        adjudicator.model, 
+        adjudicatorPrompt, 
+        '', 
+        'analysis',
+        'adjudicator',
+        rateLimiters
+      );
+    } catch (error) {
+      console.error(`Adjudicator failed for comment ${comment.id}:`, error);
+      throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
     }
 
-    // Update summary
-    if (finalResult.concerning) summary.concerning++;
-    if (finalResult.identifiable) summary.identifiable++;
-    if (needsAdjudication) summary.needsAdjudication++;
-
-    let redactedText = null;
-    let rephrasedText = null;
-
-    // If flagged, run redaction and rephrase prompts
-    if (finalResult.concerning || finalResult.identifiable) {
-      const activeConfig = needsAdjudication ? adjudicator : scanA;
-      
-      try {
-        [redactedText, rephrasedText] = await Promise.all([
-          callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text', needsAdjudication ? 'adjudicator' : 'scan_a'),
-          callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text', needsAdjudication ? 'adjudicator' : 'scan_a')
-        ]);
-      } catch (error) {
-        console.warn(`Redaction/rephrasing failed for comment ${comment.id}:`, error);
-        // Continue without redaction/rephrasing
-      }
-    }
-
-    const processedComment = {
-      ...comment,
-      concerning: finalResult.concerning,
-      identifiable: finalResult.identifiable,
-      aiReasoning: finalResult.reasoning,
-      redactedText,
-      rephrasedText,
-      mode: finalResult.concerning || finalResult.identifiable ? defaultMode : 'original',
-      approved: false,
-      hideAiResponse: false,
-      debugInfo: {
-        scanAResult,
-        scanBResult,
-        adjudicationResult,
-        needsAdjudication,
-        finalDecision: finalResult
-      }
-    };
-
-    // Set final text based on mode
-    if (processedComment.mode === 'redact' && redactedText) {
-      processedComment.text = redactedText;
-    } else if (processedComment.mode === 'rephrase' && rephrasedText) {
-      processedComment.text = rephrasedText;
-    }
-
-    scannedComments.push(processedComment);
+    finalResult = adjudicationResult;
+  } else {
+    // Scan A and Scan B agree, use Scan A result
+    finalResult = scanAResult;
   }
 
-  // Rate limiting helper function
-  async function enforceRateLimit(scannerType: string, estimatedTokens: number) {
-    const limiter = rateLimiters.get(scannerType);
-    if (!limiter) return;
+  // Update summary
+  if (finalResult.concerning) summary.concerning++;
+  if (finalResult.identifiable) summary.identifiable++;
+  if (needsAdjudication) summary.needsAdjudication++;
 
-    const now = Date.now();
+  let redactedText = null;
+  let rephrasedText = null;
+
+  // If flagged, run redaction and rephrase prompts
+  if (finalResult.concerning || finalResult.identifiable) {
+    const activeConfig = needsAdjudication ? adjudicator : scanA;
     
-    // Reset counters if a minute has passed
-    if (now - limiter.lastMinuteReset >= 60000) {
-      limiter.requestsThisMinute = 0;
-      limiter.tokensThisMinute = 0;
-      limiter.lastMinuteReset = now;
+    try {
+      [redactedText, rephrasedText] = await Promise.all([
+        callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text', needsAdjudication ? 'adjudicator' : 'scan_a', rateLimiters),
+        callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text', needsAdjudication ? 'adjudicator' : 'scan_a', rateLimiters)
+      ]);
+    } catch (error) {
+      console.warn(`Redaction/rephrasing failed for comment ${comment.id}:`, error);
+      // Continue without redaction/rephrasing
     }
-
-    // Check if we would exceed limits
-    const wouldExceedRpm = limiter.requestsThisMinute >= limiter.rpmLimit;
-    const wouldExceedTpm = limiter.tokensThisMinute + estimatedTokens > limiter.tpmLimit;
-
-    if (wouldExceedRpm || wouldExceedTpm) {
-      const timeToWait = 60000 - (now - limiter.lastMinuteReset);
-      console.log(`Rate limit reached for ${scannerType}. Waiting ${Math.ceil(timeToWait / 1000)}s...`);
-      await new Promise(resolve => setTimeout(resolve, timeToWait + 1000)); // Add 1s buffer
-      
-      // Reset after waiting
-      limiter.requestsThisMinute = 0;
-      limiter.tokensThisMinute = 0;
-      limiter.lastMinuteReset = Date.now();
-    }
-
-    // Update counters
-    limiter.requestsThisMinute++;
-    limiter.tokensThisMinute += estimatedTokens;
   }
 
-  // Helper function to estimate tokens (rough approximation: 1 token ≈ 4 characters)
-  function estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4);
+  const processedComment = {
+    ...comment,
+    concerning: finalResult.concerning,
+    identifiable: finalResult.identifiable,
+    aiReasoning: finalResult.reasoning,
+    redactedText,
+    rephrasedText,
+    mode: finalResult.concerning || finalResult.identifiable ? defaultMode : 'original',
+    approved: false,
+    hideAiResponse: false,
+    debugInfo: {
+      scanAResult,
+      scanBResult,
+      adjudicationResult,
+      needsAdjudication,
+      finalDecision: finalResult
+    }
+  };
+
+  // Set final text based on mode
+  if (processedComment.mode === 'redact' && redactedText) {
+    processedComment.text = redactedText;
+  } else if (processedComment.mode === 'rephrase' && rephrasedText) {
+    processedComment.text = rephrasedText;
   }
 
-  // Helper function to call AI services with rate limiting
-  async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string) {
-    // Estimate tokens for this request
-    const estimatedTokens = estimateTokens(prompt + commentText);
+  scannedComments.push(processedComment);
+}
+
+// Rate limiting helper function
+async function enforceRateLimit(scannerType: string, estimatedTokens: number, rateLimiters) {
+  const limiter = rateLimiters.get(scannerType);
+  if (!limiter) return;
+
+  const now = Date.now();
+  
+  // Reset counters if a minute has passed
+  if (now - limiter.lastMinuteReset >= 60000) {
+    limiter.requestsThisMinute = 0;
+    limiter.tokensThisMinute = 0;
+    limiter.lastMinuteReset = now;
+  }
+
+  // Check if we would exceed limits
+  const wouldExceedRpm = limiter.requestsThisMinute >= limiter.rpmLimit;
+  const wouldExceedTpm = limiter.tokensThisMinute + estimatedTokens > limiter.tpmLimit;
+
+  if (wouldExceedRpm || wouldExceedTpm) {
+    const timeToWait = 60000 - (now - limiter.lastMinuteReset);
+    console.log(`Rate limit reached for ${scannerType}. Waiting ${Math.ceil(timeToWait / 1000)}s...`);
+    await new Promise(resolve => setTimeout(resolve, timeToWait + 1000)); // Add 1s buffer
     
-    // Enforce rate limits if scanner type is provided
-    if (scannerType) {
-      await enforceRateLimit(scannerType, estimatedTokens);
-    }
+    // Reset after waiting
+    limiter.requestsThisMinute = 0;
+    limiter.tokensThisMinute = 0;
+    limiter.lastMinuteReset = Date.now();
+  }
+
+  // Update counters
+  limiter.requestsThisMinute++;
+  limiter.tokensThisMinute += estimatedTokens;
+}
+
+// Helper function to estimate tokens (rough approximation: 1 token ≈ 4 characters)
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+// Helper function to call AI services with rate limiting
+async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>) {
+  // Estimate tokens for this request
+  const estimatedTokens = estimateTokens(prompt + commentText);
+  
+  // Enforce rate limits if scanner type is provided
+  if (scannerType && rateLimiters) {
+    await enforceRateLimit(scannerType, estimatedTokens, rateLimiters);
+  }
     if (provider === 'openai') {
       return await callOpenAI(model, prompt, commentText, responseType);
     } else if (provider === 'bedrock') {
