@@ -74,17 +74,19 @@ serve(async (req) => {
       try {
         // Prepare batch input for AI models
         const batchTexts = batch.map(comment => comment.text);
-        const batchPromptData = JSON.stringify(batchTexts);
+        const batchInput = `Comments to analyze:\n${batchTexts.map((text, idx) => `${idx + 1}. ${text}`).join('\n')}`;
+
+        console.log(`Sending ${batch.length} comments to AI models for batch analysis`);
 
         // Run Scan A and Scan B in parallel on the entire batch
         let scanAResults, scanBResults;
         try {
           [scanAResults, scanBResults] = await Promise.all([
-            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchPromptData, 'batch_analysis').catch(e => {
+            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis').catch(e => {
               console.error(`Scan A failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, e);
               throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
             }),
-            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchPromptData, 'batch_analysis').catch(e => {
+            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis').catch(e => {
               console.error(`Scan B failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, e);
               throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
             })
@@ -94,10 +96,42 @@ serve(async (req) => {
           throw error;
         }
 
+        console.log(`Received scanA results:`, typeof scanAResults, Array.isArray(scanAResults) ? scanAResults.length : 'not array');
+        console.log(`Received scanB results:`, typeof scanBResults, Array.isArray(scanBResults) ? scanBResults.length : 'not array');
+
         // Ensure we have results for all comments in the batch
         if (!Array.isArray(scanAResults) || !Array.isArray(scanBResults) || 
             scanAResults.length !== batch.length || scanBResults.length !== batch.length) {
-          throw new Error(`AI returned invalid batch results. Expected ${batch.length} results, got scanA: ${Array.isArray(scanAResults) ? scanAResults.length : 'not array'}, scanB: ${Array.isArray(scanBResults) ? scanBResults.length : 'not array'}`);
+          
+          console.warn(`Invalid batch results - falling back to individual processing for batch ${Math.floor(i / BATCH_SIZE) + 1}`);
+          
+          // Fallback to individual processing
+          for (let j = 0; j < batch.length; j++) {
+            const comment = batch[j];
+            console.log(`Processing comment ${comment.id} individually...`);
+
+            try {
+              const [scanAResult, scanBResult] = await Promise.all([
+                callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis'),
+                callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis')
+              ]);
+
+              await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments);
+            } catch (error) {
+              console.error(`Individual processing failed for comment ${comment.id}:`, error);
+              scannedComments.push({
+                ...comment,
+                concerning: false,
+                identifiable: false,
+                aiReasoning: `Error processing: ${error.message}`,
+                mode: 'original',
+                approved: false,
+                hideAiResponse: false,
+                debugInfo: { error: error.message }
+              });
+            }
+          }
+          continue; // Skip to next batch
         }
 
         // Process each comment in the batch
@@ -254,6 +288,96 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     });
   }
 
+  // Helper function to process individual comments
+  async function processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments) {
+    let finalResult = null;
+    let adjudicationResult = null;
+    let needsAdjudication = false;
+
+    // Check if Scan A and Scan B results differ
+    if (scanAResult.concerning !== scanBResult.concerning || 
+        scanAResult.identifiable !== scanBResult.identifiable) {
+      needsAdjudication = true;
+
+      // Call adjudicator
+      const adjudicatorPrompt = `${adjudicator.analysis_prompt.replace('these comments', 'this comment').replace('parallel list', 'single JSON object')}
+
+Original comment: "${comment.text}"
+
+Scan A Result: ${JSON.stringify(scanAResult)}
+Scan B Result: ${JSON.stringify(scanBResult)}`;
+
+      try {
+        adjudicationResult = await callAI(
+          adjudicator.provider, 
+          adjudicator.model, 
+          adjudicatorPrompt, 
+          '', 
+          'analysis'
+        );
+      } catch (error) {
+        console.error(`Adjudicator failed for comment ${comment.id}:`, error);
+        throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
+      }
+
+      finalResult = adjudicationResult;
+    } else {
+      // Scan A and Scan B agree, use Scan A result
+      finalResult = scanAResult;
+    }
+
+    // Update summary
+    if (finalResult.concerning) summary.concerning++;
+    if (finalResult.identifiable) summary.identifiable++;
+    if (needsAdjudication) summary.needsAdjudication++;
+
+    let redactedText = null;
+    let rephrasedText = null;
+
+    // If flagged, run redaction and rephrase prompts
+    if (finalResult.concerning || finalResult.identifiable) {
+      const activeConfig = needsAdjudication ? adjudicator : scanA;
+      
+      try {
+        [redactedText, rephrasedText] = await Promise.all([
+          callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text'),
+          callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text')
+        ]);
+      } catch (error) {
+        console.warn(`Redaction/rephrasing failed for comment ${comment.id}:`, error);
+        // Continue without redaction/rephrasing
+      }
+    }
+
+    const processedComment = {
+      ...comment,
+      concerning: finalResult.concerning,
+      identifiable: finalResult.identifiable,
+      aiReasoning: finalResult.reasoning,
+      redactedText,
+      rephrasedText,
+      mode: finalResult.concerning || finalResult.identifiable ? defaultMode : 'original',
+      approved: false,
+      hideAiResponse: false,
+      debugInfo: {
+        scanAResult,
+        scanBResult,
+        adjudicationResult,
+        needsAdjudication,
+        finalDecision: finalResult
+      }
+    };
+
+    // Set final text based on mode
+    if (processedComment.mode === 'redact' && redactedText) {
+      processedComment.text = redactedText;
+    } else if (processedComment.mode === 'rephrase' && rephrasedText) {
+      processedComment.text = rephrasedText;
+    }
+
+    scannedComments.push(processedComment);
+  }
+
   // Helper function to call AI services
   async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text') {
     if (provider === 'openai') {
@@ -299,7 +423,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
       try {
         const parsed = JSON.parse(content);
         return parsed;
-      } catch {
+      } catch (parseError) {
+        console.warn(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
         // Fallback parsing for single analysis
         if (responseType === 'analysis') {
           return {
@@ -308,16 +433,18 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
             reasoning: content
           };
         } else {
-          // For batch_analysis, try to extract array or return empty array
+          // For batch_analysis, return empty array to trigger fallback to individual processing
+          console.warn('Batch analysis JSON parsing failed, returning empty array for fallback');
           return [];
         }
       }
     } else if (responseType === 'batch_text') {
       try {
         return JSON.parse(content);
-      } catch {
+      } catch (parseError) {
+        console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
         // If not valid JSON, split by lines or return array with single item
-        return [content];
+        return content.split('\n').filter(line => line.trim().length > 0);
       }
     } else {
       return content;
@@ -496,7 +623,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
       try {
         const parsed = JSON.parse(content);
         return parsed;
-      } catch {
+      } catch (parseError) {
+        console.warn(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
         // Fallback parsing for single analysis
         if (responseType === 'analysis') {
           return {
@@ -505,16 +633,18 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
             reasoning: content
           };
         } else {
-          // For batch_analysis, try to extract array or return empty array
+          // For batch_analysis, return empty array to trigger fallback to individual processing
+          console.warn('Batch analysis JSON parsing failed, returning empty array for fallback');
           return [];
         }
       }
     } else if (responseType === 'batch_text') {
       try {
         return JSON.parse(content);
-      } catch {
+      } catch (parseError) {
+        console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
         // If not valid JSON, split by lines or return array with single item
-        return [content];
+        return content.split('\n').filter(line => line.trim().length > 0);
       }
     } else {
       return content;
