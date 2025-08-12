@@ -486,7 +486,23 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
 
     if (responseType === 'analysis' || responseType === 'batch_analysis') {
       try {
-        const parsed = JSON.parse(content);
+        // Extract JSON from response if it contains explanatory text
+        let jsonContent = content.trim();
+        
+        // Check if the response starts with explanatory text
+        if (!jsonContent.startsWith('[') && !jsonContent.startsWith('{')) {
+          // Look for JSON array or object in the response
+          const jsonArrayMatch = jsonContent.match(/\[[\s\S]*\]/);
+          const jsonObjectMatch = jsonContent.match(/\{[\s\S]*\}/);
+          
+          if (jsonArrayMatch) {
+            jsonContent = jsonArrayMatch[0];
+          } else if (jsonObjectMatch) {
+            jsonContent = jsonObjectMatch[0];
+          }
+        }
+        
+        const parsed = JSON.parse(jsonContent);
         return parsed;
       } catch (parseError) {
         console.warn(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
@@ -686,7 +702,23 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
 
     if (responseType === 'analysis' || responseType === 'batch_analysis') {
       try {
-        const parsed = JSON.parse(content);
+        // Extract JSON from response if it contains explanatory text
+        let jsonContent = content.trim();
+        
+        // Check if the response starts with explanatory text
+        if (!jsonContent.startsWith('[') && !jsonContent.startsWith('{')) {
+          // Look for JSON array or object in the response
+          const jsonArrayMatch = jsonContent.match(/\[[\s\S]*\]/);
+          const jsonObjectMatch = jsonContent.match(/\{[\s\S]*\}/);
+          
+          if (jsonArrayMatch) {
+            jsonContent = jsonArrayMatch[0];
+          } else if (jsonObjectMatch) {
+            jsonContent = jsonObjectMatch[0];
+          }
+        }
+        
+        const parsed = JSON.parse(jsonContent);
         return parsed;
       } catch (parseError) {
         console.warn(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
