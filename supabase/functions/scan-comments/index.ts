@@ -63,9 +63,23 @@ serve(async (req) => {
     const scannedComments = [];
     let summary = { total: comments.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
 
-    // Process comments in batches to avoid rate limits
-    const BATCH_SIZE = 20; // Process 20 comments at a time
-    const BATCH_DELAY = 3000; // 3 second delay between batches
+    // Rate limiting setup
+    const rateLimiters = new Map();
+    configs.forEach(config => {
+      rateLimiters.set(config.scanner_type, {
+        rpmLimit: config.rpm_limit || 10, // Default to 10 RPM if not set
+        tpmLimit: config.tpm_limit || 50000, // Default to 50k TPM if not set
+        requestsThisMinute: 0,
+        tokensThisMinute: 0,
+        lastMinuteReset: Date.now(),
+        pendingRequests: []
+      });
+    });
+
+    // Calculate batch size based on strictest rate limits
+    const minRpm = Math.min(...configs.map(c => c.rpm_limit || 10));
+    const BATCH_SIZE = Math.min(20, Math.max(1, Math.floor(minRpm / 3))); // Conservative batch size
+    const BATCH_DELAY = Math.max(3000, Math.ceil(60000 / minRpm)); // Ensure we don't exceed RPM
 
     for (let i = 0; i < comments.length; i += BATCH_SIZE) {
       const batch = comments.slice(i, i + BATCH_SIZE);
@@ -82,11 +96,11 @@ serve(async (req) => {
         let scanAResults, scanBResults;
         try {
           [scanAResults, scanBResults] = await Promise.all([
-            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis').catch(e => {
+            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a').catch(e => {
               console.error(`Scan A failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, e);
               throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
             }),
-            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis').catch(e => {
+            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', 'scan_b').catch(e => {
               console.error(`Scan B failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, e);
               throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
             })
@@ -112,8 +126,8 @@ serve(async (req) => {
 
             try {
               const [scanAResult, scanBResult] = await Promise.all([
-                callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis'),
-                callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis')
+                callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a'),
+                callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b')
               ]);
 
               await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments);
@@ -163,7 +177,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
                 adjudicator.model, 
                 adjudicatorPrompt, 
                 '', 
-                'analysis'
+                'analysis',
+                'adjudicator'
               );
             } catch (error) {
               console.error(`Adjudicator failed for comment ${comment.id}:`, error);
@@ -214,8 +229,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
 
           try {
             const [redactedTexts, rephrasedTexts] = await Promise.all([
-              callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text'),
-              callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text')
+              callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a'),
+              callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a')
             ]);
 
             // Apply redacted and rephrased texts
@@ -313,7 +328,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
           adjudicator.model, 
           adjudicatorPrompt, 
           '', 
-          'analysis'
+          'analysis',
+          'adjudicator'
         );
       } catch (error) {
         console.error(`Adjudicator failed for comment ${comment.id}:`, error);
@@ -340,8 +356,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
       
       try {
         [redactedText, rephrasedText] = await Promise.all([
-          callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text'),
-          callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text')
+          callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text', needsAdjudication ? 'adjudicator' : 'scan_a'),
+          callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text', needsAdjudication ? 'adjudicator' : 'scan_a')
         ]);
       } catch (error) {
         console.warn(`Redaction/rephrasing failed for comment ${comment.id}:`, error);
@@ -378,8 +394,54 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     scannedComments.push(processedComment);
   }
 
-  // Helper function to call AI services
-  async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text') {
+  // Rate limiting helper function
+  async function enforceRateLimit(scannerType: string, estimatedTokens: number) {
+    const limiter = rateLimiters.get(scannerType);
+    if (!limiter) return;
+
+    const now = Date.now();
+    
+    // Reset counters if a minute has passed
+    if (now - limiter.lastMinuteReset >= 60000) {
+      limiter.requestsThisMinute = 0;
+      limiter.tokensThisMinute = 0;
+      limiter.lastMinuteReset = now;
+    }
+
+    // Check if we would exceed limits
+    const wouldExceedRpm = limiter.requestsThisMinute >= limiter.rpmLimit;
+    const wouldExceedTpm = limiter.tokensThisMinute + estimatedTokens > limiter.tpmLimit;
+
+    if (wouldExceedRpm || wouldExceedTpm) {
+      const timeToWait = 60000 - (now - limiter.lastMinuteReset);
+      console.log(`Rate limit reached for ${scannerType}. Waiting ${Math.ceil(timeToWait / 1000)}s...`);
+      await new Promise(resolve => setTimeout(resolve, timeToWait + 1000)); // Add 1s buffer
+      
+      // Reset after waiting
+      limiter.requestsThisMinute = 0;
+      limiter.tokensThisMinute = 0;
+      limiter.lastMinuteReset = Date.now();
+    }
+
+    // Update counters
+    limiter.requestsThisMinute++;
+    limiter.tokensThisMinute += estimatedTokens;
+  }
+
+  // Helper function to estimate tokens (rough approximation: 1 token ≈ 4 characters)
+  function estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
+  }
+
+  // Helper function to call AI services with rate limiting
+  async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string) {
+    // Estimate tokens for this request
+    const estimatedTokens = estimateTokens(prompt + commentText);
+    
+    // Enforce rate limits if scanner type is provided
+    if (scannerType) {
+      await enforceRateLimit(scannerType, estimatedTokens);
+    }
     if (provider === 'openai') {
       return await callOpenAI(model, prompt, commentText, responseType);
     } else if (provider === 'bedrock') {
