@@ -302,6 +302,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+  }
 });
 
 // Helper function to process individual comments
