@@ -366,10 +366,10 @@ async function createAwsSignature(url: string, body: string, region: string, tim
   const algorithm = 'AWS4-HMAC-SHA256';
   const credentialScope = `${dateString}/${region}/${service}/aws4_request`;
   
-  // Create canonical request
+  // Create canonical request with proper formatting
   const urlParts = new URL(url);
-  const canonicalUri = urlParts.pathname;
-  const canonicalQueryString = '';
+  const canonicalUri = urlParts.pathname; // Already URL-encoded by the URL constructor
+  const canonicalQueryString = ''; // No query parameters
   const canonicalHeaders = `host:${urlParts.host}\nx-amz-date:${timestamp}\n`;
   const signedHeaders = 'host;x-amz-date';
   
@@ -385,6 +385,8 @@ async function createAwsSignature(url: string, body: string, region: string, tim
     payloadHash
   ].join('\n');
   
+  console.log(`Canonical Request:\n${canonicalRequest}`);
+  
   // Create string to sign
   const canonicalRequestHash = await sha256(canonicalRequest);
   const stringToSign = [
@@ -394,7 +396,9 @@ async function createAwsSignature(url: string, body: string, region: string, tim
     canonicalRequestHash
   ].join('\n');
   
-  // Calculate signature
+  console.log(`String to Sign:\n${stringToSign}`);
+  
+  // Calculate signature using proper derivation
   const kDate = await hmacSha256(new TextEncoder().encode(`AWS4${secretKey}`), dateString);
   const kRegion = await hmacSha256(kDate, region);
   const kService = await hmacSha256(kRegion, service);
