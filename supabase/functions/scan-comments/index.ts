@@ -489,21 +489,52 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         // Extract JSON from response if it contains explanatory text
         let jsonContent = content.trim();
         
-        // Check if the response starts with explanatory text
-        if (!jsonContent.startsWith('[') && !jsonContent.startsWith('{')) {
-          // Look for JSON array or object in the response
-          const jsonArrayMatch = jsonContent.match(/\[[\s\S]*\]/);
-          const jsonObjectMatch = jsonContent.match(/\{[\s\S]*\}/);
-          
-          if (jsonArrayMatch) {
-            jsonContent = jsonArrayMatch[0];
-          } else if (jsonObjectMatch) {
-            jsonContent = jsonObjectMatch[0];
+        // First try to parse as-is
+        try {
+          return JSON.parse(jsonContent);
+        } catch (initialError) {
+          // If that fails, try to extract JSON from response
+          if (!jsonContent.startsWith('[') && !jsonContent.startsWith('{')) {
+            // Look for JSON array or object in the response
+            const jsonArrayMatch = jsonContent.match(/\[[\s\S]*\]/);
+            const jsonObjectMatch = jsonContent.match(/\{[\s\S]*\}/);
+            
+            if (jsonArrayMatch) {
+              jsonContent = jsonArrayMatch[0];
+            } else if (jsonObjectMatch) {
+              jsonContent = jsonObjectMatch[0];
+            } else {
+              // Handle numbered list responses for batch analysis
+              if (responseType === 'batch_analysis' && jsonContent.match(/^\s*\d+\./m)) {
+                console.log('Converting numbered list to JSON array');
+                const lines = jsonContent.split('\n').filter(line => line.trim());
+                const results = [];
+                
+                for (const line of lines) {
+                  const trimmed = line.trim();
+                  if (trimmed.match(/^\d+\./)) {
+                    // Extract boolean values from numbered responses
+                    const concerning = /concerning[:\s]*(?:true|yes)/i.test(trimmed);
+                    const identifiable = /identifiable[:\s]*(?:true|yes)/i.test(trimmed);
+                    results.push({
+                      concerning,
+                      identifiable,
+                      reasoning: trimmed
+                    });
+                  }
+                }
+                
+                if (results.length > 0) {
+                  return results;
+                }
+              }
+              
+              throw initialError; // Re-throw original error if we can't extract
+            }
           }
+          
+          return JSON.parse(jsonContent);
         }
-        
-        const parsed = JSON.parse(jsonContent);
-        return parsed;
       } catch (parseError) {
         console.warn(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
         // Fallback parsing for single analysis
@@ -705,21 +736,52 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         // Extract JSON from response if it contains explanatory text
         let jsonContent = content.trim();
         
-        // Check if the response starts with explanatory text
-        if (!jsonContent.startsWith('[') && !jsonContent.startsWith('{')) {
-          // Look for JSON array or object in the response
-          const jsonArrayMatch = jsonContent.match(/\[[\s\S]*\]/);
-          const jsonObjectMatch = jsonContent.match(/\{[\s\S]*\}/);
-          
-          if (jsonArrayMatch) {
-            jsonContent = jsonArrayMatch[0];
-          } else if (jsonObjectMatch) {
-            jsonContent = jsonObjectMatch[0];
+        // First try to parse as-is
+        try {
+          return JSON.parse(jsonContent);
+        } catch (initialError) {
+          // If that fails, try to extract JSON from response
+          if (!jsonContent.startsWith('[') && !jsonContent.startsWith('{')) {
+            // Look for JSON array or object in the response
+            const jsonArrayMatch = jsonContent.match(/\[[\s\S]*\]/);
+            const jsonObjectMatch = jsonContent.match(/\{[\s\S]*\}/);
+            
+            if (jsonArrayMatch) {
+              jsonContent = jsonArrayMatch[0];
+            } else if (jsonObjectMatch) {
+              jsonContent = jsonObjectMatch[0];
+            } else {
+              // Handle numbered list responses for batch analysis
+              if (responseType === 'batch_analysis' && jsonContent.match(/^\s*\d+\./m)) {
+                console.log('Converting numbered list to JSON array');
+                const lines = jsonContent.split('\n').filter(line => line.trim());
+                const results = [];
+                
+                for (const line of lines) {
+                  const trimmed = line.trim();
+                  if (trimmed.match(/^\d+\./)) {
+                    // Extract boolean values from numbered responses
+                    const concerning = /concerning[:\s]*(?:true|yes)/i.test(trimmed);
+                    const identifiable = /identifiable[:\s]*(?:true|yes)/i.test(trimmed);
+                    results.push({
+                      concerning,
+                      identifiable,
+                      reasoning: trimmed
+                    });
+                  }
+                }
+                
+                if (results.length > 0) {
+                  return results;
+                }
+              }
+              
+              throw initialError; // Re-throw original error if we can't extract
+            }
           }
+          
+          return JSON.parse(jsonContent);
         }
-        
-        const parsed = JSON.parse(jsonContent);
-        return parsed;
       } catch (parseError) {
         console.warn(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
         // Fallback parsing for single analysis
