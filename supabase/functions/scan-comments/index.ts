@@ -693,13 +693,39 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         console.error(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
         // Enhanced fallback parsing
         if (responseType === 'analysis') {
-          const heur = heuristicAnalyze(commentText);
-          return { results: heur, rawResponse: content };
-        } else {
-          // For batch_analysis, return empty array to trigger fallback to individual processing
-          console.warn('Batch analysis JSON parsing failed, returning empty array for fallback');
-          return [];
+          // Look for explicit "no" statements in text-based responses
+          const concerningExplicitNo = /concerning[:\s]*no/i.test(content);
+          const identifiableExplicitNo = /identifiable[:\s]*no/i.test(content);
+          
+          // Look for positive indicators only if there's no explicit "no"
+          const concerningPositive = !concerningExplicitNo && /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(content);
+          const identifiablePositive = !identifiableExplicitNo && /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(content);
+          
+          const concerning = concerningPositive;
+          const identifiable = identifiablePositive;
+          
+          const base = { concerning, identifiable, reasoning: content.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim() };
+          const results = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(base, true) : base;
+          return { results, rawResponse: content };
+        } else if (responseType === 'batch_analysis') {
+          // For batch analysis, apply same logic but return array
+          const concerningExplicitNo = /concerning[:\s]*no/i.test(content);
+          const identifiableExplicitNo = /identifiable[:\s]*no/i.test(content);
+          
+          const concerningPositive = !concerningExplicitNo && /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(content);
+          const identifiablePositive = !identifiableExplicitNo && /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(content);
+          
+          const concerning = concerningPositive;
+          const identifiable = identifiablePositive;
+          
+          const base = [{ concerning, identifiable, reasoning: content.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim() }];
+          const results = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(base) : base;
+          return { results, rawResponse: content };
         }
+        
+        // For other cases fallback to heuristic
+        const heur = heuristicAnalyze(commentText);
+        return { results: heur, rawResponse: content };
       }
     } else if (responseType === 'batch_text') {
       try {
@@ -982,6 +1008,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
                 const concerning = !/not concerning/i.test(concerningMatch[1]);
                 const identifiable = !/not identifiable/i.test(identifiableMatch[1]);
                 const reasoningMatch = jsonContent.match(/reasoning[:\s]*([\s\S]*)/i);
+                let reasoning = reasoningMatch ? reasoningMatch[1].trim() : jsonContent;
                 let result: any = { concerning, identifiable, reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim() };
                 if (model.startsWith('amazon.titan')) result = normalizeTitanAnalysis(result, true);
                 return { results: result, rawResponse: null };
@@ -1010,23 +1037,34 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, true);
           }
           
-          // Strategy 4: Enhanced text analysis for better detection
+          // Strategy 4: Enhanced text analysis for better detection - FIXED VERSION
           console.log(`Creating enhanced fallback response for: ${jsonContent.substring(0, 200)}`);
           if (responseType === 'analysis') {
-            const hasNegativeStatement = /no concerning|not concerning|nothing concerning|no identifiable|not identifiable|nothing identifiable|no personally identifiable|false|not present/i.test(jsonContent);
-            const concerningPositive = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(jsonContent);
-            const identifiablePositive = /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(jsonContent);
-            const concerning = concerningPositive && !hasNegativeStatement;
-            const identifiable = identifiablePositive && !hasNegativeStatement;
+            // Look for explicit "no" statements in text-based responses
+            const concerningExplicitNo = /concerning[:\s]*no/i.test(jsonContent);
+            const identifiableExplicitNo = /identifiable[:\s]*no/i.test(jsonContent);
+            
+            // Look for positive indicators only if there's no explicit "no"
+            const concerningPositive = !concerningExplicitNo && /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(jsonContent);
+            const identifiablePositive = !identifiableExplicitNo && /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(jsonContent);
+            
+            const concerning = concerningPositive;
+            const identifiable = identifiablePositive;
+            
             const base = { concerning, identifiable, reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim() };
             const results = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(base, true) : base;
             return { results, rawResponse: jsonContent };
           } else if (responseType === 'batch_analysis') {
-            const hasNegativeStatement = /no concerning|not concerning|nothing concerning|no identifiable|not identifiable|nothing identifiable|no personally identifiable|false|not present/i.test(jsonContent);
-            const concerningPositive = /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(jsonContent);
-            const identifiablePositive = /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(jsonContent);
-            const concerning = concerningPositive && !hasNegativeStatement;
-            const identifiable = identifiablePositive && !hasNegativeStatement;
+            // For batch analysis, apply same logic but return array
+            const concerningExplicitNo = /concerning[:\s]*no/i.test(jsonContent);
+            const identifiableExplicitNo = /identifiable[:\s]*no/i.test(jsonContent);
+            
+            const concerningPositive = !concerningExplicitNo && /concerning[:\s]*(?:true|yes)|harassment|threat|illegal|violation|unsafe|inappropriate|discrimination|ageist|safety violation/i.test(jsonContent);
+            const identifiablePositive = !identifiableExplicitNo && /identifiable[:\s]*(?:true|yes)|contains.*(?:name|email|phone|id)|specific names|personal information present/i.test(jsonContent);
+            
+            const concerning = concerningPositive;
+            const identifiable = identifiablePositive;
+            
             const base = [{ concerning, identifiable, reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim() }];
             const results = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(base) : base;
             return { results, rawResponse: jsonContent };
