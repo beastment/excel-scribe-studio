@@ -763,22 +763,55 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         return { results: heur, rawResponse: content };
       }
     } else if (responseType === 'batch_text') {
-      const cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
+      console.log(`Raw batch_text content: ${content.substring(0, 200)}...`);
+      
+      // Clean up the content
+      let cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
+      
+      // Remove common prose prefixes
+      cleaned = cleaned.replace(/^Here is.*?:\s*/i, '');
+      cleaned = cleaned.replace(/^The analysis.*?:\s*/i, '');
+      cleaned = cleaned.replace(/^Analysis.*?:\s*/i, '');
+      cleaned = cleaned.replace(/^Results.*?:\s*/i, '');
+      cleaned = cleaned.trim();
+      
+      console.log(`Cleaned batch_text content: ${cleaned.substring(0, 200)}...`);
+      
       // Try direct JSON array
       if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
-        try { return JSON.parse(cleaned); } catch {}
+        try { 
+          const parsed = JSON.parse(cleaned);
+          console.log(`Successfully parsed direct JSON array with ${parsed.length} items`);
+          return parsed;
+        } catch (e) {
+          console.log(`Direct JSON parse failed: ${e.message}`);
+        }
       }
+      
       // Try to extract a JSON array embedded in prose
       const first = cleaned.indexOf('[');
       const last = cleaned.lastIndexOf(']');
       if (first !== -1 && last > first) {
         const candidate = cleaned.slice(first, last + 1);
-        try { return JSON.parse(candidate); } catch {}
+        console.log(`Trying to parse extracted JSON: ${candidate.substring(0, 100)}...`);
+        try { 
+          const parsed = JSON.parse(candidate);
+          console.log(`Successfully parsed extracted JSON array with ${parsed.length} items`);
+          return parsed;
+        } catch (e) {
+          console.log(`Extracted JSON parse failed: ${e.message}`);
+        }
       }
+      
       // Fallback: split into lines and use non-empty items
       const lines = cleaned.split('\n').map(l => l.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')).filter(Boolean);
-      if (lines.length > 0) return lines;
+      if (lines.length > 0) {
+        console.log(`Using line fallback with ${lines.length} items`);
+        return lines;
+      }
+      
       // Last resort: single-item array
+      console.log('Using single-item fallback');
       return [cleaned];
     } else {
       return content;
@@ -1135,22 +1168,55 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         }
       }
     } else if (responseType === 'batch_text') {
-      const cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
+      console.log(`Raw batch_text content: ${content.substring(0, 200)}...`);
+      
+      // Clean up the content
+      let cleaned = content.replace(/```json\s*/g, '').replace(/```/g, '').trim();
+      
+      // Remove common prose prefixes
+      cleaned = cleaned.replace(/^Here is.*?:\s*/i, '');
+      cleaned = cleaned.replace(/^The analysis.*?:\s*/i, '');
+      cleaned = cleaned.replace(/^Analysis.*?:\s*/i, '');
+      cleaned = cleaned.replace(/^Results.*?:\s*/i, '');
+      cleaned = cleaned.trim();
+      
+      console.log(`Cleaned batch_text content: ${cleaned.substring(0, 200)}...`);
+      
       // Try direct JSON array
       if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
-        try { return JSON.parse(cleaned); } catch {}
+        try { 
+          const parsed = JSON.parse(cleaned);
+          console.log(`Successfully parsed direct JSON array with ${parsed.length} items`);
+          return parsed;
+        } catch (e) {
+          console.log(`Direct JSON parse failed: ${e.message}`);
+        }
       }
+      
       // Try to extract a JSON array embedded in prose
       const first = cleaned.indexOf('[');
       const last = cleaned.lastIndexOf(']');
       if (first !== -1 && last > first) {
         const candidate = cleaned.slice(first, last + 1);
-        try { return JSON.parse(candidate); } catch {}
+        console.log(`Trying to parse extracted JSON: ${candidate.substring(0, 100)}...`);
+        try { 
+          const parsed = JSON.parse(candidate);
+          console.log(`Successfully parsed extracted JSON array with ${parsed.length} items`);
+          return parsed;
+        } catch (e) {
+          console.log(`Extracted JSON parse failed: ${e.message}`);
+        }
       }
+      
       // Fallback: split into lines and use non-empty items
       const lines = cleaned.split('\n').map(l => l.trim().replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, '')).filter(Boolean);
-      if (lines.length > 0) return lines;
+      if (lines.length > 0) {
+        console.log(`Using line fallback with ${lines.length} items`);
+        return lines;
+      }
+      
       // Last resort: single-item array
+      console.log('Using single-item fallback');
       return [cleaned];
     } else {
       return content;
