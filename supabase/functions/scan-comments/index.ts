@@ -68,10 +68,22 @@ serve(async (req) => {
         console.log(`Processing comment ${comment.id}...`);
 
         // Run Scan A and Scan B in parallel
-        const [scanAResult, scanBResult] = await Promise.all([
-          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, comment.text, 'analysis'),
-          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, comment.text, 'analysis')
-        ]);
+        let scanAResult, scanBResult;
+        try {
+          [scanAResult, scanBResult] = await Promise.all([
+            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, comment.text, 'analysis').catch(e => {
+              console.error(`Scan A failed for comment ${comment.id}:`, e);
+              throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
+            }),
+            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, comment.text, 'analysis').catch(e => {
+              console.error(`Scan B failed for comment ${comment.id}:`, e);
+              throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
+            })
+          ]);
+        } catch (error) {
+          console.error(`Parallel scanning failed for comment ${comment.id}:`, error);
+          throw error;
+        }
 
         let finalResult = null;
         let adjudicationResult = null;
@@ -91,13 +103,18 @@ Original comment: "${comment.text}"
 Scan A Result: ${JSON.stringify(scanAResult)}
 Scan B Result: ${JSON.stringify(scanBResult)}`;
 
-          adjudicationResult = await callAI(
-            adjudicator.provider, 
-            adjudicator.model, 
-            adjudicatorPrompt, 
-            '', 
-            'analysis'
-          );
+          try {
+            adjudicationResult = await callAI(
+              adjudicator.provider, 
+              adjudicator.model, 
+              adjudicatorPrompt, 
+              '', 
+              'analysis'
+            );
+          } catch (error) {
+            console.error(`Adjudicator failed for comment ${comment.id}:`, error);
+            throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
+          }
 
           finalResult = adjudicationResult;
         } else {
