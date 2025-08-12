@@ -923,7 +923,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         try {
           let parsed = JSON.parse(jsonContent);
           if (model.startsWith('amazon.titan')) {
-            parsed = normalizeTitanAnalysis(parsed);
+            parsed = normalizeTitanAnalysis(parsed, responseType === 'analysis');
           }
           return {
             results: parsed,
@@ -963,7 +963,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
           
           if (extractedJson != null) {
             if (model.startsWith('amazon.titan')) {
-              extractedJson = normalizeTitanAnalysis(extractedJson);
+              extractedJson = normalizeTitanAnalysis(extractedJson, responseType === 'analysis');
             }
             return { results: extractedJson, rawResponse: null };
           }
@@ -978,9 +978,8 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
                 const concerning = !/not concerning/i.test(concerningMatch[1]);
                 const identifiable = !/not identifiable/i.test(identifiableMatch[1]);
                 const reasoningMatch = jsonContent.match(/reasoning[:\s]*([\s\S]*)/i);
-                let reasoning = reasoningMatch ? reasoningMatch[1].trim() : jsonContent;
                 let result: any = { concerning, identifiable, reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim() };
-                if (model.startsWith('amazon.titan')) result = normalizeTitanAnalysis(result);
+                if (model.startsWith('amazon.titan')) result = normalizeTitanAnalysis(result, true);
                 return { results: result, rawResponse: null };
               }
             } else if (responseType === 'batch_analysis') {
@@ -1016,7 +1015,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             const concerning = concerningPositive && !hasNegativeStatement;
             const identifiable = identifiablePositive && !hasNegativeStatement;
             const base = { concerning, identifiable, reasoning: jsonContent.substring(0, 300).replace(/[\r\n\t]/g, ' ').trim() };
-            const results = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(base) : base;
+            const results = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(base, true) : base;
             return { results, rawResponse: jsonContent };
           } else if (responseType === 'batch_analysis') {
             const hasNegativeStatement = /no concerning|not concerning|nothing concerning|no identifiable|not identifiable|nothing identifiable|no personally identifiable|false|not present/i.test(jsonContent);
@@ -1062,7 +1061,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
   }
 
   // Titan-specific normalizer to coerce fields and clean outputs
-  function normalizeTitanAnalysis(data: any) {
+  function normalizeTitanAnalysis(data: any, flattenSingle: boolean = false) {
     const toBool = (v: any) => {
       if (typeof v === 'boolean') return v;
       if (typeof v === 'string') {
@@ -1078,7 +1077,20 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
       identifiable: toBool(o?.identifiable),
       reasoning: typeof o?.reasoning === 'string' ? o.reasoning.trim() : JSON.stringify(o?.reasoning ?? '')
     });
-    if (Array.isArray(data)) return data.map(normalizeOne);
+    const aggregate = (arr: any[]) => {
+      const normalized = arr.map(normalizeOne);
+      return {
+        concerning: normalized.some(n => n.concerning),
+        identifiable: normalized.some(n => n.identifiable),
+        reasoning: normalized.map(n => n.reasoning).filter(Boolean).join(' | ')
+      };
+    };
+    if (Array.isArray(data)) {
+      // If expecting a single object, aggregate. Otherwise, normalize per item and
+      // flatten any nested arrays by aggregating them individually.
+      if (flattenSingle) return aggregate(data);
+      return data.map((item: any) => Array.isArray(item) ? aggregate(item) : normalizeOne(item));
+    }
     return normalizeOne(data);
   }
 
