@@ -97,27 +97,36 @@ serve(async (req) => {
 
     // Per-scanner limiters (as configured in admin dashboard)
     configs.forEach(config => {
-      // Apply more conservative defaults for Bedrock models
+      // Apply conservative defaults only when no limits are configured
       let defaultRpm = 10;
       let defaultTpm = 50000;
       
-      if (config.provider === 'bedrock') {
-        // Bedrock has stricter rate limits, especially for Claude models
+      if (config.provider === 'bedrock' && !config.rpm_limit && !config.tpm_limit) {
+        // Only apply Bedrock defaults when user hasn't configured limits
         if (config.model.includes('haiku')) {
-          defaultRpm = 3; // Very conservative for Haiku
+          defaultRpm = 3; // Conservative default for Haiku
           defaultTpm = 10000;
         } else if (config.model.includes('claude')) {
-          defaultRpm = 5; // Conservative for other Claude models
+          defaultRpm = 5; // Conservative default for other Claude models
           defaultTpm = 20000;
         } else {
-          defaultRpm = 6; // Other Bedrock models
+          defaultRpm = 6; // Conservative default for other Bedrock models
           defaultTpm = 30000;
         }
+        console.log(`Using conservative defaults for ${config.provider}:${config.model} - RPM: ${defaultRpm}, TPM: ${defaultTpm}`);
+      }
+      
+      const finalRpm = config.rpm_limit || defaultRpm;
+      const finalTpm = config.tpm_limit || defaultTpm;
+      
+      // Warn if user has set potentially aggressive limits for Bedrock
+      if (config.provider === 'bedrock' && config.rpm_limit && config.rpm_limit > 10) {
+        console.warn(`High RPM limit (${config.rpm_limit}) set for Bedrock model ${config.model}. You may encounter rate limiting.`);
       }
       
       rateLimiters.set(config.scanner_type, {
-        rpmLimit: config.rpm_limit || defaultRpm,
-        tpmLimit: config.tpm_limit || defaultTpm,
+        rpmLimit: finalRpm,
+        tpmLimit: finalTpm,
         requestsThisMinute: 0,
         tokensThisMinute: 0,
         lastMinuteReset: Date.now(),
@@ -137,19 +146,9 @@ serve(async (req) => {
     });
     providerModelAggregates.forEach((agg, key) => {
       // Use the most conservative limits across scanners sharing the same provider+model
-      let minRpm = Math.min(...agg.rpm);
-      let minTpm = Math.min(...agg.tpm);
-      
-      // Apply additional conservative limits for Bedrock
-      if (key.startsWith('bedrock:')) {
-        if (key.includes('haiku')) {
-          minRpm = Math.min(minRpm, 2); // Extra conservative for shared Haiku usage
-          minTpm = Math.min(minTpm, 8000);
-        } else if (key.includes('claude')) {
-          minRpm = Math.min(minRpm, 4);
-          minTpm = Math.min(minTpm, 15000);
-        }
-      }
+      // This respects user-configured limits from the dashboard
+      const minRpm = Math.min(...agg.rpm);
+      const minTpm = Math.min(...agg.tpm);
       
       rateLimiters.set(`provider:${key}`, {
         rpmLimit: minRpm,
@@ -159,6 +158,8 @@ serve(async (req) => {
         lastMinuteReset: Date.now(),
         queuePromise: Promise.resolve(),
       });
+      
+      console.log(`Provider limiter for ${key}: RPM=${minRpm}, TPM=${minTpm}`);
     });
     try {
       // Prepare batch input for AI models
