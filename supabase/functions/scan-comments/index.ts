@@ -518,10 +518,14 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
     // Call adjudicator
     const adjudicatorPrompt = `${adjudicator.analysis_prompt.replace('these comments', 'this comment').replace('parallel list', 'single JSON object')}
 
+CONFLICT RESOLUTION NEEDED:
+
 Original comment: "${comment.text}"
 
-Scan A Result: ${JSON.stringify(scanAResult)}
-Scan B Result: ${JSON.stringify(scanBResult)}`;
+Scan A Result (${scanA.provider}/${scanA.model}): ${JSON.stringify(scanAResult)}
+Scan B Result (${scanB.provider}/${scanB.model}): ${JSON.stringify(scanBResult)}
+
+Please resolve this conflict and provide the final determination as a single JSON object.`;
 
     try {
       const adjudicationResponse = await callAI(
@@ -695,7 +699,8 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
                        (rateLimiters?.has(`provider:${modelKey}`) && rateLimiters.get(`provider:${modelKey}`).rpmLimit <= 2);
   
   if (isLowRpmModel && sequentialQueue) {
-    // Use sequential queue for very low RPM models
+    // Use sequential queue for very low RPM models - this prevents ALL concurrent calls
+    console.log(`Forcing sequential processing for ${modelKey} due to 1 RPM limit`);
     return await processSequentially(modelKey, async () => {
       return await performAICall(provider, model, prompt, commentText, responseType, scannerType, rateLimiters, estimatedTokens);
     }, sequentialQueue);
@@ -727,9 +732,9 @@ async function processSequentially<T>(modelKey: string, task: () => Promise<T>, 
   return new Promise((resolve, reject) => {
     queueData.queue.push(async () => {
       try {
-        // Ensure at least 65 seconds between calls for Sonnet/Opus
+        // Ensure at least 75 seconds between calls for Sonnet/Opus (extra buffer for 1 RPM)
         const timeSinceLastCall = Date.now() - queueData.lastCall;
-        const minDelay = 65000; // 65 seconds for 1 RPM limit
+        const minDelay = 75000; // 75 seconds for 1 RPM limit with extra buffer
         
         if (timeSinceLastCall < minDelay) {
           const waitTime = minDelay - timeSinceLastCall;
