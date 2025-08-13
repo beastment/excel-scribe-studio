@@ -693,13 +693,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                          <div className="space-y-2">
                            <h5 className="text-xs font-semibold text-muted-foreground">Debug Information:</h5>
                            
-                           {comment.debugInfo.scanAResult && (
-                             <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
-                               <p className="text-xs font-medium text-blue-900 dark:text-blue-100">Scan A Result:</p>
-                               <p className="text-xs text-blue-800 dark:text-blue-200">
-                                 Concerning: {comment.debugInfo.scanAResult.concerning ? 'Yes' : 'No'} | 
-                                 Identifiable: {comment.debugInfo.scanAResult.identifiable ? 'Yes' : 'No'}
-                               </p>
+                            {comment.debugInfo.scanAResult && (
+                              <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
+                                <p className="text-xs font-medium text-blue-900 dark:text-blue-100">
+                                  Scan A Result {comment.debugInfo.scanAResult.model ? `[${comment.debugInfo.scanAResult.model}]` : ''}:
+                                </p>
+                                <p className="text-xs text-blue-800 dark:text-blue-200">
+                                  Concerning: {comment.debugInfo.scanAResult.concerning ? 'Yes' : 'No'} | 
+                                  Identifiable: {comment.debugInfo.scanAResult.identifiable ? 'Yes' : 'No'}
+                                </p>
                                {comment.debugInfo.scanAResult.reasoning && (
                                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
                                    {comment.debugInfo.scanAResult.reasoning}
@@ -708,13 +710,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                              </div>
                            )}
                            
-                           {comment.debugInfo.scanBResult && (
-                             <div className="p-2 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50">
-                               <p className="text-xs font-medium text-green-900 dark:text-green-100">Scan B Result:</p>
-                               <p className="text-xs text-green-800 dark:text-green-200">
-                                 Concerning: {comment.debugInfo.scanBResult.concerning ? 'Yes' : 'No'} | 
-                                 Identifiable: {comment.debugInfo.scanBResult.identifiable ? 'Yes' : 'No'}
-                               </p>
+                            {comment.debugInfo.scanBResult && (
+                              <div className="p-2 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50">
+                                <p className="text-xs font-medium text-green-900 dark:text-green-100">
+                                  Scan B Result {comment.debugInfo.scanBResult.model ? `[${comment.debugInfo.scanBResult.model}]` : ''}:
+                                </p>
+                                <p className="text-xs text-green-800 dark:text-green-200">
+                                  Concerning: {comment.debugInfo.scanBResult.concerning ? 'Yes' : 'No'} | 
+                                  Identifiable: {comment.debugInfo.scanBResult.identifiable ? 'Yes' : 'No'}
+                                </p>
                                {comment.debugInfo.scanBResult.reasoning && (
                                  <p className="text-xs text-green-700 dark:text-green-300 mt-1">
                                    {comment.debugInfo.scanBResult.reasoning}
@@ -723,13 +727,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                              </div>
                            )}
                            
-                           {comment.debugInfo.adjudicationResult && (
-                             <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50">
-                               <p className="text-xs font-medium text-purple-900 dark:text-purple-100">Adjudicator Result:</p>
-                               <p className="text-xs text-purple-800 dark:text-purple-200">
-                                 Concerning: {comment.debugInfo.adjudicationResult.concerning ? 'Yes' : 'No'} | 
-                                 Identifiable: {comment.debugInfo.adjudicationResult.identifiable ? 'Yes' : 'No'}
-                               </p>
+                            {comment.debugInfo.adjudicationResult && (
+                              <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50">
+                                <p className="text-xs font-medium text-purple-900 dark:text-purple-100">
+                                  Adjudicator Result {comment.debugInfo.adjudicationResult.model ? `[${comment.debugInfo.adjudicationResult.model}]` : ''}:
+                                </p>
+                                <p className="text-xs text-purple-800 dark:text-purple-200">
+                                  Concerning: {comment.debugInfo.adjudicationResult.concerning ? 'Yes' : 'No'} | 
+                                  Identifiable: {comment.debugInfo.adjudicationResult.identifiable ? 'Yes' : 'No'}
+                                </p>
                                {comment.debugInfo.adjudicationResult.reasoning && (
                                  <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
                                    {comment.debugInfo.adjudicationResult.reasoning}

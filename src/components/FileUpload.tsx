@@ -28,9 +28,9 @@ export interface CommentData {
   demographics?: string;
   hideAiResponse?: boolean;
   debugInfo?: {
-    scanAResult?: { concerning: boolean; identifiable: boolean; reasoning?: string };
-    scanBResult?: { concerning: boolean; identifiable: boolean; reasoning?: string };
-    adjudicationResult?: { concerning: boolean; identifiable: boolean; reasoning?: string };
+    scanAResult?: { concerning: boolean; identifiable: boolean; reasoning?: string; model?: string };
+    scanBResult?: { concerning: boolean; identifiable: boolean; reasoning?: string; model?: string };
+    adjudicationResult?: { concerning: boolean; identifiable: boolean; reasoning?: string; model?: string };
     needsAdjudication?: boolean;
     finalDecision?: { concerning: boolean; identifiable: boolean; reasoning?: string };
     error?: string;
