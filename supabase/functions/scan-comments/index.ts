@@ -173,11 +173,11 @@ serve(async (req) => {
       try {
         const [scanAResponse, scanBResponse] = await Promise.all([
           callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a', rateLimiters).catch(e => {
-            console.error(`Scan A failed for batch:`, e);
+            console.error(`Scan A (${scanA.provider}/${scanA.model}) failed for batch:`, e);
             throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
           }),
           callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', 'scan_b', rateLimiters).catch(e => {
-            console.error(`Scan B failed for batch:`, e);
+            console.error(`Scan B (${scanB.provider}/${scanB.model}) failed for batch:`, e);
             throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
           })
         ]);
@@ -187,24 +187,35 @@ serve(async (req) => {
           scanBResults = scanBResponse?.results || scanBResponse;
           scanARawResponse = scanAResponse?.rawResponse;
           scanBRawResponse = scanBResponse?.rawResponse;
+          
+          // If either scan returned a single object instead of array, convert it
+          if (scanAResults && !Array.isArray(scanAResults) && typeof scanAResults === 'object') {
+            console.log(`Scan A (${scanA.provider}/${scanA.model}) returned single object, converting to array for batch of ${batch.length}`);
+            scanAResults = Array(batch.length).fill(scanAResults);
+          }
+          if (scanBResults && !Array.isArray(scanBResults) && typeof scanBResults === 'object') {
+            console.log(`Scan B (${scanB.provider}/${scanB.model}) returned single object, converting to array for batch of ${batch.length}`);
+            scanBResults = Array(batch.length).fill(scanBResults);
+          }
       } catch (error) {
         console.error(`Parallel batch scanning failed:`, error);
         throw error;
       }
 
-        console.log(`Received scanA results:`, typeof scanAResults, Array.isArray(scanAResults) ? scanAResults.length : 'not array');
-        console.log(`Received scanB results:`, typeof scanBResults, Array.isArray(scanBResults) ? scanBResults.length : 'not array');
+        console.log(`Received Scan A (${scanA.provider}/${scanA.model}) results:`, typeof scanAResults, Array.isArray(scanAResults) ? scanAResults.length : 'not array');
+        console.log(`Received Scan B (${scanB.provider}/${scanB.model}) results:`, typeof scanBResults, Array.isArray(scanBResults) ? scanBResults.length : 'not array');
 
         // Ensure we have results for all comments in the batch
-      if (!Array.isArray(scanAResults) || !Array.isArray(scanBResults) || 
-          scanAResults.length !== batch.length || scanBResults.length !== batch.length) {
-        
-        console.warn(`Invalid batch results - falling back to individual processing`);
+      const scanAValid = Array.isArray(scanAResults) && scanAResults.length === batch.length;
+      const scanBValid = Array.isArray(scanBResults) && scanBResults.length === batch.length;
+      
+      if (!scanAValid || !scanBValid) {
+        console.warn(`Invalid batch results - Scan A (${scanA.provider}/${scanA.model}): ${scanAValid ? 'valid' : `invalid (${Array.isArray(scanAResults) ? `got ${scanAResults.length} results for ${batch.length} comments` : 'not array'})`}, Scan B (${scanB.provider}/${scanB.model}): ${scanBValid ? 'valid' : `invalid (${Array.isArray(scanBResults) ? `got ${scanBResults.length} results for ${batch.length} comments` : 'not array'})`} - falling back to individual processing`);
         
         // Fallback to individual processing
         for (let j = 0; j < batch.length; j++) {
           const comment = batch[j];
-          console.log(`Processing comment ${comment.id} individually...`);
+          console.log(`Processing comment ${comment.id} individually with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model})...`);
 
           try {
             const [scanAResponse, scanBResponse] = await Promise.all([
@@ -217,7 +228,7 @@ serve(async (req) => {
             
             await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
           } catch (error) {
-            console.error(`Individual processing failed for comment ${comment.id}:`, error);
+            console.error(`Individual processing failed for comment ${comment.id} with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model}):`, error);
             scannedComments.push({
               ...comment,
               text: comment.originalText || comment.text,
@@ -917,7 +928,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             } else {
               // Handle numbered list responses for both single and batch analysis
               if (jsonContent.match(/^\s*\d+\./m)) {
-                console.log(`Converting numbered list to ${responseType === 'analysis' ? 'single object' : 'JSON array'}`);
+        console.log(`Converting numbered list to ${responseType === 'analysis' ? 'single object' : 'JSON array'} for model ${model}`);
                 
                 if (responseType === 'analysis') {
                   // Handle single analysis numbered response
@@ -1016,11 +1027,11 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
 
     return await retryWithBackoff(async () => {
       return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion);
-    }, 4, 2000); // Increased retries and base delay for Bedrock
+    }, 4, 2000, model); // Increased retries and base delay for Bedrock
   }
 
   // Retry function with exponential backoff - enhanced for Bedrock
-  async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries: number, baseDelay: number): Promise<T> {
+  async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries: number, baseDelay: number, modelName?: string): Promise<T> {
     let lastError: Error;
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -1036,7 +1047,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             let delay = baseDelay * Math.pow(2, attempt) + Math.random() * 2000; // Increased jitter
             
             // Special handling for Bedrock - longer delays
-            if (error.message.includes('bedrock') || model.includes('claude') || model.includes('titan')) {
+            if (error.message.includes('bedrock') || (modelName && (modelName.includes('claude') || modelName.includes('titan')))) {
               delay = Math.max(delay, 5000 + attempt * 5000); // Minimum 5s, increasing by 5s per attempt
             }
             
