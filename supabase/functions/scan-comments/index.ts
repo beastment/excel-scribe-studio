@@ -516,24 +516,41 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
     needsAdjudication = true;
 
     // Call adjudicator
-    const adjudicatorPrompt = `ADJUDICATION REQUIRED: Two AI models disagreed on this comment. You must provide the final determination.
+    // First check if adjudication is actually needed - if both agree, use their result
+    const bothAgreeConcerning = scanAResult.concerning === scanBResult.concerning;
+    const bothAgreeIdentifiable = scanAResult.identifiable === scanBResult.identifiable;
+    
+    if (bothAgreeConcerning && bothAgreeIdentifiable) {
+      console.log(`Both scans agree for comment ${comment.id} - skipping adjudication`);
+      adjudicationResult = {
+        concerning: scanAResult.concerning,
+        identifiable: scanAResult.identifiable,
+        reasoning: "Both scans agreed on all fields"
+      };
+    } else {
+      // Only adjudicate if there's actual disagreement
+      const adjudicatorPrompt = `ADJUDICATION REQUIRED: Two AI models disagreed on this comment.
 
 Comment: "${comment.text}"
 
-Scan A Result: concerning=${scanAResult.concerning}, identifiable=${scanAResult.identifiable}
-Scan B Result: concerning=${scanBResult.concerning}, identifiable=${scanBResult.identifiable}
+Scan A: concerning=${scanAResult.concerning}, identifiable=${scanAResult.identifiable}
+Scan B: concerning=${scanBResult.concerning}, identifiable=${scanBResult.identifiable}
 
-MANDATORY LOGIC:
-- If BOTH scans agree on a field (both true OR both false), you MUST preserve that exact value
-- Only resolve fields where one scan says true and the other says false
-- Full names = identifiable (Rebecca Williams = identifiable)
-- Constructive feedback ≠ concerning (performance review feedback = not concerning)
+RULES:
+1. If both scans agree on a field, PRESERVE that value exactly
+2. Only decide on fields where scans disagree
+3. Names like "Rebecca Williams" = identifiable
+4. Performance feedback = not concerning
 
-You MUST respond with ONLY this exact JSON format:
+CURRENT DISAGREEMENTS:
+- Concerning: ${bothAgreeConcerning ? 'BOTH AGREE' : 'DISAGREE'} 
+- Identifiable: ${bothAgreeIdentifiable ? 'BOTH AGREE' : 'DISAGREE'}
+
+JSON response required:
 {
-  "concerning": true/false,
-  "identifiable": true/false,
-  "reasoning": "your explanation"
+  "concerning": ${bothAgreeConcerning ? scanAResult.concerning : 'true_or_false'},
+  "identifiable": ${bothAgreeIdentifiable ? scanAResult.identifiable : 'true_or_false'},
+  "reasoning": "explanation"
 }`;
 
     console.log(`Adjudicator needed for comment ${comment.id}:`, {
@@ -559,6 +576,7 @@ You MUST respond with ONLY this exact JSON format:
     } catch (error) {
       console.error(`Adjudicator failed for comment ${comment.id}:`, error);
       throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
+    }
     }
 
     finalResult = adjudicationResult;
