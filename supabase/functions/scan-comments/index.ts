@@ -302,12 +302,24 @@ serve(async (req) => {
             needsAdjudication = true;
 
             // For adjudication, we need to process individually since it requires conflict analysis
-            const adjudicatorPrompt = `${adjudicator.analysis_prompt.replace('these comments', 'this comment').replace('parallel list', 'single JSON object')}
+            const disagreementFields = [];
+            if (concerningDisagreement) disagreementFields.push('concerning');
+            if (identifiableDisagreement) disagreementFields.push('identifiable');
+            
+            const adjudicatorPrompt = `Two AI systems have analyzed this comment and disagreed on: ${disagreementFields.join(' and ')}.
 
 Original comment: "${comment.text}"
 
 Scan A Result: ${JSON.stringify(scanAResult)}
-Scan B Result: ${JSON.stringify(scanBResult)}`;
+Scan B Result: ${JSON.stringify(scanBResult)}
+
+IMPORTANT: Only resolve the disagreement for the ${disagreementFields.join(' and ')} field(s). Return a JSON object with:
+- concerning: boolean (${concerningDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResult.concerning})
+- identifiable: boolean (${identifiableDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResult.identifiable})
+- reasoning: string explaining your decision
+
+${concerningDisagreement ? '' : 'NOTE: Both scans agreed on concerning=' + scanAResult.concerning + ', so preserve this value.'}
+${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResult.identifiable + ', so preserve this value.'}`;
 
             try {
               const adjudicationResponse = await callAI(
