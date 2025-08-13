@@ -69,6 +69,11 @@ serve(async (req) => {
       if (provider === 'openai' && !Deno.env.get('OPENAI_API_KEY')) {
         throw new Error('OpenAI API key is required');
       }
+      if (provider === 'azure') {
+        if (!Deno.env.get('AZURE_OPENAI_API_KEY') || !Deno.env.get('AZURE_OPENAI_ENDPOINT')) {
+          throw new Error('Azure OpenAI API key and endpoint are required');
+        }
+      }
       if (provider === 'bedrock') {
         if (!Deno.env.get('AWS_ACCESS_KEY_ID') || !Deno.env.get('AWS_SECRET_ACCESS_KEY') || !Deno.env.get('AWS_REGION')) {
           throw new Error('AWS credentials are required for Bedrock');
@@ -637,6 +642,8 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
 
   if (provider === 'openai') {
     return await callOpenAI(model, prompt, commentText, responseType);
+  } else if (provider === 'azure') {
+    return await callAzureOpenAI(model, prompt, commentText, responseType);
   } else if (provider === 'bedrock') {
     return await callBedrock(model, prompt, commentText, responseType);
   } else {
@@ -791,6 +798,159 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
           const results = model.startsWith('amazon.titan') ? normalizeTitanAnalysis(base) : base;
           return { results, rawResponse: content };
         }
+        
+        // For other cases fallback to heuristic
+        const heur = heuristicAnalyze(commentText);
+        return { results: heur, rawResponse: content };
+      }
+    } else if (responseType === 'batch_text') {
+      try {
+        return JSON.parse(content);
+      } catch (parseError) {
+        console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
+        // If not valid JSON, split by lines or return array with single item
+        return content.split('\n').filter(line => line.trim().length > 0);
+      }
+    } else {
+      return content;
+    }
+  }
+
+  // Azure OpenAI API call
+  async function callAzureOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text') {
+    const azureApiKey = Deno.env.get('AZURE_OPENAI_API_KEY');
+    const azureEndpoint = Deno.env.get('AZURE_OPENAI_ENDPOINT');
+    const apiVersion = Deno.env.get('AZURE_OPENAI_API_VERSION') || '2024-02-01';
+    
+    if (!azureApiKey || !azureEndpoint) {
+      throw new Error('Azure OpenAI API key and endpoint not configured');
+    }
+
+    // Clean endpoint URL (remove trailing slash if present)
+    const cleanEndpoint = azureEndpoint.replace(/\/$/, '');
+    
+    const messages = [
+      { role: 'system', content: prompt },
+      { role: 'user', content: commentText }
+    ];
+
+    // Azure OpenAI uses deployment name, which should match the model name
+    const url = `${cleanEndpoint}/openai/deployments/${model}/chat/completions?api-version=${apiVersion}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'api-key': azureApiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: messages,
+        temperature: 0.1,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Azure OpenAI API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content;
+
+    // Use the same parsing logic as regular OpenAI
+    if (responseType === 'analysis' || responseType === 'batch_analysis') {
+      try {
+        // Extract JSON from response if it contains explanatory text
+        let jsonContent = content.trim();
+        
+        // First try to parse as-is
+        try {
+          const parsed = JSON.parse(jsonContent);
+          return {
+            results: parsed,
+            rawResponse: null // No raw response needed for successful parsing
+          };
+        } catch (initialError) {
+          // If that fails, try to extract JSON from response
+          if (!jsonContent.startsWith('[') && !jsonContent.startsWith('{')) {
+            // Look for JSON array or object in the response
+            const jsonArrayMatch = jsonContent.match(/\[[\s\S]*?\]/);
+            const jsonObjectMatch = jsonContent.match(/\{[\s\S]*?\}/);
+            
+            if (jsonArrayMatch) {
+              jsonContent = jsonArrayMatch[0];
+            } else if (jsonObjectMatch) {
+              jsonContent = jsonObjectMatch[0];
+            } else {
+              // Handle numbered list responses for both single and batch analysis
+              if (jsonContent.match(/^\s*\d+\./m)) {
+                console.log(`Converting numbered list to ${responseType === 'analysis' ? 'single object' : 'JSON array'}`);
+                
+                if (responseType === 'analysis') {
+                  // Handle single analysis numbered response
+                  const concerningMatch = jsonContent.match(/1\.\s*(.+)/);
+                  const identifiableMatch = jsonContent.match(/2\.\s*(.+)/);
+                  
+                  if (concerningMatch && identifiableMatch) {
+                    const concerning = !/not concerning/i.test(concerningMatch[1]);
+                    const identifiable = !/not identifiable/i.test(identifiableMatch[1]);
+                    
+                    // Extract reasoning section if present
+                    const reasoningMatch = jsonContent.match(/reasoning[:\s]*([\s\S]*)/i);
+                    let reasoning = reasoningMatch ? reasoningMatch[1].trim() : jsonContent;
+                    
+                    return {
+                      results: {
+                        concerning,
+                        identifiable,
+                        reasoning: reasoning.replace(/[\r\n\t]/g, ' ').trim()
+                      },
+                      rawResponse: null
+                    };
+                  }
+                } else if (responseType === 'batch_analysis') {
+                  // Handle batch analysis numbered response
+                  const lines = jsonContent.split('\n').filter(line => line.trim());
+                  const results = [];
+                  
+                  for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed.match(/^\d+\./)) {
+                      // Extract boolean values from numbered responses
+                      const concerning = /concerning[:\s]*(?:true|yes)/i.test(trimmed);
+                      const identifiable = /identifiable[:\s]*(?:true|yes)/i.test(trimmed);
+                      results.push({
+                        concerning,
+                        identifiable,
+                        reasoning: trimmed
+                      });
+                    }
+                  }
+                  
+                  if (results.length > 0) {
+                    return {
+                      results: results,
+                      rawResponse: null
+                    };
+                  }
+                }
+              }
+              
+              // For other cases fallback to heuristic
+              const heur = heuristicAnalyze(commentText);
+              return { results: heur, rawResponse: content };
+            }
+          }
+          
+          // Try to parse the extracted content
+          const parsed = JSON.parse(jsonContent);
+          return {
+            results: parsed,
+            rawResponse: null
+          };
+        }
+      } catch (parseError) {
+        console.warn(`Azure OpenAI JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
         
         // For other cases fallback to heuristic
         const heur = heuristicAnalyze(commentText);

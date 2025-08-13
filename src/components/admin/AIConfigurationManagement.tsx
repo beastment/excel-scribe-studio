@@ -24,6 +24,7 @@ interface AIConfiguration {
 
 const PROVIDERS = [
   { value: 'openai', label: 'OpenAI' },
+  { value: 'azure', label: 'Azure OpenAI' },
   { value: 'bedrock', label: 'AWS Bedrock' }
 ];
 
@@ -31,6 +32,10 @@ const MODELS = {
   openai: [
     { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
     { value: 'gpt-4o', label: 'GPT-4o' }
+  ],
+  azure: [
+    { value: 'gpt-4o', label: 'GPT-4o' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' }
   ],
   bedrock: [
     { value: 'amazon.titan-text-lite-v1', label: 'Titan Text G1 - Lite' },
