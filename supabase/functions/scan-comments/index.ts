@@ -965,7 +965,17 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
       content = data.results?.[0]?.outputText || data.outputText || data.completion;
     } else if (model.startsWith('mistral.')) {
       // Mistral on Bedrock commonly returns { outputs: [{ text }] }
-      content = data.outputs?.[0]?.text || data.output_text || data.completion || data.generation || data.result || JSON.stringify(data);
+      content = data.outputs?.[0]?.text || data.output_text || data.completion || data.generation || data.result;
+      
+      // Log the full Mistral response structure for debugging
+      console.log('Mistral response structure:', JSON.stringify(data, null, 2));
+      console.log('Extracted content:', content);
+      
+      // If we don't find content in expected places, use the whole response
+      if (!content) {
+        console.warn('No content found in expected Mistral response fields, using full response');
+        content = JSON.stringify(data);
+      }
     }
 
     if (responseType === 'analysis' || responseType === 'batch_analysis') {
@@ -984,18 +994,63 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         // Clean up common issues in JSON responses
         jsonContent = jsonContent.replace(/```json\s*/g, '').replace(/```\s*/g, '');
         
+        // For Mistral models, try additional cleanup
+        if (model.startsWith('mistral.')) {
+          console.log(`Mistral raw content before cleanup: ${jsonContent.substring(0, 300)}`);
+          
+          // Try to extract JSON from common Mistral response patterns
+          const jsonPatterns = [
+            /```json\s*([\s\S]*?)\s*```/,  // JSON in code blocks
+            /\[[\s\S]*\]/,                  // Direct array
+            /\{[\s\S]*\}/,                  // Direct object
+            /(?:Here is|Here's|The response is|Response:)\s*(\[[\s\S]*\])/i,  // After introduction
+            /(?:Here is|Here's|The response is|Response:)\s*(\{[\s\S]*\})/i   // After introduction
+          ];
+          
+          let foundJson = false;
+          for (const pattern of jsonPatterns) {
+            const match = jsonContent.match(pattern);
+            if (match) {
+              jsonContent = match[1] || match[0];
+              foundJson = true;
+              console.log(`Mistral: Found JSON using pattern, extracted: ${jsonContent.substring(0, 100)}`);
+              break;
+            }
+          }
+          
+          if (!foundJson) {
+            // Remove any leading/trailing explanatory text and focus on JSON
+            const jsonMatch = jsonContent.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
+            if (jsonMatch) {
+              jsonContent = jsonMatch[0];
+            }
+          }
+          
+          // Clean up common Mistral formatting issues
+          jsonContent = jsonContent
+            .replace(/,\s*}/g, '}')  // Remove trailing commas
+            .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
+            .replace(/\n/g, ' ')      // Replace newlines with spaces
+            .replace(/\s+/g, ' ')     // Normalize whitespace
+            .trim();
+            
+          console.log(`Mistral cleaned content: ${jsonContent.substring(0, 200)}`);
+        }
+        
         // First try to parse as-is
         try {
           let parsed = JSON.parse(jsonContent);
           if (model.startsWith('amazon.titan')) {
             parsed = normalizeTitanAnalysis(parsed, responseType === 'analysis');
           }
+          console.log(`Successfully parsed JSON on first attempt for ${model}`);
           return {
             results: parsed,
-            rawResponse: null // No raw response needed for successful parsing
+            rawResponse: null
           };
         } catch (initialError) {
-          console.log(`Initial JSON parse failed, trying extraction. Content preview: ${jsonContent.substring(0, 100)}`);
+          console.log(`Initial JSON parse failed for ${model}, trying extraction. Error: ${initialError.message}`);
+          console.log(`Content preview: ${jsonContent.substring(0, 200)}`);
           
           // Try multiple extraction strategies
           let extractedJson: any = null;
@@ -1012,16 +1067,45 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
           
           // Strategy 2: Extract complete JSON arrays or objects
           if (extractedJson == null) {
-            const jsonArrayMatches = jsonContent.match(/\[[\s\S]*?\]/g);
-            const jsonObjectMatches = jsonContent.match(/\{[\s\S]*?\}/g);
-            if (jsonArrayMatches) {
-              for (const match of jsonArrayMatches.sort((a, b) => b.length - a.length)) {
-                try { extractedJson = JSON.parse(match); break; } catch {}
+            // For Mistral, be more aggressive in JSON extraction
+            if (model.startsWith('mistral.')) {
+              // Try to find JSON within the response using improved patterns
+              const patterns = [
+                /\[[\s\S]*?\]/g,  // Arrays
+                /\{[\s\S]*?\}/g,  // Objects
+                /(?:```json\s*)?\[[\s\S]*?\](?:\s*```)?/g,  // Arrays with possible markdown
+                /(?:```json\s*)?\{[\s\S]*?\}(?:\s*```)?/g   // Objects with possible markdown
+              ];
+              
+              for (const pattern of patterns) {
+                const matches = content.match(pattern);
+                if (matches) {
+                  for (const match of matches.sort((a, b) => b.length - a.length)) {
+                    try { 
+                      let cleanMatch = match.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+                      extractedJson = JSON.parse(cleanMatch); 
+                      console.log(`Successfully extracted JSON using Mistral pattern for ${model}`);
+                      break; 
+                    } catch (e) {
+                      console.log(`Failed to parse match: ${match.substring(0, 50)}...`);
+                    }
+                  }
+                  if (extractedJson) break;
+                }
               }
-            }
-            if (extractedJson == null && jsonObjectMatches) {
-              for (const match of jsonObjectMatches.sort((a, b) => b.length - a.length)) {
-                try { extractedJson = JSON.parse(match); break; } catch {}
+            } else {
+              // Original logic for other models
+              const jsonArrayMatches = jsonContent.match(/\[[\s\S]*?\]/g);
+              const jsonObjectMatches = jsonContent.match(/\{[\s\S]*?\}/g);
+              if (jsonArrayMatches) {
+                for (const match of jsonArrayMatches.sort((a, b) => b.length - a.length)) {
+                  try { extractedJson = JSON.parse(match); break; } catch {}
+                }
+              }
+              if (extractedJson == null && jsonObjectMatches) {
+                for (const match of jsonObjectMatches.sort((a, b) => b.length - a.length)) {
+                  try { extractedJson = JSON.parse(match); break; } catch {}
+                }
               }
             }
           }
@@ -1030,8 +1114,13 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             if (model.startsWith('amazon.titan')) {
               extractedJson = normalizeTitanAnalysis(extractedJson, responseType === 'analysis');
             }
+            console.log(`Successfully extracted JSON for ${model}: ${JSON.stringify(extractedJson).substring(0, 100)}...`);
             return { results: extractedJson, rawResponse: null };
           }
+          
+          // Log the failure for debugging
+          console.error(`All JSON extraction strategies failed for ${model}. Raw content: ${content.substring(0, 500)}`);
+          console.error(`Cleaned content: ${jsonContent.substring(0, 500)}`);
           
           // Strategy 3: Handle numbered list responses
           if (jsonContent.match(/^\s*\d+\./m)) {
