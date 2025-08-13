@@ -222,8 +222,9 @@ serve(async (req) => {
             const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters);
             const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters);
 
-            const scanAResult = scanAResponse?.results || scanAResponse;
-            const scanBResult = scanBResponse?.results || scanBResponse;
+            // Deep clone the results to avoid mutation issues
+            const scanAResult = JSON.parse(JSON.stringify(scanAResponse?.results || scanAResponse));
+            const scanBResult = JSON.parse(JSON.stringify(scanBResponse?.results || scanBResponse));
             
             console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan A result:`, scanAResult);
             console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan B result:`, scanBResult);
