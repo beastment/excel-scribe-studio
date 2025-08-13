@@ -295,8 +295,10 @@ serve(async (req) => {
           let needsAdjudication = false;
 
           // Check if Scan A and Scan B results differ
-          if (scanAResult.concerning !== scanBResult.concerning || 
-              scanAResult.identifiable !== scanBResult.identifiable) {
+          const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
+          const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
+          
+          if (concerningDisagreement || identifiableDisagreement) {
             needsAdjudication = true;
 
             // For adjudication, we need to process individually since it requires conflict analysis
@@ -324,7 +326,12 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
               throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
             }
 
-            finalResult = adjudicationResult;
+            // Create final result by preserving agreements and using adjudicator for disagreements
+            finalResult = {
+              concerning: concerningDisagreement ? adjudicationResult.concerning : scanAResult.concerning,
+              identifiable: identifiableDisagreement ? adjudicationResult.identifiable : scanAResult.identifiable,
+              reasoning: adjudicationResult.reasoning || scanAResult.reasoning
+            };
           } else {
             // Scan A and Scan B agree, use Scan A result
             finalResult = scanAResult;
