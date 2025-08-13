@@ -1055,7 +1055,13 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
             
             // Special handling for Bedrock - longer delays
             if (error.message.includes('bedrock') || (modelName && (modelName.includes('claude') || modelName.includes('titan')))) {
-              delay = Math.max(delay, 5000 + attempt * 5000); // Minimum 5s, increasing by 5s per attempt
+              // For very low RPM models (1-2 RPM), use much longer delays
+              if (modelName && (modelName.includes('sonnet') || modelName.includes('opus'))) {
+                // For Sonnet/Opus models that typically have 1 RPM limits, wait at least 65 seconds
+                delay = Math.max(delay, 65000 + attempt * 30000); // 65s base, +30s per retry
+              } else {
+                delay = Math.max(delay, 5000 + attempt * 5000); // Minimum 5s, increasing by 5s per attempt
+              }
             }
             
             console.log(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
