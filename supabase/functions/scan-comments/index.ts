@@ -134,6 +134,13 @@ serve(async (req) => {
       });
     });
 
+    // Global sequential queue for very low RPM models (1-2 RPM) to prevent concurrent calls
+    const sequentialQueue = new Map<string, { 
+      queue: Array<() => Promise<any>>, 
+      processing: boolean,
+      lastCall: number 
+    }>();
+
     // Provider+Model level limiter to coordinate shared capacity across scanners using the same model
     const providerModelAggregates = new Map<string, { rpm: number[]; tpm: number[] }>();
     configs.forEach(c => {
@@ -172,11 +179,11 @@ serve(async (req) => {
       let scanAResults, scanBResults, scanARawResponse, scanBRawResponse;
       try {
         const [scanAResponse, scanBResponse] = await Promise.all([
-          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a', rateLimiters).catch(e => {
+          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue).catch(e => {
             console.error(`Scan A (${scanA.provider}/${scanA.model}) failed for batch:`, e);
             throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
           }),
-          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', 'scan_b', rateLimiters).catch(e => {
+          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', 'scan_b', rateLimiters, sequentialQueue).catch(e => {
             console.error(`Scan B (${scanB.provider}/${scanB.model}) failed for batch:`, e);
             throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
           })
@@ -219,8 +226,8 @@ serve(async (req) => {
 
           try {
             // Process one at a time to maintain strict order and avoid sync issues
-            const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters);
-            const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters);
+            const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters, sequentialQueue);
+            const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters, sequentialQueue);
 
             // Deep clone the results to avoid mutation issues
             const scanAResult = JSON.parse(JSON.stringify(scanAResponse?.results || scanAResponse));
@@ -229,7 +236,7 @@ serve(async (req) => {
             console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan A result:`, scanAResult);
             console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan B result:`, scanBResult);
             
-            await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
+            await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, sequentialQueue, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
           } catch (error) {
             console.error(`Individual processing failed for comment ${comment.id} (index ${j}) with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model}):`, error);
             scannedComments.push({
@@ -308,7 +315,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
                 '', 
                 'analysis',
                 'adjudicator',
-                rateLimiters
+                rateLimiters,
+                sequentialQueue
               );
               adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
             } catch (error) {
@@ -471,7 +479,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
 });
 
 // Helper function to process individual comments
-async function processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, scanARawResponse?, scanBRawResponse?) {
+async function processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, sequentialQueue, scanARawResponse?, scanBRawResponse?) {
   let finalResult = null;
   let adjudicationResult = null;
   let needsAdjudication = false;
@@ -523,7 +531,8 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
         '', 
         'analysis',
         'adjudicator',
-        rateLimiters
+        rateLimiters,
+        sequentialQueue
       );
       adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
     } catch (error) {
@@ -676,9 +685,21 @@ function heuristicAnalyze(text: string): { concerning: boolean; identifiable: bo
 }
 
 // Helper function to call AI services with rate limiting
-async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>) {
+async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>, sequentialQueue?: Map<string, any>) {
   // Estimate tokens for this request
   const estimatedTokens = estimateTokens(prompt + commentText);
+  
+  // Check if this is a very low RPM model that needs sequential processing
+  const modelKey = `${provider}:${model}`;
+  const isLowRpmModel = (provider === 'bedrock' && (model.includes('sonnet') || model.includes('opus'))) || 
+                       (rateLimiters?.has(`provider:${modelKey}`) && rateLimiters.get(`provider:${modelKey}`).rpmLimit <= 2);
+  
+  if (isLowRpmModel && sequentialQueue) {
+    // Use sequential queue for very low RPM models
+    return await processSequentially(modelKey, async () => {
+      return await performAICall(provider, model, prompt, commentText, responseType, scannerType, rateLimiters, estimatedTokens);
+    }, sequentialQueue);
+  }
   
   // Enforce both provider+model and per-scanner limits if available
   if (rateLimiters) {
@@ -686,6 +707,73 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
     if (rateLimiters.has(providerKey)) {
       await enforceRateLimit(providerKey, estimatedTokens, rateLimiters);
     }
+  }
+  
+  return await performAICall(provider, model, prompt, commentText, responseType, scannerType, rateLimiters, estimatedTokens);
+}
+
+// Helper function to process requests sequentially for very low RPM models
+async function processSequentially<T>(modelKey: string, task: () => Promise<T>, sequentialQueue: Map<string, any>): Promise<T> {
+  if (!sequentialQueue.has(modelKey)) {
+    sequentialQueue.set(modelKey, {
+      queue: [],
+      processing: false,
+      lastCall: 0
+    });
+  }
+  
+  const queueData = sequentialQueue.get(modelKey);
+  
+  return new Promise((resolve, reject) => {
+    queueData.queue.push(async () => {
+      try {
+        // Ensure at least 65 seconds between calls for Sonnet/Opus
+        const timeSinceLastCall = Date.now() - queueData.lastCall;
+        const minDelay = 65000; // 65 seconds for 1 RPM limit
+        
+        if (timeSinceLastCall < minDelay) {
+          const waitTime = minDelay - timeSinceLastCall;
+          console.log(`Sequential queue: waiting ${Math.ceil(waitTime / 1000)}s before next ${modelKey} call`);
+          await new Promise(r => setTimeout(r, waitTime));
+        }
+        
+        queueData.lastCall = Date.now();
+        const result = await task();
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    });
+    
+    // Process queue if not already processing
+    if (!queueData.processing) {
+      processQueue(queueData);
+    }
+  });
+}
+
+// Helper function to process the sequential queue
+async function processQueue(queueData: any) {
+  if (queueData.processing || queueData.queue.length === 0) {
+    return;
+  }
+  
+  queueData.processing = true;
+  
+  while (queueData.queue.length > 0) {
+    const task = queueData.queue.shift();
+    try {
+      await task();
+    } catch (error) {
+      console.error('Error in sequential queue task:', error);
+    }
+  }
+  
+  queueData.processing = false;
+}
+
+// Helper function to perform the actual AI call
+async function performAICall(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>, estimatedTokens?: number) {
     if (scannerType && rateLimiters.has(scannerType)) {
       await enforceRateLimit(scannerType, estimatedTokens, rateLimiters);
     }
