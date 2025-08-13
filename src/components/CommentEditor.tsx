@@ -173,17 +173,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       });
     }, 500);
     try {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('scan-comments', {
-        body: {
-          comments,
-          defaultMode
-        }
+      console.log('Invoking scan-comments function...');
+      const { data, error } = await supabase.functions.invoke('scan-comments', {
+        body: { comments, defaultMode }
       });
+      
+      console.log('Function response:', { data, error });
+      
       if (error) {
-        throw new Error(error.message);
+        console.error('Edge function error:', error);
+        throw new Error(`Edge function error: ${error.message || JSON.stringify(error)}`);
       }
       if (data?.comments) {
         setScanProgress(100);
