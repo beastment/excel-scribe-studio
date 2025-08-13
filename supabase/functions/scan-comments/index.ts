@@ -20,10 +20,17 @@ serve(async (req) => {
     const requestBody = await req.json();
     console.log('Request body parsed:', { 
       commentsCount: requestBody.comments?.length, 
-      defaultMode: requestBody.defaultMode 
+      defaultMode: requestBody.defaultMode,
+      batchStart: requestBody.batchStart,
+      batchSize: requestBody.batchSize
     });
     
-    const { comments, defaultMode = 'redact' } = requestBody;
+    const { 
+      comments, 
+      defaultMode = 'redact',
+      batchStart = 0,
+      batchSize = 5
+    } = requestBody;
     
     if (!comments || !Array.isArray(comments)) {
       throw new Error('Invalid comments data');
@@ -69,8 +76,16 @@ serve(async (req) => {
       }
     }
 
+    // Process only the specified batch
+    const batch = comments.slice(batchStart, batchStart + batchSize);
     const scannedComments = [];
-    let summary = { total: comments.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
+    let summary = { total: batch.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
+
+    console.log(`Processing batch: comments ${batchStart + 1}-${Math.min(batchStart + batchSize, comments.length)} of ${comments.length}`);
+
+    if (batch.length === 0) {
+      throw new Error('No comments in specified batch range');
+    }
 
     // Rate limiting setup
     const rateLimiters = new Map<string, any>();
@@ -108,87 +123,77 @@ serve(async (req) => {
         queuePromise: Promise.resolve(),
       });
     });
+    try {
+      // Prepare batch input for AI models
+      const batchTexts = batch.map(comment => comment.text);
+      const batchInput = `Comments to analyze:\n${batchTexts.map((text, idx) => `${idx + 1}. ${text}`).join('\n')}`;
 
-    // Use smaller, faster batches to avoid timeouts
-    const BATCH_SIZE = 5; // Small batches to stay under timeout
-    const BATCH_DELAY = 500; // Minimal delay between batches
-
-    for (let i = 0; i < comments.length; i += BATCH_SIZE) {
-      const batch = comments.slice(i, i + BATCH_SIZE);
-      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(comments.length / BATCH_SIZE)} (comments ${i + 1}-${Math.min(i + BATCH_SIZE, comments.length)})`);
-
-      try {
-        // Prepare batch input for AI models
-        const batchTexts = batch.map(comment => comment.text);
-        const batchInput = `Comments to analyze:\n${batchTexts.map((text, idx) => `${idx + 1}. ${text}`).join('\n')}`;
-
-        console.log(`Sending ${batch.length} comments to AI models for batch analysis`);
+      console.log(`Sending ${batch.length} comments to AI models for batch analysis`);
 
         // Run Scan A and Scan B in parallel on the entire batch
-        let scanAResults, scanBResults, scanARawResponse, scanBRawResponse;
-        try {
-          const [scanAResponse, scanBResponse] = await Promise.all([
-            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a', rateLimiters).catch(e => {
-              console.error(`Scan A failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, e);
-              throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
-            }),
-            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', 'scan_b', rateLimiters).catch(e => {
-              console.error(`Scan B failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, e);
-              throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
-            })
-          ]);
+      let scanAResults, scanBResults, scanARawResponse, scanBRawResponse;
+      try {
+        const [scanAResponse, scanBResponse] = await Promise.all([
+          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a', rateLimiters).catch(e => {
+            console.error(`Scan A failed for batch:`, e);
+            throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
+          }),
+          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', 'scan_b', rateLimiters).catch(e => {
+            console.error(`Scan B failed for batch:`, e);
+            throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
+          })
+        ]);
           
           // Extract results and raw responses for debugging
           scanAResults = scanAResponse?.results || scanAResponse;
           scanBResults = scanBResponse?.results || scanBResponse;
           scanARawResponse = scanAResponse?.rawResponse;
           scanBRawResponse = scanBResponse?.rawResponse;
-        } catch (error) {
-          console.error(`Parallel batch scanning failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error);
-          throw error;
-        }
+      } catch (error) {
+        console.error(`Parallel batch scanning failed:`, error);
+        throw error;
+      }
 
         console.log(`Received scanA results:`, typeof scanAResults, Array.isArray(scanAResults) ? scanAResults.length : 'not array');
         console.log(`Received scanB results:`, typeof scanBResults, Array.isArray(scanBResults) ? scanBResults.length : 'not array');
 
         // Ensure we have results for all comments in the batch
-        if (!Array.isArray(scanAResults) || !Array.isArray(scanBResults) || 
-            scanAResults.length !== batch.length || scanBResults.length !== batch.length) {
-          
-          console.warn(`Invalid batch results - falling back to individual processing for batch ${Math.floor(i / BATCH_SIZE) + 1}`);
-          
-          // Fallback to individual processing
-          for (let j = 0; j < batch.length; j++) {
-            const comment = batch[j];
-            console.log(`Processing comment ${comment.id} individually...`);
+      if (!Array.isArray(scanAResults) || !Array.isArray(scanBResults) || 
+          scanAResults.length !== batch.length || scanBResults.length !== batch.length) {
+        
+        console.warn(`Invalid batch results - falling back to individual processing`);
+        
+        // Fallback to individual processing
+        for (let j = 0; j < batch.length; j++) {
+          const comment = batch[j];
+          console.log(`Processing comment ${comment.id} individually...`);
 
-            try {
-              const [scanAResponse, scanBResponse] = await Promise.all([
-                callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters),
-                callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters)
-              ]);
+          try {
+            const [scanAResponse, scanBResponse] = await Promise.all([
+              callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters),
+              callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters)
+            ]);
 
-              const scanAResult = scanAResponse?.results || scanAResponse;
-              const scanBResult = scanBResponse?.results || scanBResponse;
-              
-              await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
-            } catch (error) {
-              console.error(`Individual processing failed for comment ${comment.id}:`, error);
-              scannedComments.push({
-                ...comment,
-                text: comment.originalText || comment.text,
-                concerning: false,
-                identifiable: false,
-                aiReasoning: `Error processing: ${error.message}`,
-                mode: 'original',
-                approved: false,
-                hideAiResponse: false,
-                debugInfo: { error: error.message }
-              });
-            }
+            const scanAResult = scanAResponse?.results || scanAResponse;
+            const scanBResult = scanBResponse?.results || scanBResponse;
+            
+            await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
+          } catch (error) {
+            console.error(`Individual processing failed for comment ${comment.id}:`, error);
+            scannedComments.push({
+              ...comment,
+              text: comment.originalText || comment.text,
+              concerning: false,
+              identifiable: false,
+              aiReasoning: `Error processing: ${error.message}`,
+              mode: 'original',
+              approved: false,
+              hideAiResponse: false,
+              debugInfo: { error: error.message }
+            });
           }
-          continue; // Skip to next batch
         }
+      } else {
 
         // Process each comment in the batch
         for (let j = 0; j < batch.length; j++) {
@@ -289,7 +294,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
         }
 
         // Batch process redaction and rephrasing for flagged comments
-        const flaggedComments = scannedComments.slice(-batch.length).filter(c => c.concerning || c.identifiable);
+        const flaggedComments = scannedComments.filter(c => c.concerning || c.identifiable);
         if (flaggedComments.length > 0) {
           const flaggedTexts = flaggedComments.map(c => c.originalText || c.text);
           const activeConfig = scanA; // Use scan_a config for batch operations
@@ -297,8 +302,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
           try {
             // For Bedrock Mistral, prefer per-item processing for higher reliability
             if (activeConfig.provider === 'bedrock' && activeConfig.model.startsWith('mistral.')) {
-              let idx = 0;
-              for (let k = scannedComments.length - batch.length; k < scannedComments.length; k++) {
+              for (let k = 0; k < scannedComments.length; k++) {
                 if (scannedComments[k].concerning || scannedComments[k].identifiable) {
                   try {
                     const [red, reph] = await Promise.all([
@@ -316,7 +320,6 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
                   } catch (perItemErr) {
                     console.warn(`Per-item redaction/rephrasing failed for comment index ${k}:`, perItemErr);
                   }
-                  idx++;
                 }
               }
             } else {
@@ -327,7 +330,7 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
 
               // Apply redacted and rephrased texts
               let flaggedIndex = 0;
-              for (let k = scannedComments.length - batch.length; k < scannedComments.length; k++) {
+              for (let k = 0; k < scannedComments.length; k++) {
                 if (scannedComments[k].concerning || scannedComments[k].identifiable) {
                   scannedComments[k].redactedText = redactedTexts[flaggedIndex];
                   scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex];
@@ -344,42 +347,40 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
               }
             }
           } catch (error) {
-            console.warn(`Batch redaction/rephrasing failed for batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error);
+            console.warn(`Batch redaction/rephrasing failed:`, error);
             // Continue without redaction/rephrasing
           }
         }
-
-      } catch (error) {
-        console.error(`Error processing batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error);
-        // Include the original comments with error info
-        for (const comment of batch) {
-          scannedComments.push({
-            ...comment,
-            text: comment.originalText || comment.text,
-            concerning: false,
-            identifiable: false,
-            aiReasoning: `Error processing: ${error.message}`,
-            mode: 'original',
-            approved: false,
-            hideAiResponse: false,
-            debugInfo: {
-              error: error.message
-            }
-          });
-        }
       }
 
-      // Add delay between batches (except for the last batch)
-      if (i + BATCH_SIZE < comments.length) {
-        console.log(`Waiting ${BATCH_DELAY}ms before next batch...`);
-        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+    } catch (error) {
+      console.error(`Error processing batch:`, error);
+      // Include the original comments with error info
+      for (const comment of batch) {
+        scannedComments.push({
+          ...comment,
+          text: comment.originalText || comment.text,
+          concerning: false,
+          identifiable: false,
+          aiReasoning: `Error processing: ${error.message}`,
+          mode: 'original',
+          approved: false,
+          hideAiResponse: false,
+          debugInfo: {
+            error: error.message
+          }
+        });
       }
     }
 
-    console.log(`Successfully scanned ${scannedComments.length} comments`);
+    console.log(`Successfully scanned ${scannedComments.length} comments in batch`);
     
     const response = { 
       comments: scannedComments,
+      batchStart,
+      batchSize: scannedComments.length,
+      hasMore: batchStart + scannedComments.length < comments.length,
+      totalComments: comments.length,
       summary: {
         total: scannedComments.length,
         concerning: scannedComments.filter(c => c.concerning).length,

@@ -165,58 +165,76 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setScanProgress(0);
     toast.info(`Scanning ${comments.length} comments with AI...`);
 
-    // Simulate progress tracking
-    const progressInterval = setInterval(() => {
-      setScanProgress(prev => {
-        const newProgress = Math.min(prev + Math.random() * 15, 90);
-        return newProgress;
-      });
-    }, 500);
+    const BATCH_SIZE = 5;
+    let processedComments: any[] = [];
+    let currentBatch = 0;
+    const totalBatches = Math.ceil(comments.length / BATCH_SIZE);
+
     try {
-      console.log('Invoking scan-comments function...');
-      const { data, error } = await supabase.functions.invoke('scan-comments', {
-        body: { comments, defaultMode }
-      });
-      
-      console.log('Function response:', { data, error });
-      
-      if (error) {
-        console.error('Edge function error:', error);
-        throw new Error(`Edge function error: ${error.message || JSON.stringify(error)}`);
-      }
-      if (data?.comments) {
-        setScanProgress(100);
-        setHasScanRun(true);
-        // Normalize results to ensure UI flags match final decision and avoid stale redactions
-        const normalizedComments = data.comments.map((c: any) => {
-          const fd = c?.debugInfo?.finalDecision;
-          const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!c.concerning;
-          const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!c.identifiable;
-          // If not flagged, force original text and safe mode
-          if (!concerning && !identifiable) {
-            return {
-              ...c,
-              concerning: false,
-              identifiable: false,
-              mode: 'revert',
-              text: c.originalText || c.text,
-              redactedText: undefined,
-              rephrasedText: undefined,
-            };
+      for (let batchStart = 0; batchStart < comments.length; batchStart += BATCH_SIZE) {
+        currentBatch++;
+        console.log(`Processing batch ${currentBatch}/${totalBatches}`);
+        
+        // Update progress
+        setScanProgress((currentBatch - 1) / totalBatches * 90);
+        
+        const { data, error } = await supabase.functions.invoke('scan-comments', {
+          body: { 
+            comments, 
+            defaultMode,
+            batchStart,
+            batchSize: BATCH_SIZE
           }
-          return { ...c, concerning, identifiable };
         });
-        onCommentsUpdate(normalizedComments);
-        const summary = data.summary;
-        toast.success(`Scan complete! Found ${summary.concerning} concerning and ${summary.identifiable} identifiable comments`);
-      } else {
-        throw new Error('Invalid response from scan function');
+        
+        console.log(`Batch ${currentBatch} response:`, { data, error });
+        
+        if (error) {
+          console.error(`Batch ${currentBatch} error:`, error);
+          throw new Error(`Batch ${currentBatch} failed: ${error.message || JSON.stringify(error)}`);
+        }
+        
+        if (data?.comments) {
+          // Normalize results to ensure UI flags match final decision
+          const normalizedComments = data.comments.map((c: any) => {
+            const fd = c?.debugInfo?.finalDecision;
+            const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!c.concerning;
+            const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!c.identifiable;
+            // If not flagged, force original text and safe mode
+            if (!concerning && !identifiable) {
+              return {
+                ...c,
+                concerning: false,
+                identifiable: false,
+                mode: 'original',
+                text: c.originalText || c.text,
+                redactedText: undefined,
+                rephrasedText: undefined,
+              };
+            }
+            return { ...c, concerning, identifiable };
+          });
+          
+          // Add normalized comments to our processed list
+          processedComments = [...processedComments, ...normalizedComments];
+          
+          // Update progress with partial results
+          toast.info(`Processed batch ${currentBatch}/${totalBatches} (${processedComments.length}/${comments.length} comments)`);
+        } else {
+          throw new Error(`Batch ${currentBatch}: No comment data received`);
+        }
       }
+      
+      // Final update with all processed comments
+      setScanProgress(100);
+      setHasScanRun(true);
+      onCommentsUpdate(processedComments);
+      toast.success(`Successfully scanned all ${processedComments.length} comments!`);
+      
     } catch (error) {
-      console.error('Scan error:', error);
-      toast.error('Failed to scan comments. Please try again.');
+      console.error('Scan failed:', error);
+      toast.error(`Scan failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      clearInterval(progressInterval);
       setIsScanning(false);
       setScanProgress(0);
     }
