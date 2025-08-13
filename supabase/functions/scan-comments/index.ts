@@ -527,6 +527,13 @@ Scan B Result (${scanB.provider}/${scanB.model}): ${JSON.stringify(scanBResult)}
 
 Please resolve this conflict and provide the final determination as a single JSON object.`;
 
+    console.log(`Adjudicator needed for comment ${comment.id}:`, {
+      commentText: comment.text.substring(0, 100) + '...',
+      scanAResult,
+      scanBResult,
+      conflictReason: `Concerning: ${scanAResult.concerning} vs ${scanBResult.concerning}, Identifiable: ${scanAResult.identifiable} vs ${scanBResult.identifiable}`
+    });
+
     try {
       const adjudicationResponse = await callAI(
         adjudicator.provider, 
@@ -539,6 +546,7 @@ Please resolve this conflict and provide the final determination as a single JSO
         sequentialQueue
       );
       adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
+      console.log(`Adjudicator result for comment ${comment.id}:`, adjudicationResult);
     } catch (error) {
       console.error(`Adjudicator failed for comment ${comment.id}:`, error);
       throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
