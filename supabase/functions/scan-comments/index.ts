@@ -212,7 +212,7 @@ serve(async (req) => {
             if (typeof r.identifiable !== 'boolean') r.identifiable = false;
             
             // Only override with heuristic if AI result is completely invalid and heuristic detects clear violations
-            if (r.concerning === false && r.identifiable === false && !r.reasoning) {
+            if (r.concerning === false && r.identifiable === false && (!r.reasoning || r.reasoning.trim() === '')) {
               // Only apply heuristic if it finds clear violations AND AI gave no reasoning
               if (heur.concerning || heur.identifiable) {
                 r.concerning = heur.concerning;
@@ -431,7 +431,7 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
     if (typeof r.identifiable !== 'boolean') r.identifiable = false;
     
     // Only override with heuristic if AI result is completely invalid and heuristic detects clear violations
-    if (r.concerning === false && r.identifiable === false && !r.reasoning) {
+    if (r.concerning === false && r.identifiable === false && (!r.reasoning || r.reasoning.trim() === '')) {
       // Only apply heuristic if it finds clear violations AND AI gave no reasoning
       if (heur.concerning || heur.identifiable) {
         r.concerning = heur.concerning;
