@@ -516,16 +516,22 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
     needsAdjudication = true;
 
     // Call adjudicator
-    const adjudicatorPrompt = `${adjudicator.analysis_prompt.replace('these comments', 'this comment').replace('parallel list', 'single JSON object')}
+    const adjudicatorPrompt = `Two AI models analyzed this comment and disagreed. Please review and provide the final determination.
 
-CONFLICT RESOLUTION NEEDED:
+Comment: "${comment.text}"
 
-Original comment: "${comment.text}"
+Scan A (${scanA.provider}/${scanA.model}): ${JSON.stringify(scanAResult)}
+Scan B (${scanB.provider}/${scanB.model}): ${JSON.stringify(scanBResult)}
 
-Scan A Result (${scanA.provider}/${scanA.model}): ${JSON.stringify(scanAResult)}
-Scan B Result (${scanB.provider}/${scanB.model}): ${JSON.stringify(scanBResult)}
+CRITICAL RULES:
+1. PRESERVE AGREEMENTS: If both scans agree on a field (both say true OR both say false), you MUST keep that exact same value
+2. RESOLVE DISAGREEMENTS ONLY: Only change values where one scan says true and the other says false
+3. IDENTIFIABLE CRITERIA: Full names, employee IDs, phone numbers, specific locations, SSNs make content identifiable
+4. CONCERNING CRITERIA: Only harassment, threats, illegal activity, safety violations are concerning - constructive feedback is NOT concerning
 
-Please resolve this conflict and provide the final determination as a single JSON object.`;
+EXAMPLE: If Scan A says "identifiable: true" and Scan B says "identifiable: true", your result MUST be "identifiable: true"
+
+Provide your final determination as a single JSON object with concerning and identifiable boolean fields.`;
 
     console.log(`Adjudicator needed for comment ${comment.id}:`, {
       commentText: comment.text.substring(0, 100) + '...',
