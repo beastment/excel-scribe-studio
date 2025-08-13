@@ -516,22 +516,25 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
     needsAdjudication = true;
 
     // Call adjudicator
-    const adjudicatorPrompt = `Two AI models analyzed this comment and disagreed. Please review and provide the final determination.
+    const adjudicatorPrompt = `ADJUDICATION REQUIRED: Two AI models disagreed on this comment. You must provide the final determination.
 
 Comment: "${comment.text}"
 
-Scan A (${scanA.provider}/${scanA.model}): ${JSON.stringify(scanAResult)}
-Scan B (${scanB.provider}/${scanB.model}): ${JSON.stringify(scanBResult)}
+Scan A Result: concerning=${scanAResult.concerning}, identifiable=${scanAResult.identifiable}
+Scan B Result: concerning=${scanBResult.concerning}, identifiable=${scanBResult.identifiable}
 
-CRITICAL RULES:
-1. PRESERVE AGREEMENTS: If both scans agree on a field (both say true OR both say false), you MUST keep that exact same value
-2. RESOLVE DISAGREEMENTS ONLY: Only change values where one scan says true and the other says false
-3. IDENTIFIABLE CRITERIA: Full names, employee IDs, phone numbers, specific locations, SSNs make content identifiable
-4. CONCERNING CRITERIA: Only harassment, threats, illegal activity, safety violations are concerning - constructive feedback is NOT concerning
+MANDATORY LOGIC:
+- If BOTH scans agree on a field (both true OR both false), you MUST preserve that exact value
+- Only resolve fields where one scan says true and the other says false
+- Full names = identifiable (Rebecca Williams = identifiable)
+- Constructive feedback ≠ concerning (performance review feedback = not concerning)
 
-EXAMPLE: If Scan A says "identifiable: true" and Scan B says "identifiable: true", your result MUST be "identifiable: true"
-
-Provide your final determination as a single JSON object with concerning and identifiable boolean fields.`;
+You MUST respond with ONLY this exact JSON format:
+{
+  "concerning": true/false,
+  "identifiable": true/false,
+  "reasoning": "your explanation"
+}`;
 
     console.log(`Adjudicator needed for comment ${comment.id}:`, {
       commentText: comment.text.substring(0, 100) + '...',
