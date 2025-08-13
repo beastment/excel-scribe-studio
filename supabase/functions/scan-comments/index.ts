@@ -169,8 +169,8 @@ serve(async (req) => {
       console.log(`Provider limiter for ${key}: RPM=${minRpm}, TPM=${minTpm}`);
     });
     try {
-      // Prepare batch input for AI models
-      const batchTexts = batch.map(comment => comment.text);
+      // Prepare batch input for AI models (use original text, not redacted)
+      const batchTexts = batch.map(comment => comment.originalText || comment.text);
       const batchInput = `Comments to analyze:\n${batchTexts.map((text, idx) => `${idx + 1}. ${text}`).join('\n')}`;
 
       console.log(`Sending ${batch.length} comments to AI models for batch analysis`);
@@ -225,9 +225,9 @@ serve(async (req) => {
           console.log(`Processing comment ${comment.id} individually (index ${j}) with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model})...`);
 
           try {
-            // Process one at a time to maintain strict order and avoid sync issues
-            const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters, sequentialQueue);
-            const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters, sequentialQueue);
+            // Process one at a time to maintain strict order and avoid sync issues (use original text)
+            const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_a', rateLimiters, sequentialQueue);
+            const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_b', rateLimiters, sequentialQueue);
 
             // Deep clone the results to avoid mutation issues
             const scanAResult = JSON.parse(JSON.stringify(scanAResponse?.results || scanAResponse));
@@ -264,8 +264,8 @@ serve(async (req) => {
           const scanAResult = scanAResults[j];
           const scanBResult = scanBResults[j];
 
-          // Heuristic safety net - only use when AI completely fails
-          const heur = heuristicAnalyze(comment.text);
+          // Heuristic safety net - only use when AI completely fails (use original text)
+          const heur = heuristicAnalyze(comment.originalText || comment.text);
           const patchResult = (r: any) => {
             // If no result at all, use heuristic
             if (!r) return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
@@ -308,7 +308,7 @@ serve(async (req) => {
             
             const adjudicatorPrompt = `Two AI systems have analyzed this comment and disagreed on: ${disagreementFields.join(' and ')}.
 
-Original comment: "${comment.text}"
+Original comment: "${comment.originalText || comment.text}"
 
 Scan A Result: ${JSON.stringify(scanAResult)}
 Scan B Result: ${JSON.stringify(scanBResult)}
