@@ -528,55 +528,75 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
         reasoning: "Both scans agreed on all fields"
       };
     } else {
-      // Only adjudicate if there's actual disagreement
-      const adjudicatorPrompt = `ADJUDICATION REQUIRED: Two AI models disagreed on this comment.
+      // Handle partial agreements - preserve agreed values, only adjudicate disagreements
+      console.log(`Partial agreement for comment ${comment.id}: concerning=${bothAgreeConcerning}, identifiable=${bothAgreeIdentifiable}`);
+      
+      // Build result with preserved agreements
+      const preservedResult = {
+        concerning: bothAgreeConcerning ? scanAResult.concerning : null,
+        identifiable: bothAgreeIdentifiable ? scanAResult.identifiable : null,
+        reasoning: []
+      };
+      
+      if (bothAgreeConcerning) {
+        preservedResult.reasoning.push(`Preserved agreed concerning=${scanAResult.concerning}`);
+      }
+      
+      if (bothAgreeIdentifiable) {
+        preservedResult.reasoning.push(`Preserved agreed identifiable=${scanAResult.identifiable}`);
+      }
+      
+      // Call adjudicator but force preservation of agreements in the result
+      const adjudicatorPrompt = `CRITICAL: Preserve agreements, only decide disagreements.
 
 Comment: "${comment.text}"
 
 Scan A: concerning=${scanAResult.concerning}, identifiable=${scanAResult.identifiable}
 Scan B: concerning=${scanBResult.concerning}, identifiable=${scanBResult.identifiable}
 
-RULES:
-1. If both scans agree on a field, PRESERVE that value exactly
-2. Only decide on fields where scans disagree
-3. Names like "Rebecca Williams" = identifiable
-4. Performance feedback = not concerning
+${bothAgreeConcerning ? `BOTH AGREED: concerning MUST be ${scanAResult.concerning}` : `DISAGREEMENT: concerning needs adjudication`}
+${bothAgreeIdentifiable ? `BOTH AGREED: identifiable MUST be ${scanAResult.identifiable}` : `DISAGREEMENT: identifiable needs adjudication`}
 
-CURRENT DISAGREEMENTS:
-- Concerning: ${bothAgreeConcerning ? 'BOTH AGREE' : 'DISAGREE'} 
-- Identifiable: ${bothAgreeIdentifiable ? 'BOTH AGREE' : 'DISAGREE'}
-
-JSON response required:
+JSON with EXACT values for agreements:
 {
   "concerning": ${bothAgreeConcerning ? scanAResult.concerning : 'true_or_false'},
   "identifiable": ${bothAgreeIdentifiable ? scanAResult.identifiable : 'true_or_false'},
   "reasoning": "explanation"
 }`;
 
-    console.log(`Adjudicator needed for comment ${comment.id}:`, {
-      commentText: comment.text.substring(0, 100) + '...',
-      scanAResult,
-      scanBResult,
-      conflictReason: `Concerning: ${scanAResult.concerning} vs ${scanBResult.concerning}, Identifiable: ${scanAResult.identifiable} vs ${scanBResult.identifiable}`
-    });
+      console.log(`Adjudicator needed for comment ${comment.id}:`, {
+        commentText: comment.text.substring(0, 100) + '...',
+        scanAResult,
+        scanBResult,
+        agreements: { concerning: bothAgreeConcerning, identifiable: bothAgreeIdentifiable }
+      });
 
-    try {
-      const adjudicationResponse = await callAI(
-        adjudicator.provider, 
-        adjudicator.model, 
-        adjudicatorPrompt, 
-        '', 
-        'analysis',
-        'adjudicator',
-        rateLimiters,
-        sequentialQueue
-      );
-      adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
-      console.log(`Adjudicator result for comment ${comment.id}:`, adjudicationResult);
-    } catch (error) {
-      console.error(`Adjudicator failed for comment ${comment.id}:`, error);
-      throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
-    }
+      try {
+        const adjudicationResponse = await callAI(
+          adjudicator.provider, 
+          adjudicator.model, 
+          adjudicatorPrompt, 
+          '', 
+          'analysis',
+          'adjudicator',
+          rateLimiters,
+          sequentialQueue
+        );
+        let rawResult = adjudicationResponse?.results || adjudicationResponse;
+        console.log(`Raw adjudicator response for comment ${comment.id}:`, rawResult);
+        
+        // Force preservation of agreements regardless of adjudicator response
+        adjudicationResult = {
+          concerning: bothAgreeConcerning ? scanAResult.concerning : rawResult.concerning,
+          identifiable: bothAgreeIdentifiable ? scanAResult.identifiable : rawResult.identifiable,
+          reasoning: rawResult.reasoning || 'Adjudication with preserved agreements'
+        };
+        
+        console.log(`Final adjudicator result for comment ${comment.id}:`, adjudicationResult);
+      } catch (error) {
+        console.error(`Adjudicator failed for comment ${comment.id}:`, error);
+        throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
+      }
     }
 
     finalResult = adjudicationResult;
