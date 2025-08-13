@@ -109,10 +109,9 @@ serve(async (req) => {
       });
     });
 
-    // Calculate batch size based on strictest per-scanner rate limits
-    const minRpm = Math.min(...configs.map(c => c.rpm_limit || 10));
-    const BATCH_SIZE = Math.min(20, Math.max(1, Math.floor(minRpm / 3))); // Conservative batch size
-    const BATCH_DELAY = Math.max(3000, Math.ceil(60000 / minRpm)); // Ensure we don't exceed RPM
+    // Use smaller, faster batches to avoid timeouts
+    const BATCH_SIZE = 5; // Small batches to stay under timeout
+    const BATCH_DELAY = 500; // Minimal delay between batches
 
     for (let i = 0; i < comments.length; i += BATCH_SIZE) {
       const batch = comments.slice(i, i + BATCH_SIZE);
