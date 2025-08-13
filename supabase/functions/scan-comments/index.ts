@@ -774,11 +774,12 @@ async function processQueue(queueData: any) {
 
 // Helper function to perform the actual AI call
 async function performAICall(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>, estimatedTokens?: number) {
-    if (scannerType && rateLimiters.has(scannerType)) {
-      await enforceRateLimit(scannerType, estimatedTokens, rateLimiters);
-    }
+  // Enforce per-scanner limits if available
+  if (scannerType && rateLimiters && rateLimiters.has(scannerType)) {
+    await enforceRateLimit(scannerType, estimatedTokens || 0, rateLimiters);
   }
 
+  // Call the appropriate AI provider
   if (provider === 'openai') {
     return await callOpenAI(model, prompt, commentText, responseType);
   } else if (provider === 'azure') {
