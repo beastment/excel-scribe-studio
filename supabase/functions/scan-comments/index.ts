@@ -201,16 +201,26 @@ serve(async (req) => {
           const scanAResult = scanAResults[j];
           const scanBResult = scanBResults[j];
 
-          // Heuristic safety net
+          // Heuristic safety net - only use when AI completely fails
           const heur = heuristicAnalyze(comment.text);
           const patchResult = (r: any) => {
+            // If no result at all, use heuristic
             if (!r) return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
-            if (typeof r.concerning !== 'boolean') r.concerning = heur.concerning;
-            if (typeof r.identifiable !== 'boolean') r.identifiable = heur.identifiable;
-            if (!r.concerning && !r.identifiable && (heur.concerning || heur.identifiable)) {
-              r.concerning = r.concerning || heur.concerning;
-              r.identifiable = r.identifiable || heur.identifiable;
-              r.reasoning = (r.reasoning ? r.reasoning + ' ' : '') + 'Heuristic suggests flags: ' + heur.reasoning;
+            
+            // If boolean values are missing, use false (conservative approach)
+            if (typeof r.concerning !== 'boolean') r.concerning = false;
+            if (typeof r.identifiable !== 'boolean') r.identifiable = false;
+            
+            // Only override with heuristic if AI result is completely invalid and heuristic detects clear violations
+            if (r.concerning === false && r.identifiable === false && !r.reasoning) {
+              // Only apply heuristic if it finds clear violations AND AI gave no reasoning
+              if (heur.concerning || heur.identifiable) {
+                r.concerning = heur.concerning;
+                r.identifiable = heur.identifiable;
+                r.reasoning = 'AI provided no analysis, heuristic fallback: ' + heur.reasoning;
+              } else {
+                r.reasoning = r.reasoning || 'No concerning content or identifiable information detected.';
+              }
             }
             return r;
           };
@@ -410,16 +420,26 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
   let adjudicationResult = null;
   let needsAdjudication = false;
 
-  // Heuristic safety net
+  // Heuristic safety net - only use when AI completely fails
   const heur = heuristicAnalyze(comment.text);
   const patchResult = (r: any) => {
+    // If no result at all, use heuristic
     if (!r) return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
-    if (typeof r.concerning !== 'boolean') r.concerning = heur.concerning;
-    if (typeof r.identifiable !== 'boolean') r.identifiable = heur.identifiable;
-    if (!r.concerning && !r.identifiable && (heur.concerning || heur.identifiable)) {
-      r.concerning = r.concerning || heur.concerning;
-      r.identifiable = r.identifiable || heur.identifiable;
-      r.reasoning = (r.reasoning ? r.reasoning + ' ' : '') + 'Heuristic suggests flags: ' + heur.reasoning;
+    
+    // If boolean values are missing, use false (conservative approach)
+    if (typeof r.concerning !== 'boolean') r.concerning = false;
+    if (typeof r.identifiable !== 'boolean') r.identifiable = false;
+    
+    // Only override with heuristic if AI result is completely invalid and heuristic detects clear violations
+    if (r.concerning === false && r.identifiable === false && !r.reasoning) {
+      // Only apply heuristic if it finds clear violations AND AI gave no reasoning
+      if (heur.concerning || heur.identifiable) {
+        r.concerning = heur.concerning;
+        r.identifiable = heur.identifiable;
+        r.reasoning = 'AI provided no analysis, heuristic fallback: ' + heur.reasoning;
+      } else {
+        r.reasoning = r.reasoning || 'No concerning content or identifiable information detected.';
+      }
     }
     return r;
   };
