@@ -8,13 +8,22 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log('Edge function called with method:', req.method);
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { comments, defaultMode = 'redact' } = await req.json();
+    console.log('Parsing request body...');
+    const requestBody = await req.json();
+    console.log('Request body parsed:', { 
+      commentsCount: requestBody.comments?.length, 
+      defaultMode: requestBody.defaultMode 
+    });
+    
+    const { comments, defaultMode = 'redact' } = requestBody;
     
     if (!comments || !Array.isArray(comments)) {
       throw new Error('Invalid comments data');
@@ -369,15 +378,20 @@ Scan B Result: ${JSON.stringify(scanBResult)}`;
     }
 
     console.log(`Successfully scanned ${scannedComments.length} comments`);
-
-    return new Response(JSON.stringify({ 
+    
+    const response = { 
       comments: scannedComments,
       summary: {
         total: scannedComments.length,
         concerning: scannedComments.filter(c => c.concerning).length,
         identifiable: scannedComments.filter(c => c.identifiable).length
       }
-    }), {
+    };
+    
+    console.log('Returning response with comments count:', response.comments.length);
+    console.log('Response summary:', response.summary);
+
+    return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
