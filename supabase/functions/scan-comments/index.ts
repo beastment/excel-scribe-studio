@@ -97,9 +97,27 @@ serve(async (req) => {
 
     // Per-scanner limiters (as configured in admin dashboard)
     configs.forEach(config => {
+      // Apply more conservative defaults for Bedrock models
+      let defaultRpm = 10;
+      let defaultTpm = 50000;
+      
+      if (config.provider === 'bedrock') {
+        // Bedrock has stricter rate limits, especially for Claude models
+        if (config.model.includes('haiku')) {
+          defaultRpm = 3; // Very conservative for Haiku
+          defaultTpm = 10000;
+        } else if (config.model.includes('claude')) {
+          defaultRpm = 5; // Conservative for other Claude models
+          defaultTpm = 20000;
+        } else {
+          defaultRpm = 6; // Other Bedrock models
+          defaultTpm = 30000;
+        }
+      }
+      
       rateLimiters.set(config.scanner_type, {
-        rpmLimit: config.rpm_limit || 10, // Default to 10 RPM if not set
-        tpmLimit: config.tpm_limit || 50000, // Default to 50k TPM if not set
+        rpmLimit: config.rpm_limit || defaultRpm,
+        tpmLimit: config.tpm_limit || defaultTpm,
         requestsThisMinute: 0,
         tokensThisMinute: 0,
         lastMinuteReset: Date.now(),
@@ -119,9 +137,23 @@ serve(async (req) => {
     });
     providerModelAggregates.forEach((agg, key) => {
       // Use the most conservative limits across scanners sharing the same provider+model
+      let minRpm = Math.min(...agg.rpm);
+      let minTpm = Math.min(...agg.tpm);
+      
+      // Apply additional conservative limits for Bedrock
+      if (key.startsWith('bedrock:')) {
+        if (key.includes('haiku')) {
+          minRpm = Math.min(minRpm, 2); // Extra conservative for shared Haiku usage
+          minTpm = Math.min(minTpm, 8000);
+        } else if (key.includes('claude')) {
+          minRpm = Math.min(minRpm, 4);
+          minTpm = Math.min(minTpm, 15000);
+        }
+      }
+      
       rateLimiters.set(`provider:${key}`, {
-        rpmLimit: Math.min(...agg.rpm),
-        tpmLimit: Math.min(...agg.tpm),
+        rpmLimit: minRpm,
+        tpmLimit: minTpm,
         requestsThisMinute: 0,
         tokensThisMinute: 0,
         lastMinuteReset: Date.now(),
@@ -983,10 +1015,10 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
 
     return await retryWithBackoff(async () => {
       return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion);
-    }, 3, 1000);
+    }, 4, 2000); // Increased retries and base delay for Bedrock
   }
 
-  // Retry function with exponential backoff
+  // Retry function with exponential backoff - enhanced for Bedrock
   async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries: number, baseDelay: number): Promise<T> {
     let lastError: Error;
     
@@ -999,7 +1031,14 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
         // Check if it's a rate limit error
         if (error.message.includes('429') || error.message.includes('Too many requests')) {
           if (attempt < maxRetries) {
-            const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000; // Add jitter
+            // More aggressive backoff for Bedrock rate limits
+            let delay = baseDelay * Math.pow(2, attempt) + Math.random() * 2000; // Increased jitter
+            
+            // Special handling for Bedrock - longer delays
+            if (error.message.includes('bedrock') || model.includes('claude') || model.includes('titan')) {
+              delay = Math.max(delay, 5000 + attempt * 5000); // Minimum 5s, increasing by 5s per attempt
+            }
+            
             console.log(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
