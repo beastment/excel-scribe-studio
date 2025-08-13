@@ -212,23 +212,25 @@ serve(async (req) => {
       if (!scanAValid || !scanBValid) {
         console.warn(`Invalid batch results - Scan A (${scanA.provider}/${scanA.model}): ${scanAValid ? 'valid' : `invalid (${Array.isArray(scanAResults) ? `got ${scanAResults.length} results for ${batch.length} comments` : 'not array'})`}, Scan B (${scanB.provider}/${scanB.model}): ${scanBValid ? 'valid' : `invalid (${Array.isArray(scanBResults) ? `got ${scanBResults.length} results for ${batch.length} comments` : 'not array'})`} - falling back to individual processing`);
         
-        // Fallback to individual processing
+        // Fallback to individual processing - process sequentially to maintain order
         for (let j = 0; j < batch.length; j++) {
           const comment = batch[j];
-          console.log(`Processing comment ${comment.id} individually with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model})...`);
+          console.log(`Processing comment ${comment.id} individually (index ${j}) with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model})...`);
 
           try {
-            const [scanAResponse, scanBResponse] = await Promise.all([
-              callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters),
-              callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters)
-            ]);
+            // Process one at a time to maintain strict order and avoid sync issues
+            const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_a', rateLimiters);
+            const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.text, 'analysis', 'scan_b', rateLimiters);
 
             const scanAResult = scanAResponse?.results || scanAResponse;
             const scanBResult = scanBResponse?.results || scanBResponse;
             
+            console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan A result:`, scanAResult);
+            console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan B result:`, scanBResult);
+            
             await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
           } catch (error) {
-            console.error(`Individual processing failed for comment ${comment.id} with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model}):`, error);
+            console.error(`Individual processing failed for comment ${comment.id} (index ${j}) with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model}):`, error);
             scannedComments.push({
               ...comment,
               text: comment.originalText || comment.text,
@@ -238,7 +240,11 @@ serve(async (req) => {
               mode: 'original',
               approved: false,
               hideAiResponse: false,
-              debugInfo: { error: error.message }
+              debugInfo: { 
+                error: error.message,
+                batchIndex: j,
+                processingMode: 'individual_fallback'
+              }
             });
           }
         }
