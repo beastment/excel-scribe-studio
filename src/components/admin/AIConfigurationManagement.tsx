@@ -83,7 +83,11 @@ export const AIConfigurationManagement = () => {
       const configMap: Record<string, AIConfiguration> = {};
       
       data?.forEach(config => {
-        configMap[config.scanner_type] = config;
+        configMap[config.scanner_type] = {
+          ...config,
+          rpm_limit: config.rpm_limit || undefined,
+          tpm_limit: config.tpm_limit || undefined
+        };
       });
       
       setConfigs(configMap);
