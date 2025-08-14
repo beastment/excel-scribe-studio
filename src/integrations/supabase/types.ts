@@ -185,6 +185,36 @@ export type Database = {
         }
         Relationships: []
       }
+      model_configurations: {
+        Row: {
+          created_at: string
+          id: string
+          model: string
+          provider: string
+          rpm_limit: number | null
+          tpm_limit: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          model: string
+          provider: string
+          rpm_limit?: number | null
+          tpm_limit?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          model?: string
+          provider?: string
+          rpm_limit?: number | null
+          tpm_limit?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           created_at: string

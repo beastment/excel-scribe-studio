@@ -66,13 +66,14 @@ export const AIConfigurationManagement = () => {
 
   const fetchConfigurations = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch scanner configurations
+      const { data: scannerData, error: scannerError } = await supabase
         .from('ai_configurations')
         .select('*')
         .order('scanner_type');
 
-      if (error) {
-        console.error('Error fetching AI configurations:', error);
+      if (scannerError) {
+        console.error('Error fetching AI configurations:', scannerError);
         toast({
           title: "Error",
           description: "Failed to load AI configurations",
@@ -81,27 +82,43 @@ export const AIConfigurationManagement = () => {
         return;
       }
 
+      // Fetch model configurations
+      const { data: modelData, error: modelError } = await supabase
+        .from('model_configurations')
+        .select('*');
+
+      if (modelError) {
+        console.error('Error fetching model configurations:', modelError);
+        toast({
+          title: "Error",
+          description: "Failed to load model configurations",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const configMap: Record<string, AIConfiguration> = {};
       const limitsMap: Record<string, { rpm_limit?: number; tpm_limit?: number }> = {};
       
-      data?.forEach(config => {
+      // Process scanner configurations
+      scannerData?.forEach(config => {
         configMap[config.scanner_type] = {
           ...config,
           rpm_limit: config.rpm_limit || undefined,
           tpm_limit: config.tpm_limit || undefined
         };
-        
-        // Store limits per model-provider combination for reuse
-        // Include ALL model configurations, even if limits are null
-        const modelKey = `${config.provider}:${config.model}`;
+      });
+
+      // Process model configurations and populate limitsMap
+      modelData?.forEach(modelConfig => {
+        const modelKey = `${modelConfig.provider}:${modelConfig.model}`;
         limitsMap[modelKey] = {
-          rpm_limit: config.rpm_limit || undefined,
-          tpm_limit: config.tpm_limit || undefined
+          rpm_limit: modelConfig.rpm_limit || undefined,
+          tpm_limit: modelConfig.tpm_limit || undefined
         };
       });
       
-      // Also populate modelLimits with all possible model combinations from our MODELS constant
-      // This ensures we have entries for all models, not just ones with saved data
+      // Ensure all models have entries in limitsMap, even if no saved data
       Object.keys(MODELS).forEach(provider => {
         MODELS[provider as keyof typeof MODELS].forEach(model => {
           const modelKey = `${provider}:${model.value}`;
@@ -112,6 +129,20 @@ export const AIConfigurationManagement = () => {
             };
           }
         });
+      });
+
+      // Update scanner configs with model limits
+      Object.keys(configMap).forEach(scannerType => {
+        const config = configMap[scannerType];
+        const modelKey = `${config.provider}:${config.model}`;
+        const modelLimits = limitsMap[modelKey];
+        if (modelLimits) {
+          configMap[scannerType] = {
+            ...config,
+            rpm_limit: modelLimits.rpm_limit,
+            tpm_limit: modelLimits.tpm_limit
+          };
+        }
       });
       
       setConfigs(configMap);
@@ -129,7 +160,29 @@ export const AIConfigurationManagement = () => {
 
     setSaving(true);
     try {
-      // Update this scanner's configuration
+      // Save model limits to the new model_configurations table
+      const modelKey = `${config.provider}:${config.model}`;
+      const { error: modelError } = await supabase
+        .from('model_configurations')
+        .upsert({
+          provider: config.provider,
+          model: config.model,
+          rpm_limit: config.rpm_limit,
+          tpm_limit: config.tpm_limit,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (modelError) {
+        console.error('Error saving model configuration:', modelError);
+        toast({
+          title: "Error",
+          description: "Failed to save model limits",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Update this scanner's configuration (without limits - they're stored separately now)
       const { error } = await supabase
         .from('ai_configurations')
         .upsert({
@@ -140,8 +193,6 @@ export const AIConfigurationManagement = () => {
           analysis_prompt: config.analysis_prompt,
           redact_prompt: config.redact_prompt,
           rephrase_prompt: config.rephrase_prompt,
-          rpm_limit: config.rpm_limit,
-          tpm_limit: config.tpm_limit,
           updated_at: new Date().toISOString(),
         });
 
@@ -155,24 +206,20 @@ export const AIConfigurationManagement = () => {
         return;
       }
 
-      // Update the model limits lookup and apply to other scanners using the same model
-      const modelKey = `${config.provider}:${config.model}`;
-      const newLimits = {
-        rpm_limit: config.rpm_limit,
-        tpm_limit: config.tpm_limit
-      };
-      
-      // Update modelLimits immediately and persistently
+      // Update the model limits lookup
       setModelLimits(prev => ({
         ...prev,
-        [modelKey]: newLimits
+        [modelKey]: {
+          rpm_limit: config.rpm_limit,
+          tpm_limit: config.tpm_limit
+        }
       }));
 
-      // Apply the same limits to other scanners using the same model
+      // Apply the same limits to other scanners using the same model in the UI
       setConfigs(prev => {
         const updated = { ...prev };
         Object.keys(updated).forEach(key => {
-          if (key !== scannerType && updated[key].provider === config.provider && updated[key].model === config.model) {
+          if (updated[key].provider === config.provider && updated[key].model === config.model) {
             updated[key] = {
               ...updated[key],
               rpm_limit: config.rpm_limit,
@@ -182,29 +229,6 @@ export const AIConfigurationManagement = () => {
         });
         return updated;
       });
-
-      // Update all other scanners using the same model-provider combination
-      const { data: allConfigs, error: fetchError } = await supabase
-        .from('ai_configurations')
-        .select('*')
-        .eq('provider', config.provider)
-        .eq('model', config.model)
-        .neq('scanner_type', scannerType);
-
-      if (!fetchError && allConfigs && allConfigs.length > 0) {
-        const updatePromises = allConfigs.map(otherConfig => 
-          supabase
-            .from('ai_configurations')
-            .upsert({
-              ...otherConfig,
-              rpm_limit: config.rpm_limit,
-              tpm_limit: config.tpm_limit,
-              updated_at: new Date().toISOString(),
-            })
-        );
-
-        await Promise.all(updatePromises);
-      }
 
       toast({
         title: "Success",
