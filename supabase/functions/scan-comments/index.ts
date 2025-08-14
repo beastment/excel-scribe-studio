@@ -669,7 +669,7 @@ JSON with EXACT values for agreements:
     hideAiResponse: false,
     debugInfo: {
       scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
-      scanBResult: { ...scanBResult, model: `${scanA.provider}/${scanA.model}` },
+      scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
       adjudicationResult: adjudicationResult ? { ...adjudicationResult, model: `${adjudicator.provider}/${adjudicator.model}` } : null,
       needsAdjudication,
       finalDecision: finalResult,
