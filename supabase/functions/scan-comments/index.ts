@@ -29,7 +29,7 @@ serve(async (req) => {
       comments, 
       defaultMode = 'redact',
       batchStart = 0,
-      batchSize = 5
+      batchSize = 20
     } = requestBody;
     
     if (!comments || !Array.isArray(comments)) {
