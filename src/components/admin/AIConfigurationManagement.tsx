@@ -226,10 +226,13 @@ export const AIConfigurationManagement = () => {
 
     const updates: Partial<AIConfiguration> = { model: newModel };
     
-    // Apply saved limits if they exist for this model
+    // Apply saved limits if they exist for this model, otherwise clear them
     if (savedLimits) {
       updates.rpm_limit = savedLimits.rpm_limit;
       updates.tpm_limit = savedLimits.tpm_limit;
+    } else {
+      updates.rpm_limit = undefined;
+      updates.tpm_limit = undefined;
     }
 
     updateConfig(scannerType, updates);
