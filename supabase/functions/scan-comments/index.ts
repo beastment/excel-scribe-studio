@@ -1516,11 +1516,29 @@ async function performAICall(provider: string, model: string, prompt: string, co
             if (cleanJsonMatch) {
               try {
                 const cleanJson = cleanJsonMatch[0];
-                JSON.parse(cleanJson); // Validate it's valid JSON
+                const parsed = JSON.parse(cleanJson); // Validate it's valid JSON
+                console.log(`Mistral: Parsed JSON before cleanup:`, parsed);
                 jsonContent = cleanJson;
                 console.log(`Mistral: Successfully extracted clean JSON without explanatory text`);
               } catch (e) {
                 console.log(`Mistral: Clean JSON extraction failed: ${e.message}`);
+              }
+            }
+          }
+          
+          // Final cleanup: Remove any trailing text after the JSON
+          if (model.startsWith('mistral.')) {
+            // Look for the last valid JSON structure in the content
+            const jsonMatches = jsonContent.match(/(\[[\s\S]*?\]|\{[\s\S]*?\})/g);
+            if (jsonMatches && jsonMatches.length > 0) {
+              // Take the last (most complete) JSON match
+              const lastJson = jsonMatches[jsonMatches.length - 1];
+              try {
+                const parsed = JSON.parse(lastJson);
+                console.log(`Mistral: Final JSON extraction result:`, parsed);
+                jsonContent = lastJson;
+              } catch (e) {
+                console.log(`Mistral: Final JSON extraction failed: ${e.message}`);
               }
             }
           }
@@ -1574,7 +1592,10 @@ async function performAICall(provider: string, model: string, prompt: string, co
         
         // First try to parse as-is
         try {
+          console.log(`Mistral: Attempting to parse JSON content: ${jsonContent.substring(0, 300)}...`);
           let parsed = JSON.parse(jsonContent);
+          console.log(`Mistral: Successfully parsed JSON:`, parsed);
+          
           if (model.startsWith('amazon.titan')) {
             parsed = normalizeTitanAnalysis(parsed, responseType === 'analysis');
           }
@@ -1710,9 +1731,13 @@ async function performAICall(provider: string, model: string, prompt: string, co
           }
           
           if (extractedJson != null) {
+            console.log(`Mistral: Final extractedJson before processing:`, extractedJson);
+            
             if (model.startsWith('amazon.titan')) {
               extractedJson = normalizeTitanAnalysis(extractedJson, responseType === 'analysis');
             }
+            
+            console.log(`Mistral: Final extractedJson after processing:`, extractedJson);
             console.log(`Successfully extracted JSON for ${model}: ${JSON.stringify(extractedJson).substring(0, 100)}...`);
             return { results: extractedJson, rawResponse: null };
           }
