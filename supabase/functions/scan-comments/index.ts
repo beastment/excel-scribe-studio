@@ -314,8 +314,17 @@ serve(async (req) => {
           const scanAResultCopy = JSON.parse(JSON.stringify(scanAResult));
           const scanBResultCopy = JSON.parse(JSON.stringify(scanBResult));
           
-          patchResult(scanAResultCopy);
-          patchResult(scanBResultCopy);
+          // Extract the first result from arrays if the AI returned an array
+          const scanAResultToProcess = Array.isArray(scanAResultCopy) ? scanAResultCopy[0] : scanAResultCopy;
+          const scanBResultToProcess = Array.isArray(scanBResultCopy) ? scanBResultCopy[0] : scanBResultCopy;
+          
+          console.log(`Batch processing: Original scanAResult:`, scanAResult);
+          console.log(`Batch processing: Original scanBResult:`, scanBResult);
+          console.log(`Batch processing: Processed scanAResult:`, scanAResultToProcess);
+          console.log(`Batch processing: Processed scanBResult:`, scanBResultToProcess);
+          
+          patchResult(scanAResultToProcess);
+          patchResult(scanBResultToProcess);
 
           let finalResult = null;
           let adjudicationResult = null;
@@ -572,8 +581,17 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
   };
   
   // Create deep copies to prevent mutation issues
-  scanAResult = patchResult(scanAResult);
-  scanBResult = patchResult(scanBResult);
+  // Extract the first result from arrays if the AI returned an array
+  const scanAResultToProcess = Array.isArray(scanAResult) ? scanAResult[0] : scanAResult;
+  const scanBResultToProcess = Array.isArray(scanBResult) ? scanBResult[0] : scanBResult;
+  
+  console.log(`processIndividualComment: Original scanAResult:`, scanAResult);
+  console.log(`processIndividualComment: Original scanBResult:`, scanBResult);
+  console.log(`processIndividualComment: Processed scanAResult:`, scanAResultToProcess);
+  console.log(`processIndividualComment: Processed scanBResult:`, scanBResultToProcess);
+  
+  scanAResult = patchResult(scanAResultToProcess);
+  scanBResult = patchResult(scanBResultToProcess);
 
   // Check if Scan A and Scan B results differ
   if (scanAResult.concerning !== scanBResult.concerning || 
