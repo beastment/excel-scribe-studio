@@ -55,6 +55,7 @@ const SCANNER_CONFIGS = [
 export const AIConfigurationManagement = () => {
   const { toast } = useToast();
   const [configs, setConfigs] = useState<Record<string, AIConfiguration>>({});
+  const [modelLimits, setModelLimits] = useState<Record<string, { rpm_limit?: number; tpm_limit?: number }>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('scan_a');
@@ -81,6 +82,7 @@ export const AIConfigurationManagement = () => {
       }
 
       const configMap: Record<string, AIConfiguration> = {};
+      const limitsMap: Record<string, { rpm_limit?: number; tpm_limit?: number }> = {};
       
       data?.forEach(config => {
         configMap[config.scanner_type] = {
@@ -88,9 +90,19 @@ export const AIConfigurationManagement = () => {
           rpm_limit: config.rpm_limit || undefined,
           tpm_limit: config.tpm_limit || undefined
         };
+        
+        // Store limits per model-provider combination for reuse
+        const modelKey = `${config.provider}:${config.model}`;
+        if (config.rpm_limit !== null || config.tpm_limit !== null) {
+          limitsMap[modelKey] = {
+            rpm_limit: config.rpm_limit || undefined,
+            tpm_limit: config.tpm_limit || undefined
+          };
+        }
       });
       
       setConfigs(configMap);
+      setModelLimits(limitsMap);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -104,6 +116,7 @@ export const AIConfigurationManagement = () => {
 
     setSaving(true);
     try {
+      // Update this scanner's configuration
       const { error } = await supabase
         .from('ai_configurations')
         .upsert({
@@ -119,6 +132,55 @@ export const AIConfigurationManagement = () => {
           variant: "destructive",
         });
         return;
+      }
+
+      // Update the model limits lookup and apply to other scanners using the same model
+      const modelKey = `${config.provider}:${config.model}`;
+      const newLimits = {
+        rpm_limit: config.rpm_limit,
+        tpm_limit: config.tpm_limit
+      };
+      
+      setModelLimits(prev => ({
+        ...prev,
+        [modelKey]: newLimits
+      }));
+
+      // Apply the same limits to other scanners using the same model
+      setConfigs(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(key => {
+          if (key !== scannerType && updated[key].provider === config.provider && updated[key].model === config.model) {
+            updated[key] = {
+              ...updated[key],
+              rpm_limit: config.rpm_limit,
+              tpm_limit: config.tpm_limit
+            };
+          }
+        });
+        return updated;
+      });
+
+      // Save updates to all other scanners using the same model
+      const otherConfigs = Object.values(configs).filter(c => 
+        c.scanner_type !== scannerType && 
+        c.provider === config.provider && 
+        c.model === config.model
+      );
+
+      if (otherConfigs.length > 0) {
+        const updatePromises = otherConfigs.map(otherConfig => 
+          supabase
+            .from('ai_configurations')
+            .upsert({
+              ...otherConfig,
+              rpm_limit: config.rpm_limit,
+              tpm_limit: config.tpm_limit,
+              updated_at: new Date().toISOString(),
+            })
+        );
+
+        await Promise.all(updatePromises);
       }
 
       toast({
@@ -156,7 +218,21 @@ export const AIConfigurationManagement = () => {
   };
 
   const handleModelChange = (scannerType: string, newModel: string) => {
-    updateConfig(scannerType, { model: newModel });
+    const currentConfig = configs[scannerType];
+    if (!currentConfig) return;
+
+    const modelKey = `${currentConfig.provider}:${newModel}`;
+    const savedLimits = modelLimits[modelKey];
+
+    const updates: Partial<AIConfiguration> = { model: newModel };
+    
+    // Apply saved limits if they exist for this model
+    if (savedLimits) {
+      updates.rpm_limit = savedLimits.rpm_limit;
+      updates.tpm_limit = savedLimits.tpm_limit;
+    }
+
+    updateConfig(scannerType, updates);
   };
 
   const renderConfigurationTab = (scannerConfig: typeof SCANNER_CONFIGS[0]) => {
