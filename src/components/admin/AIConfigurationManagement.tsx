@@ -161,15 +161,16 @@ export const AIConfigurationManagement = () => {
         return updated;
       });
 
-      // Save updates to all other scanners using the same model
-      const otherConfigs = Object.values(configs).filter(c => 
-        c.scanner_type !== scannerType && 
-        c.provider === config.provider && 
-        c.model === config.model
-      );
+      // Update all other scanners using the same model-provider combination
+      const { data: allConfigs, error: fetchError } = await supabase
+        .from('ai_configurations')
+        .select('*')
+        .eq('provider', config.provider)
+        .eq('model', config.model)
+        .neq('scanner_type', scannerType);
 
-      if (otherConfigs.length > 0) {
-        const updatePromises = otherConfigs.map(otherConfig => 
+      if (!fetchError && allConfigs && allConfigs.length > 0) {
+        const updatePromises = allConfigs.map(otherConfig => 
           supabase
             .from('ai_configurations')
             .upsert({
