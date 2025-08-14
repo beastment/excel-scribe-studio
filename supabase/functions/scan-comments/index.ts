@@ -1563,32 +1563,75 @@ async function performAICall(provider: string, model: string, prompt: string, co
           
           // Strategy 2: Extract complete JSON arrays or objects
           if (extractedJson == null) {
-            // For Mistral, be more aggressive in JSON extraction
-            if (model.startsWith('mistral.')) {
-              // Try to find JSON within the response using improved patterns
-              const patterns = [
-                /\[[\s\S]*?\]/g,  // Arrays
-                /\{[\s\S]*?\}/g,  // Objects
-                /(?:```json\s*)?\[[\s\S]*?\](?:\s*```)?/g,  // Arrays with possible markdown
-                /(?:```json\s*)?\{[\s\S]*?\}(?:\s*```)?/g   // Objects with possible markdown
-              ];
-              
-              for (const pattern of patterns) {
-                const matches = content.match(pattern);
-                if (matches) {
-                  for (const match of matches.sort((a, b) => b.length - a.length)) {
-                    try { 
-                      let cleanMatch = match.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-                      extractedJson = JSON.parse(cleanMatch); 
-                      console.log(`Successfully extracted JSON using Mistral pattern for ${model}`);
-                      break; 
-                    } catch (e) {
-                      console.log(`Failed to parse match: ${match.substring(0, 50)}...`);
-                    }
-                  }
-                  if (extractedJson) break;
+          // For Mistral, be more aggressive in JSON extraction
+          if (model.startsWith('mistral.')) {
+            // Try to find the complete JSON response (array or object)
+            // Look for the largest valid JSON structure first
+            let bestMatch = null;
+            let bestMatchLength = 0;
+            
+            // Pattern 1: Look for complete JSON array or object without markdown
+            const directPatterns = [
+              /\[[\s\S]*\]/,  // Complete array
+              /\{[\s\S]*\}/   // Complete object
+            ];
+            
+            for (const pattern of directPatterns) {
+              const match = content.match(pattern);
+              if (match && match[0].length > bestMatchLength) {
+                try {
+                  const parsed = JSON.parse(match[0]);
+                  bestMatch = match[0];
+                  bestMatchLength = match[0].length;
+                  console.log(`Found direct JSON match for Mistral: ${match[0].substring(0, 100)}...`);
+                } catch (e) {
+                  // Not valid JSON, continue
                 }
               }
+            }
+            
+            // Pattern 2: If no direct match, look for JSON in markdown blocks
+            if (!bestMatch) {
+              const markdownPatterns = [
+                /```json\s*([\s\S]*?)\s*```/,
+                /```\s*([\s\S]*?)\s*```/
+              ];
+              
+              for (const pattern of markdownPatterns) {
+                const match = content.match(pattern);
+                if (match && match[1]) {
+                  try {
+                    const cleaned = match[1].trim();
+                    const parsed = JSON.parse(cleaned);
+                    if (cleaned.length > bestMatchLength) {
+                      bestMatch = cleaned;
+                      bestMatchLength = cleaned.length;
+                      console.log(`Found markdown JSON match for Mistral: ${cleaned.substring(0, 100)}...`);
+                    }
+                  } catch (e) {
+                    // Not valid JSON, continue
+                  }
+                }
+              }
+            }
+            
+            if (bestMatch) {
+              try {
+                extractedJson = JSON.parse(bestMatch);
+                console.log(`Successfully extracted JSON using Mistral pattern for ${model}`);
+                
+                // Validate the response structure for batch analysis
+                if (responseType === 'batch_analysis') {
+                  if (Array.isArray(extractedJson)) {
+                    console.log(`Mistral returned ${extractedJson.length} results for batch analysis`);
+                  } else {
+                    console.log(`Mistral returned single object for batch analysis, this may cause issues`);
+                  }
+                }
+              } catch (e) {
+                console.log(`Failed to parse best match: ${bestMatch.substring(0, 50)}...`);
+              }
+            }
             } else {
               // Original logic for other models
               const jsonArrayMatches = jsonContent.match(/\[[\s\S]*?\]/g);
