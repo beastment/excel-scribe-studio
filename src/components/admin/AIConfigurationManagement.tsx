@@ -92,11 +92,26 @@ export const AIConfigurationManagement = () => {
         };
         
         // Store limits per model-provider combination for reuse
+        // Include ALL model configurations, even if limits are null
         const modelKey = `${config.provider}:${config.model}`;
         limitsMap[modelKey] = {
           rpm_limit: config.rpm_limit || undefined,
           tpm_limit: config.tpm_limit || undefined
         };
+      });
+      
+      // Also populate modelLimits with all possible model combinations from our MODELS constant
+      // This ensures we have entries for all models, not just ones with saved data
+      Object.keys(MODELS).forEach(provider => {
+        MODELS[provider as keyof typeof MODELS].forEach(model => {
+          const modelKey = `${provider}:${model.value}`;
+          if (!limitsMap[modelKey]) {
+            limitsMap[modelKey] = {
+              rpm_limit: undefined,
+              tpm_limit: undefined
+            };
+          }
+        });
       });
       
       setConfigs(configMap);
