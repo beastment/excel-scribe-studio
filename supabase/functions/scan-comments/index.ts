@@ -287,16 +287,21 @@ serve(async (req) => {
             }
             return r;
           };
-          patchResult(scanAResult);
-          patchResult(scanBResult);
+          
+          // Create deep copies to avoid mutation
+          const scanAResultCopy = JSON.parse(JSON.stringify(scanAResult));
+          const scanBResultCopy = JSON.parse(JSON.stringify(scanBResult));
+          
+          patchResult(scanAResultCopy);
+          patchResult(scanBResultCopy);
 
           let finalResult = null;
           let adjudicationResult = null;
           let needsAdjudication = false;
 
-          // Check if Scan A and Scan B results differ
-          const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
-          const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
+          // Check if Scan A and Scan B results differ (use the copies)
+          const concerningDisagreement = scanAResultCopy.concerning !== scanBResultCopy.concerning;
+          const identifiableDisagreement = scanAResultCopy.identifiable !== scanBResultCopy.identifiable;
           
           if (concerningDisagreement || identifiableDisagreement) {
             needsAdjudication = true;
@@ -310,16 +315,16 @@ serve(async (req) => {
 
 Original comment: "${comment.originalText || comment.text}"
 
-Scan A Result: ${JSON.stringify(scanAResult)}
-Scan B Result: ${JSON.stringify(scanBResult)}
+Scan A Result: ${JSON.stringify(scanAResultCopy)}
+Scan B Result: ${JSON.stringify(scanBResultCopy)}
 
 IMPORTANT: Only resolve the disagreement for the ${disagreementFields.join(' and ')} field(s). Return a JSON object with:
-- concerning: boolean (${concerningDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResult.concerning})
-- identifiable: boolean (${identifiableDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResult.identifiable})
+- concerning: boolean (${concerningDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.concerning})
+- identifiable: boolean (${identifiableDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.identifiable})
 - reasoning: string explaining your decision
 
-${concerningDisagreement ? '' : 'NOTE: Both scans agreed on concerning=' + scanAResult.concerning + ', so preserve this value.'}
-${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResult.identifiable + ', so preserve this value.'}`;
+${concerningDisagreement ? '' : 'NOTE: Both scans agreed on concerning=' + scanAResultCopy.concerning + ', so preserve this value.'}
+${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResultCopy.identifiable + ', so preserve this value.'}`;
 
             try {
               const adjudicationResponse = await callAI(
@@ -340,13 +345,13 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
 
             // Create final result by preserving agreements and using adjudicator for disagreements
             finalResult = {
-              concerning: concerningDisagreement ? adjudicationResult.concerning : scanAResult.concerning,
-              identifiable: identifiableDisagreement ? adjudicationResult.identifiable : scanAResult.identifiable,
-              reasoning: adjudicationResult.reasoning || scanAResult.reasoning
+              concerning: concerningDisagreement ? adjudicationResult.concerning : scanAResultCopy.concerning,
+              identifiable: identifiableDisagreement ? adjudicationResult.identifiable : scanAResultCopy.identifiable,
+              reasoning: adjudicationResult.reasoning || scanAResultCopy.reasoning
             };
           } else {
             // Scan A and Scan B agree, use Scan A result
-            finalResult = scanAResult;
+            finalResult = scanAResultCopy;
           }
 
           // Track flagged comments for batch redaction/rephrasing
@@ -370,8 +375,8 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
             approved: false,
             hideAiResponse: false,
             debugInfo: {
-              scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
-              scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
+              scanAResult: { ...scanAResultCopy, model: `${scanA.provider}/${scanA.model}` },
+              scanBResult: { ...scanBResultCopy, model: `${scanB.provider}/${scanB.model}` },
               adjudicationResult: adjudicationResult ? { ...adjudicationResult, model: `${adjudicator.provider}/${adjudicator.model}` } : null,
               needsAdjudication,
               finalDecision: finalResult,
@@ -503,29 +508,34 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
   let adjudicationResult = null;
   let needsAdjudication = false;
 
-  // Heuristic safety net - only use when AI completely fails
-  const heur = heuristicAnalyze(comment.text);
+  // Heuristic safety net - only use when AI completely fails (use original text)
+  const heur = heuristicAnalyze(comment.originalText || comment.text);
   const patchResult = (r: any) => {
     // If no result at all, use heuristic
     if (!r) return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
     
+    // Create a deep copy to avoid mutation
+    const result = JSON.parse(JSON.stringify(r));
+    
     // If boolean values are missing, use false (conservative approach)
-    if (typeof r.concerning !== 'boolean') r.concerning = false;
-    if (typeof r.identifiable !== 'boolean') r.identifiable = false;
+    if (typeof result.concerning !== 'boolean') result.concerning = false;
+    if (typeof result.identifiable !== 'boolean') result.identifiable = false;
     
     // Only override with heuristic if AI result is completely invalid and heuristic detects clear violations
-    if (r.concerning === false && r.identifiable === false && (!r.reasoning || r.reasoning.trim() === '')) {
+    if (result.concerning === false && result.identifiable === false && (!result.reasoning || result.reasoning.trim() === '')) {
       // Only apply heuristic if it finds clear violations AND AI gave no reasoning
       if (heur.concerning || heur.identifiable) {
-        r.concerning = heur.concerning;
-        r.identifiable = heur.identifiable;
-        r.reasoning = 'AI provided no analysis, heuristic fallback: ' + heur.reasoning;
+        result.concerning = heur.concerning;
+        result.identifiable = heur.identifiable;
+        result.reasoning = 'AI provided no analysis, heuristic fallback: ' + heur.reasoning;
       } else {
-        r.reasoning = r.reasoning || 'No concerning content or identifiable information detected.';
+        result.reasoning = result.reasoning || 'No concerning content or identifiable information detected.';
       }
     }
-    return r;
+    return result;
   };
+  
+  // Create deep copies to prevent mutation issues
   scanAResult = patchResult(scanAResult);
   scanBResult = patchResult(scanBResult);
 
@@ -568,7 +578,7 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
       // Call adjudicator but force preservation of agreements in the result
       const adjudicatorPrompt = `CRITICAL: Preserve agreements, only decide disagreements.
 
-Comment: "${comment.text}"
+Comment: "${comment.originalText || comment.text}"
 
 Scan A: concerning=${scanAResult.concerning}, identifiable=${scanAResult.identifiable}
 Scan B: concerning=${scanBResult.concerning}, identifiable=${scanBResult.identifiable}
