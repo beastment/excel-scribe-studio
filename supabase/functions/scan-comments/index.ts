@@ -236,7 +236,7 @@ serve(async (req) => {
             console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan A result:`, scanAResult);
             console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan B result:`, scanBResult);
             
-            await processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, sequentialQueue, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
+            await processIndividualComment(comment, scanAResult, scanBResult, scanA, scanB, adjudicator, defaultMode, summary, scannedComments, rateLimiters, sequentialQueue, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
           } catch (error) {
             console.error(`Individual processing failed for comment ${comment.id} (index ${j}) with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model}):`, error);
             scannedComments.push({
@@ -503,7 +503,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
 });
 
 // Helper function to process individual comments
-async function processIndividualComment(comment, scanAResult, scanBResult, scanA, adjudicator, defaultMode, summary, scannedComments, rateLimiters, sequentialQueue, scanARawResponse?, scanBRawResponse?) {
+async function processIndividualComment(comment, scanAResult, scanBResult, scanA, scanB, adjudicator, defaultMode, summary, scannedComments, rateLimiters, sequentialQueue, scanARawResponse?, scanBRawResponse?) {
   let finalResult = null;
   let adjudicationResult = null;
   let needsAdjudication = false;
