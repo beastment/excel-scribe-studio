@@ -1487,6 +1487,45 @@ async function performAICall(provider: string, model: string, prompt: string, co
           }
         }
         
+        // For Mistral models, be more aggressive in JSON extraction
+        if (model.startsWith('mistral.')) {
+          console.log(`Mistral: Extracting JSON from response with additional text`);
+          
+          // Look for the first complete JSON array or object
+          const jsonMatch = jsonContent.match(/(\[[\s\S]*?\]|\{[\s\S]*?\})/);
+          if (jsonMatch) {
+            const extractedJson = jsonMatch[0];
+            console.log(`Mistral: Extracted JSON: ${extractedJson.substring(0, 200)}...`);
+            
+            // Validate that it's complete JSON
+            try {
+              JSON.parse(extractedJson);
+              jsonContent = extractedJson;
+              console.log(`Mistral: Successfully extracted and validated JSON`);
+            } catch (e) {
+              console.log(`Mistral: Extracted JSON is invalid, trying alternative extraction`);
+            }
+          }
+          
+          // Additional fix: If the JSON is followed by explanatory text, try to extract just the JSON part
+          if (jsonContent.includes('Comment:') || jsonContent.includes('Your analysis is correct')) {
+            console.log(`Mistral: Detected explanatory text after JSON, attempting to extract clean JSON`);
+            
+            // Try to find the JSON array/object before any explanatory text
+            const cleanJsonMatch = jsonContent.match(/(\[[\s\S]*?\]|\{[\s\S]*?\})/);
+            if (cleanJsonMatch) {
+              try {
+                const cleanJson = cleanJsonMatch[0];
+                JSON.parse(cleanJson); // Validate it's valid JSON
+                jsonContent = cleanJson;
+                console.log(`Mistral: Successfully extracted clean JSON without explanatory text`);
+              } catch (e) {
+                console.log(`Mistral: Clean JSON extraction failed: ${e.message}`);
+              }
+            }
+          }
+        }
+        
         // Clean up common issues in JSON responses
         jsonContent = jsonContent.replace(/```json\s*/g, '').replace(/```\s*/g, '');
         
@@ -1572,9 +1611,30 @@ async function performAICall(provider: string, model: string, prompt: string, co
             
             // Pattern 1: Look for complete JSON array or object without markdown
             const directPatterns = [
-              /\[[\s\S]*\]/,  // Complete array
-              /\{[\s\S]*\}/   // Complete object
+              /\[[\s\S]*?\]/,  // Complete array (non-greedy to avoid capturing explanatory text)
+              /\{[\s\S]*?\}/   // Complete object (non-greedy to avoid capturing explanatory text)
             ];
+            
+            // Pattern 1.5: Look for JSON followed by explanatory text and extract just the JSON
+            const jsonWithTextPatterns = [
+              /(\[[\s\S]*?\])(?=\s*Comment:|\s*Your analysis is|\s*Here is the JSON)/,
+              /(\{[\s\S]*?\})(?=\s*Comment:|\s*Your analysis is|\s*Here is the JSON)/
+            ];
+            
+            for (const pattern of jsonWithTextPatterns) {
+              const match = content.match(pattern);
+              if (match && match[1]) {
+                try {
+                  const parsed = JSON.parse(match[1]);
+                  bestMatch = match[1];
+                  bestMatchLength = match[1].length;
+                  console.log(`Found JSON with explanatory text for Mistral: ${match[1].substring(0, 100)}...`);
+                  break;
+                } catch (e) {
+                  // Not valid JSON, continue
+                }
+              }
+            }
             
             for (const pattern of directPatterns) {
               const match = content.match(pattern);
