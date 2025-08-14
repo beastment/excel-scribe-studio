@@ -198,11 +198,11 @@ serve(async (req) => {
           // If either scan returned a single object instead of array, convert it
           if (scanAResults && !Array.isArray(scanAResults) && typeof scanAResults === 'object') {
             console.log(`Scan A (${scanA.provider}/${scanA.model}) returned single object, converting to array for batch of ${batch.length}`);
-            scanAResults = Array(batch.length).fill(scanAResults);
+            scanAResults = Array(batch.length).fill(null).map(() => JSON.parse(JSON.stringify(scanAResults)));
           }
           if (scanBResults && !Array.isArray(scanBResults) && typeof scanBResults === 'object') {
             console.log(`Scan B (${scanB.provider}/${scanB.model}) returned single object, converting to array for batch of ${batch.length}`);
-            scanBResults = Array(batch.length).fill(scanBResults);
+            scanBResults = Array(batch.length).fill(null).map(() => JSON.parse(JSON.stringify(scanBResults)));
           }
       } catch (error) {
         console.error(`Parallel batch scanning failed:`, error);
