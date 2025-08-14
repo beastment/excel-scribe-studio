@@ -523,15 +523,18 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
     
     // Only override with heuristic if AI result is completely invalid and heuristic detects clear violations
     if (result.concerning === false && result.identifiable === false && (!result.reasoning || result.reasoning.trim() === '')) {
-    // Only apply heuristic if it finds clear violations AND AI gave no reasoning
-    if (heur.concerning || heur.identifiable) {
-      result.concerning = heur.concerning;
-      result.identifiable = heur.identifiable;
-      result.reasoning = 'AI provided no analysis, heuristic fallback: ' + heur.reasoning;
+      // Only apply heuristic if it finds clear violations AND AI gave no reasoning
+      if (heur.concerning || heur.identifiable) {
+        result.concerning = heur.concerning;
+        result.identifiable = heur.identifiable;
+        result.reasoning = 'AI provided no analysis, heuristic fallback: ' + heur.reasoning;
+      } else {
+        // Ensure reasoning is always set if none provided
+        result.reasoning = 'No concerning content or identifiable information detected.';
+      }
     } else {
-      // Ensure reasoning is always set, preserve original if it exists
-      result.reasoning = result.reasoning && result.reasoning.trim() !== '' ? result.reasoning : 'No concerning content or identifiable information detected.';
-    }
+      // Preserve AI reasoning when it exists, regardless of boolean values
+      result.reasoning = result.reasoning || 'No analysis provided.';
     }
     return result;
   };
