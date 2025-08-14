@@ -171,9 +171,12 @@ serve(async (req) => {
     try {
       // Prepare batch input for AI models (use original text, not redacted)
       const batchTexts = batch.map(comment => comment.originalText || comment.text);
-      const batchInput = `Comments to analyze:\n${batchTexts.map((text, idx) => `${idx + 1}. ${text}`).join('\n')}`;
+      const batchInput = `Comments to analyze:\n${batchTexts.map((text, idx) => `${idx + 1}. ${text}`).join('\n')}\n\nIMPORTANT: You must return exactly ${batch.length} JSON objects, one for each comment above. Do not return more or fewer results.`;
 
       console.log(`Sending ${batch.length} comments to AI models for batch analysis`);
+      console.log(`Batch input preview:`, batchInput.substring(0, 500) + (batchInput.length > 500 ? '...' : ''));
+      console.log(`Batch texts count:`, batchTexts.length);
+      console.log(`Batch texts:`, batchTexts.map((text, idx) => `${idx + 1}. ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`));
 
         // Run Scan A and Scan B in parallel on the entire batch
       let scanAResults, scanBResults, scanARawResponse, scanBRawResponse;
@@ -195,6 +198,12 @@ serve(async (req) => {
           scanARawResponse = scanAResponse?.rawResponse;
           scanBRawResponse = scanBResponse?.rawResponse;
           
+          console.log(`🔍 RAW RESPONSES:`);
+          console.log(`Scan A raw response:`, scanARawResponse);
+          console.log(`Scan B raw response:`, scanBRawResponse);
+          console.log(`Scan A results field:`, scanAResponse?.results);
+          console.log(`Scan B results field:`, scanBResponse?.results);
+          
           // If either scan returned a single object instead of array, convert it
           if (scanAResults && !Array.isArray(scanAResults) && typeof scanAResults === 'object') {
             console.log(`Scan A (${scanA.provider}/${scanA.model}) returned single object, converting to array for batch of ${batch.length}`);
@@ -203,6 +212,33 @@ serve(async (req) => {
           if (scanBResults && !Array.isArray(scanBResults) && typeof scanBResults === 'object') {
             console.log(`Scan B (${scanB.provider}/${scanB.model}) returned single object, converting to array for batch of ${batch.length}`);
             scanBResults = Array(batch.length).fill(null).map(() => JSON.parse(JSON.stringify(scanBResults)));
+          }
+          
+          // Additional debugging: Check if the AI returned a string that needs parsing
+          if (typeof scanBResults === 'string') {
+            console.warn(`⚠️ Scan B returned string instead of parsed JSON:`, scanBResults.substring(0, 200));
+            try {
+              const parsed = JSON.parse(scanBResults);
+              scanBResults = parsed;
+              console.log(`✅ Successfully parsed Scan B string response:`, typeof parsed, Array.isArray(parsed) ? parsed.length : 'not array');
+            } catch (parseError) {
+              console.error(`❌ Failed to parse Scan B string response:`, parseError);
+              // Fallback to individual processing
+              scanBResults = null;
+            }
+          }
+          
+          if (typeof scanAResults === 'string') {
+            console.warn(`⚠️ Scan A returned string instead of parsed JSON:`, scanAResults.substring(0, 200));
+            try {
+              const parsed = JSON.parse(scanAResults);
+              scanAResults = parsed;
+              console.log(`✅ Successfully parsed Scan A string response:`, typeof parsed, Array.isArray(parsed) ? parsed.length : 'not array');
+            } catch (parseError) {
+              console.error(`❌ Failed to parse Scan A string response:`, parseError);
+              // Fallback to individual processing
+              scanAResults = null;
+            }
           }
       } catch (error) {
         console.error(`Parallel batch scanning failed:`, error);
@@ -213,10 +249,96 @@ serve(async (req) => {
         console.log(`Received Scan B (${scanB.provider}/${scanB.model}) results:`, typeof scanBResults, Array.isArray(scanBResults) ? scanBResults.length : 'not array');
         console.log(`Scan A results sample:`, scanAResults?.[0]);
         console.log(`Scan B results sample:`, scanBResults?.[0]);
+        
+        // Additional debugging for Scan B results mismatch
+        if (Array.isArray(scanBResults) && scanBResults.length !== batch.length) {
+          console.warn(`⚠️ SCAN B BATCH MISMATCH: Expected ${batch.length} results, got ${scanBResults.length}`);
+          console.warn(`Scan B results structure:`, scanBResults);
+          console.warn(`Batch length:`, batch.length);
+          
+          // Log first few results to see the pattern
+          for (let i = 0; i < Math.min(scanBResults.length, 5); i++) {
+            console.log(`Scan B result ${i}:`, scanBResults[i]);
+          }
+          
+          // Fix: Truncate Scan B results to match batch size if we have too many
+          if (scanBResults.length > batch.length) {
+            console.warn(`🔧 FIXING: Truncating Scan B results from ${scanBResults.length} to ${batch.length}`);
+            scanBResults = scanBResults.slice(0, batch.length);
+          }
+          
+          // Additional safety: If we still have mismatched results, pad with default values
+          if (scanBResults.length < batch.length) {
+            console.warn(`🔧 FIXING: Padding Scan B results from ${scanBResults.length} to ${batch.length}`);
+            const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
+            while (scanBResults.length < batch.length) {
+              scanBResults.push({ ...defaultResult });
+            }
+          }
+        }
+        
+        // Additional debugging for Scan A results mismatch
+        if (Array.isArray(scanAResults) && scanAResults.length !== batch.length) {
+          console.warn(`⚠️ SCAN A BATCH MISMATCH: Expected ${batch.length} results, got ${scanAResults.length}`);
+          console.warn(`Scan A results structure:`, scanAResults);
+          console.warn(`Batch length:`, batch.length);
+          
+          // Log first few results to see the pattern
+          for (let i = 0; i < Math.min(scanAResults.length, 5); i++) {
+            console.log(`Scan A result ${i}:`, scanAResults[i]);
+          }
+          
+          // Fix: Truncate Scan A results to match batch size if we have too many
+          if (scanAResults.length > batch.length) {
+            console.warn(`🔧 FIXING: Truncating Scan A results from ${scanAResults.length} to ${batch.length}`);
+            scanAResults = scanAResults.slice(0, batch.length);
+          }
+          
+          // Additional safety: If we still have mismatched results, pad with default values
+          if (scanAResults.length < batch.length) {
+            console.warn(`🔧 FIXING: Padding Scan A results from ${scanAResults.length} to ${batch.length}`);
+            const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
+            const defaultResultCopy = JSON.parse(JSON.stringify(defaultResult));
+            while (scanAResults.length < batch.length) {
+              scanAResults.push({ ...defaultResultCopy });
+            }
+          }
+        }
 
         // Ensure we have results for all comments in the batch
       const scanAValid = Array.isArray(scanAResults) && scanAResults.length === batch.length;
       const scanBValid = Array.isArray(scanBResults) && scanBResults.length === batch.length;
+      
+      // Additional validation: Check that each result has the expected structure
+      if (scanAValid && Array.isArray(scanAResults)) {
+        for (let i = 0; i < scanAResults.length; i++) {
+          const result = scanAResults[i];
+          if (!result || typeof result.concerning !== 'boolean' || typeof result.identifiable !== 'boolean' || !result.reasoning) {
+            console.warn(`⚠️ SCAN A RESULT ${i} INVALID STRUCTURE:`, result);
+            // Fix the invalid result
+            scanAResults[i] = {
+              concerning: false,
+              identifiable: false,
+              reasoning: 'Fixed invalid result structure'
+            };
+          }
+        }
+      }
+      
+      if (scanBValid && Array.isArray(scanBResults)) {
+        for (let i = 0; i < scanBResults.length; i++) {
+          const result = scanBResults[i];
+          if (!result || typeof result.concerning !== 'boolean' || typeof result.identifiable !== 'boolean' || !result.reasoning) {
+            console.warn(`⚠️ SCAN B RESULT ${i} INVALID STRUCTURE:`, result);
+            // Fix the invalid result
+            scanBResults[i] = {
+              concerning: false,
+              identifiable: false,
+              reasoning: 'Fixed invalid result structure'
+            };
+          }
+        }
+      }
       
       if (!scanAValid || !scanBValid) {
         console.warn(`Invalid batch results - Scan A (${scanA.provider}/${scanA.model}): ${scanAValid ? 'valid' : `invalid (${Array.isArray(scanAResults) ? `got ${scanAResults.length} results for ${batch.length} comments` : 'not array'})`}, Scan B (${scanB.provider}/${scanB.model}): ${scanBValid ? 'valid' : `invalid (${Array.isArray(scanBResults) ? `got ${scanBResults.length} results for ${batch.length} comments` : 'not array'})`} - falling back to individual processing`);
@@ -265,13 +387,23 @@ serve(async (req) => {
       } else {
 
                   // Process each comment in the batch
-          for (let j = 0; j < batch.length; j++) {
-            const comment = batch[j];
-            const scanAResult = scanAResults[j];
-            const scanBResult = scanBResults[j];
-            
-            console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan A result:`, scanAResult);
-            console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan B result:`, scanBResult);
+        console.log(`✅ BATCH PROCESSING: Processing ${batch.length} comments with validated results`);
+        console.log(`✅ Scan A results count: ${scanAResults.length}`);
+        console.log(`✅ Scan B results count: ${scanBResults.length}`);
+        
+        // Final validation: Ensure we have valid results for each comment
+        if (scanAResults.length !== batch.length || scanBResults.length !== batch.length) {
+          console.error(`❌ CRITICAL: Results count mismatch after validation! Batch: ${batch.length}, Scan A: ${scanAResults.length}, Scan B: ${scanBResults.length}`);
+          throw new Error(`Results count mismatch after validation: Batch ${batch.length}, Scan A ${scanAResults.length}, Scan B ${scanBResults.length}`);
+        }
+        
+        for (let j = 0; j < batch.length; j++) {
+          const comment = batch[j];
+          const scanAResult = scanAResults[j];
+          const scanBResult = scanBResults[j];
+          
+          console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan A result:`, scanAResult);
+          console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan B result:`, scanBResult);
 
           // Heuristic safety net - only use when AI completely fails (use original text)
           const heur = heuristicAnalyze(comment.originalText || comment.text);
