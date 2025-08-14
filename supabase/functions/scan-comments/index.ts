@@ -211,6 +211,8 @@ serve(async (req) => {
 
         console.log(`Received Scan A (${scanA.provider}/${scanA.model}) results:`, typeof scanAResults, Array.isArray(scanAResults) ? scanAResults.length : 'not array');
         console.log(`Received Scan B (${scanB.provider}/${scanB.model}) results:`, typeof scanBResults, Array.isArray(scanBResults) ? scanBResults.length : 'not array');
+        console.log(`Scan A results sample:`, scanAResults?.[0]);
+        console.log(`Scan B results sample:`, scanBResults?.[0]);
 
         // Ensure we have results for all comments in the batch
       const scanAValid = Array.isArray(scanAResults) && scanAResults.length === batch.length;
@@ -235,6 +237,10 @@ serve(async (req) => {
             
             console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan A result:`, scanAResult);
             console.log(`Individual processing for comment ${comment.id} (index ${j}) - Scan B result:`, scanBResult);
+            console.log(`Scan A raw response:`, scanAResponse);
+            console.log(`Scan B raw response:`, scanBResponse);
+            console.log(`Scan A results field:`, scanAResponse?.results);
+            console.log(`Scan B results field:`, scanBResponse?.results);
             
             await processIndividualComment(comment, scanAResult, scanBResult, scanA, scanB, adjudicator, defaultMode, summary, scannedComments, rateLimiters, sequentialQueue, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
           } catch (error) {
@@ -258,17 +264,29 @@ serve(async (req) => {
         }
       } else {
 
-        // Process each comment in the batch
-        for (let j = 0; j < batch.length; j++) {
-          const comment = batch[j];
-          const scanAResult = scanAResults[j];
-          const scanBResult = scanBResults[j];
+                  // Process each comment in the batch
+          for (let j = 0; j < batch.length; j++) {
+            const comment = batch[j];
+            const scanAResult = scanAResults[j];
+            const scanBResult = scanBResults[j];
+            
+            console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan A result:`, scanAResult);
+            console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan B result:`, scanBResult);
 
           // Heuristic safety net - only use when AI completely fails (use original text)
           const heur = heuristicAnalyze(comment.originalText || comment.text);
           const patchResult = (r: any) => {
+            // Debug logging to see what's being passed in
+            console.log(`patchResult called with:`, JSON.stringify(r, null, 2));
+            console.log(`r.reasoning type: ${typeof r?.reasoning}, value: "${r?.reasoning}"`);
+            console.log(`r.reasoning truthy check: ${!!r?.reasoning}`);
+            console.log(`r.reasoning trim check: ${r?.reasoning?.trim() === ''}`);
+            
             // If no result at all, use heuristic
-            if (!r) return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
+            if (!r) {
+              console.log(`No result provided, using heuristic fallback`);
+              return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
+            }
             
             // If boolean values are missing, use false (conservative approach)
             if (typeof r.concerning !== 'boolean') r.concerning = false;
@@ -276,6 +294,7 @@ serve(async (req) => {
             
             // Only apply heuristic fallback if AI gave absolutely no reasoning
             if (!r.reasoning || r.reasoning.trim() === '') {
+              console.log(`AI reasoning check failed - reasoning: "${r.reasoning}", applying heuristic fallback`);
               // Only override if heuristic detects violations AND AI gave no reasoning
               if (heur.concerning || heur.identifiable) {
                 r.concerning = heur.concerning;
@@ -284,6 +303,8 @@ serve(async (req) => {
               } else {
                 r.reasoning = 'No concerning content or identifiable information detected.';
               }
+            } else {
+              console.log(`AI reasoning preserved: "${r.reasoning}"`);
             }
             // Always preserve AI reasoning when it exists - don't override it
             return r;
@@ -512,8 +533,17 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
   // Heuristic safety net - only use when AI completely fails (use original text)
   const heur = heuristicAnalyze(comment.originalText || comment.text);
   const patchResult = (r: any) => {
+    // Debug logging to see what's being passed in
+    console.log(`processIndividualComment patchResult called with:`, JSON.stringify(r, null, 2));
+    console.log(`r.reasoning type: ${typeof r?.reasoning}, value: "${r?.reasoning}"`);
+    console.log(`r.reasoning truthy check: ${!!r?.reasoning}`);
+    console.log(`r.reasoning trim check: ${r?.reasoning?.trim() === ''}`);
+    
     // If no result at all, use heuristic
-    if (!r) return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
+    if (!r) {
+      console.log(`No result provided, using heuristic fallback`);
+      return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
+    }
     
     // Create a deep copy to avoid mutation
     const result = JSON.parse(JSON.stringify(r));
@@ -524,6 +554,7 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
     
     // Only apply heuristic fallback if AI gave absolutely no reasoning
     if (!result.reasoning || result.reasoning.trim() === '') {
+      console.log(`AI reasoning check failed - reasoning: "${result.reasoning}", applying heuristic fallback`);
       // Only override if heuristic detects violations AND AI gave no reasoning
       if (heur.concerning || heur.identifiable) {
         result.concerning = heur.concerning;
@@ -533,6 +564,8 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
         // Ensure reasoning is always set if none provided
         result.reasoning = 'No concerning content or identifiable information detected.';
       }
+    } else {
+      console.log(`AI reasoning preserved: "${result.reasoning}"`);
     }
     // Always preserve AI reasoning when it exists - don't override it
     return result;
@@ -872,15 +905,21 @@ async function performAICall(provider: string, model: string, prompt: string, co
   }
 
   // Call the appropriate AI provider
+  let result;
   if (provider === 'openai') {
-    return await callOpenAI(model, prompt, commentText, responseType);
+    result = await callOpenAI(model, prompt, commentText, responseType);
   } else if (provider === 'azure') {
-    return await callAzureOpenAI(model, prompt, commentText, responseType);
+    result = await callAzureOpenAI(model, prompt, commentText, responseType);
   } else if (provider === 'bedrock') {
-    return await callBedrock(model, prompt, commentText, responseType);
+    result = await callBedrock(model, prompt, commentText, responseType);
   } else {
     throw new Error(`Unsupported AI provider: ${provider}`);
   }
+  
+  console.log(`performAICall: Provider ${provider}, Model ${model}, ResponseType ${responseType} returned:`, result);
+  console.log(`performAICall: Results field:`, result?.results);
+  console.log(`performAICall: Raw response:`, result?.rawResponse);
+  return result;
 }
 
   // OpenAI API call
