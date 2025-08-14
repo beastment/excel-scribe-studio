@@ -93,12 +93,10 @@ export const AIConfigurationManagement = () => {
         
         // Store limits per model-provider combination for reuse
         const modelKey = `${config.provider}:${config.model}`;
-        if (config.rpm_limit !== null || config.tpm_limit !== null) {
-          limitsMap[modelKey] = {
-            rpm_limit: config.rpm_limit || undefined,
-            tpm_limit: config.tpm_limit || undefined
-          };
-        }
+        limitsMap[modelKey] = {
+          rpm_limit: config.rpm_limit || undefined,
+          tpm_limit: config.tpm_limit || undefined
+        };
       });
       
       setConfigs(configMap);
