@@ -118,7 +118,15 @@ export const AIConfigurationManagement = () => {
       const { error } = await supabase
         .from('ai_configurations')
         .upsert({
-          ...config,
+          id: config.id,
+          scanner_type: config.scanner_type,
+          provider: config.provider,
+          model: config.model,
+          analysis_prompt: config.analysis_prompt,
+          redact_prompt: config.redact_prompt,
+          rephrase_prompt: config.rephrase_prompt,
+          rpm_limit: config.rpm_limit,
+          tpm_limit: config.tpm_limit,
           updated_at: new Date().toISOString(),
         });
 
