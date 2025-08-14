@@ -165,7 +165,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setScanProgress(0);
     toast.info(`Scanning ${comments.length} comments with AI...`);
 
-    const BATCH_SIZE = 5;
+    const BATCH_SIZE = 20;
     let processedComments: any[] = [];
     let currentBatch = 0;
     const totalBatches = Math.ceil(comments.length / BATCH_SIZE);
