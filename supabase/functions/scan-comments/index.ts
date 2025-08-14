@@ -274,17 +274,18 @@ serve(async (req) => {
             if (typeof r.concerning !== 'boolean') r.concerning = false;
             if (typeof r.identifiable !== 'boolean') r.identifiable = false;
             
-            // Only override with heuristic if AI result is completely invalid and heuristic detects clear violations
-            if (r.concerning === false && r.identifiable === false && (!r.reasoning || r.reasoning.trim() === '')) {
-              // Only apply heuristic if it finds clear violations AND AI gave no reasoning
+            // Only apply heuristic fallback if AI gave absolutely no reasoning
+            if (!r.reasoning || r.reasoning.trim() === '') {
+              // Only override if heuristic detects violations AND AI gave no reasoning
               if (heur.concerning || heur.identifiable) {
                 r.concerning = heur.concerning;
                 r.identifiable = heur.identifiable;
                 r.reasoning = 'AI provided no analysis, heuristic fallback: ' + heur.reasoning;
               } else {
-                r.reasoning = r.reasoning || 'No concerning content or identifiable information detected.';
+                r.reasoning = 'No concerning content or identifiable information detected.';
               }
             }
+            // Always preserve AI reasoning when it exists - don't override it
             return r;
           };
           
