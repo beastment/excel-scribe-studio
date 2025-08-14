@@ -170,6 +170,8 @@ export const AIConfigurationManagement = () => {
           rpm_limit: config.rpm_limit,
           tpm_limit: config.tpm_limit,
           updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'provider,model'
         });
 
       if (modelError) {
