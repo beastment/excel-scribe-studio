@@ -139,6 +139,7 @@ export const AIConfigurationManagement = () => {
         tpm_limit: config.tpm_limit
       };
       
+      // Update modelLimits immediately and persistently
       setModelLimits(prev => ({
         ...prev,
         [modelKey]: newLimits
@@ -207,13 +208,30 @@ export const AIConfigurationManagement = () => {
   };
 
   const updateConfig = (scannerType: string, updates: Partial<AIConfiguration>) => {
-    setConfigs(prev => ({
-      ...prev,
-      [scannerType]: {
-        ...prev[scannerType],
-        ...updates
+    setConfigs(prev => {
+      const updated = {
+        ...prev,
+        [scannerType]: {
+          ...prev[scannerType],
+          ...updates
+        }
+      };
+      
+      // If limit values are being updated, also update the modelLimits lookup
+      if (updates.rpm_limit !== undefined || updates.tpm_limit !== undefined) {
+        const config = updated[scannerType];
+        const modelKey = `${config.provider}:${config.model}`;
+        setModelLimits(prevLimits => ({
+          ...prevLimits,
+          [modelKey]: {
+            rpm_limit: config.rpm_limit,
+            tpm_limit: config.tpm_limit
+          }
+        }));
       }
-    }));
+      
+      return updated;
+    });
   };
 
   const handleModelChange = (scannerType: string, newModel: string) => {
