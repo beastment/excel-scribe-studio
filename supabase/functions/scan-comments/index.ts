@@ -441,7 +441,22 @@ serve(async (req) => {
             console.log(`Scan A results field:`, scanAResponse?.results);
             console.log(`Scan B results field:`, scanBResponse?.results);
             
-            await processIndividualComment(comment, scanAResult, scanBResult, scanA, scanB, adjudicator, defaultMode, summary, scannedComments, rateLimiters, sequentialQueue, scanAResponse?.rawResponse, scanBResponse?.rawResponse);
+            await processIndividualComment(
+              comment,
+              scanAResult,
+              scanBResult,
+              scanA,
+              scanB,
+              adjudicator,
+              defaultMode,
+              summary,
+              scannedComments,
+              rateLimiters,
+              sequentialQueue,
+              scanAResponse?.rawResponse,
+              scanBResponse?.rawResponse,
+              { skipAdjudicator, skipPostprocess, requestStartMs, timeBudgetMs }
+            );
           } catch (error) {
             console.error(`Individual processing failed for comment ${comment.id} (index ${j}) with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model}):`, error);
             scannedComments.push({
