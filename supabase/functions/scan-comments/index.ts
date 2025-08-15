@@ -227,7 +227,12 @@ serve(async (req) => {
       };
       try {
         const enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
-        const enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
+        let enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
+        // Strengthen Scan B (Mistral) guidance to prevent uniform false/false outputs and enforce PII detection
+        if (scanB.model.startsWith('mistral.')) {
+          const piiMusts = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information, including: personal names (e.g., John Smith), \"X from <department>\" referring to a specific person, emails, phone numbers, employee IDs/badge numbers, SSNs, or direct contact details.\n- Examples that MUST be identifiable=true: \"John from accounting\", \"phone: 555-1234\", \"(employee ID 12345)\", \"jane.doe@email.com\".\n- The array MAY contain a mix of true/false values; do not default to all false.\n- Keep results strictly aligned with the input order (1..${batch.length}).`;
+          enforcedPromptB += piiMusts;
+        }
 
         const [scanAResponse, scanBResponse] = await Promise.all([
           callAI(scanA.provider, scanA.model, enforcedPromptA, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue).catch(e => {
@@ -487,6 +492,16 @@ serve(async (req) => {
             // If boolean values are missing, use false (conservative approach)
             if (typeof r.concerning !== 'boolean') r.concerning = false;
             if (typeof r.identifiable !== 'boolean') r.identifiable = false;
+
+            // PII safety net: if model says identifiable=false but text clearly has PII, flip to true
+            if (r.identifiable === false && heur.identifiable === true) {
+              r.identifiable = true;
+              if (!r.reasoning || r.reasoning.trim() === '') {
+                r.reasoning = 'Safety net: Detected PII (email/phone/ID/name) in the original text.';
+              } else if (!/PII|personally identifiable|email|phone|id|badge|SSN/i.test(r.reasoning)) {
+                r.reasoning += ' | Safety net: Detected PII in the original text.';
+              }
+            }
             
             // Only apply heuristic fallback if AI gave absolutely no reasoning
             if (!r.reasoning || r.reasoning.trim() === '') {
@@ -1565,11 +1580,12 @@ async function performAICall(provider: string, model: string, prompt: string, co
       });
     } else if (model.startsWith('mistral.')) {
       // Mistral models on Bedrock use a simple prompt-based schema
+      // Use deterministic settings and higher token budget to avoid truncation and uniform outputs
       requestBody = JSON.stringify({
         prompt: `${prompt}\n\n${commentText}`,
-        max_tokens: 1000,
-        temperature: 0.1,
-        top_p: 0.9
+        max_tokens: 2000,
+        temperature: 0,
+        top_p: 1
       });
     } else {
       throw new Error(`Unsupported Bedrock model: ${model}`);
