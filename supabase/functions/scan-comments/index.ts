@@ -29,7 +29,11 @@ serve(async (req) => {
       comments, 
       defaultMode = 'redact',
       batchStart = 0,
-      batchSize = 20
+      batchSize = 20,
+      // Optional orchestration flags to ensure fast responses under edge timeouts
+      skipAdjudicator = false,
+      skipPostprocess = false,
+      phase = 'analysis' // 'analysis' | 'postprocess' (for future use)
     } = requestBody;
     
     if (!comments || !Array.isArray(comments)) {
@@ -574,7 +578,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
 
             const adjudicatorIsVeryLowRpm = adjudicator.provider === 'bedrock' && /sonnet|opus/i.test(adjudicator.model);
             const outOfTime = Date.now() - requestStartMs > timeBudgetMs;
-            if (!adjudicatorIsVeryLowRpm && !outOfTime) {
+            if (!skipAdjudicator && !adjudicatorIsVeryLowRpm && !outOfTime) {
               try {
                 const adjudicationResponse = await callAI(
                   adjudicator.provider, 
@@ -651,7 +655,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
 
         // Batch process redaction and rephrasing for flagged comments
         const flaggedComments = scannedComments.filter(c => c.concerning || c.identifiable);
-        if (flaggedComments.length > 0) {
+        if (!skipPostprocess && flaggedComments.length > 0) {
           const flaggedTexts = flaggedComments.map(c => c.originalText || c.text);
           const activeConfig = scanA; // Use scan_a config for batch operations
 

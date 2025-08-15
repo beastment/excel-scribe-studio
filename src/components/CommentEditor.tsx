@@ -166,6 +166,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     toast.info(`Scanning ${comments.length} comments with AI...`);
 
     const BATCH_SIZE = 20;
+    const PHASE2_CHUNK = 10; // smaller follow-up chunks to avoid edge timeouts
     let processedComments: any[] = [];
     let currentBatch = 0;
     const totalBatches = Math.ceil(comments.length / BATCH_SIZE);
@@ -178,12 +179,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         // Update progress
         setScanProgress((currentBatch - 1) / totalBatches * 90);
         
+        // Phase 1: fast analysis only — skip adjudicator and postprocess
         const { data, error } = await supabase.functions.invoke('scan-comments', {
           body: { 
             comments, 
             defaultMode,
             batchStart,
-            batchSize: BATCH_SIZE
+            batchSize: BATCH_SIZE,
+            skipAdjudicator: true,
+            skipPostprocess: true
           }
         });
         
@@ -225,11 +229,59 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
       }
       
+      // Phase 2: follow-up adjudication and postprocess on subset
+      const needsFollowup = processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || c.concerning || c.identifiable);
+      if (needsFollowup.length > 0) {
+        toast.info(`Running follow-up on ${needsFollowup.length} flagged comments...`);
+        for (let i = 0; i < needsFollowup.length; i += PHASE2_CHUNK) {
+          const chunk = needsFollowup.slice(i, i + PHASE2_CHUNK);
+          const { data: data2, error: error2 } = await supabase.functions.invoke('scan-comments', {
+            body: {
+              comments: chunk,
+              defaultMode,
+              skipAdjudicator: false,
+              skipPostprocess: false
+            }
+          });
+          if (error2) {
+            console.warn('Follow-up chunk failed:', error2);
+            continue;
+          }
+          if (data2?.comments) {
+            const updates = data2.comments.map((c: any) => {
+              const fd = c?.debugInfo?.finalDecision;
+              const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!c.concerning;
+              const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!c.identifiable;
+              if (!concerning && !identifiable) {
+                return {
+                  ...c,
+                  concerning: false,
+                  identifiable: false,
+                  mode: 'original',
+                  text: c.originalText || c.text,
+                  redactedText: undefined,
+                  rephrasedText: undefined,
+                };
+              }
+              return { ...c, concerning, identifiable };
+            });
+            // Merge updates by id
+            const map = new Map(processedComments.map((x: any) => [x.id, x]));
+            for (const u of updates) {
+              map.set(u.id, { ...(map.get(u.id) || {}), ...u });
+            }
+            processedComments = Array.from(map.values());
+            setScanProgress(90 + Math.round(((i + chunk.length) / needsFollowup.length) * 10));
+            onCommentsUpdate(processedComments);
+          }
+        }
+      }
+
       // Final update with all processed comments
       setScanProgress(100);
       setHasScanRun(true);
       onCommentsUpdate(processedComments);
-      toast.success(`Successfully scanned all ${processedComments.length} comments!`);
+      toast.success(`Scan complete: ${processedComments.length} comments processed`);
       
     } catch (error) {
       console.error('Scan failed:', error);
