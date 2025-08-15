@@ -1226,11 +1226,12 @@ async function performAICall(provider: string, model: string, prompt: string, co
       }
     } else if (responseType === 'batch_text') {
       try {
+        // First attempt: direct JSON parse
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
         
-        // Clean up common prefix text patterns before splitting
+        // Clean up common prefix text patterns before attempting alternative parses
         let cleanedContent = content.trim();
         const prefixPatterns = [
           /^here is the list of redacted comments:\s*/i,
@@ -1242,13 +1243,43 @@ async function performAICall(provider: string, model: string, prompt: string, co
           /^here is the result:\s*/i,
           /^result:\s*/i
         ];
-        
         for (const pattern of prefixPatterns) {
           cleanedContent = cleanedContent.replace(pattern, '');
         }
-        
-        // If not valid JSON, split by lines or return array with single item
-        return cleanedContent.split('\n').filter(line => line.trim().length > 0);
+
+        // Second attempt: JSON parse after cleanup
+        try {
+          const parsedAfterCleanup = JSON.parse(cleanedContent);
+          // Ensure we return an array of strings
+          if (Array.isArray(parsedAfterCleanup)) {
+            return parsedAfterCleanup;
+          }
+          // If it's a single string that itself looks like a JSON array, try parsing again
+          if (typeof parsedAfterCleanup === 'string' && parsedAfterCleanup.trim().startsWith('[')) {
+            try {
+              const nested = JSON.parse(parsedAfterCleanup.trim());
+              if (Array.isArray(nested)) return nested;
+            } catch {}
+          }
+        } catch {}
+
+        // Third attempt: extract a JSON array/object from within the text
+        const jsonMatch = cleanedContent.match(/(\[[\s\S]*?\]|\{[\s\S]*?\})/);
+        if (jsonMatch) {
+          try {
+            const extracted = JSON.parse(jsonMatch[0]);
+            if (Array.isArray(extracted)) {
+              return extracted;
+            }
+          } catch {}
+        }
+
+        // Final fallback: split by lines and strip list markers/bullets
+        return cleanedContent
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l.length > 0)
+          .map(l => l.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, ''));
       }
     } else if (responseType === 'text') {
       // Clean up common prefix text patterns that models often include
