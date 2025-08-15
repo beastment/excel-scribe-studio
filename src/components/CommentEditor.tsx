@@ -218,10 +218,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             }
             return { ...c, concerning, identifiable };
           });
-          
-          // Add normalized comments to our processed list
-          processedComments = [...processedComments, ...normalizedComments];
-          
+
+          // Merge normalized results into the full comment list by id, preserving original order and length
+          const baseList = processedComments.length > 0 ? processedComments : comments;
+          const updatesById = new Map(normalizedComments.map((u: any) => [u.id, u]));
+          processedComments = baseList.map((c: any) => updatesById.get(c.id) ? { ...c, ...updatesById.get(c.id) } : c);
+
+          // Push partial results to UI immediately so it populates even if follow-ups are slow
+          onCommentsUpdate(processedComments);
+          setHasScanRun(true);
+
           // Update progress with partial results
           toast.info(`Processed batch ${currentBatch}/${totalBatches} (${processedComments.length}/${comments.length} comments)`);
         } else {
