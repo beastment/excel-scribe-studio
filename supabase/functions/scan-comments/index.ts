@@ -590,17 +590,56 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
               ]);
 
               // Apply redacted and rephrased texts
+              let redArr = Array.isArray(redactedTexts) ? redactedTexts : [String(redactedTexts ?? '')];
+              let rephArr = Array.isArray(rephrasedTexts) ? rephrasedTexts : [String(rephrasedTexts ?? '')];
+
+              // Normalize nested encodings (common Haiku behavior)
+              const tryCoerce = (arr: any[]) => {
+                if (arr.length === 1 && typeof arr[0] === 'string') {
+                  const s = arr[0].trim();
+                  if (s.startsWith('```')) {
+                    // strip code fences
+                    const m = s.match(/```(?:json)?\n([\s\S]*?)```/i);
+                    if (m && m[1]) {
+                      arr = [m[1].trim()];
+                    }
+                  }
+                  if (s.startsWith('[')) {
+                    try {
+                      const parsed = JSON.parse(s);
+                      if (Array.isArray(parsed)) return parsed;
+                    } catch {}
+                  }
+                }
+                return arr;
+              };
+              redArr = tryCoerce(redArr).map((v: any) => typeof v === 'string' ? v.trim() : JSON.stringify(v));
+              rephArr = tryCoerce(rephArr).map((v: any) => typeof v === 'string' ? v.trim() : JSON.stringify(v));
+
+              // Ensure lengths match number of flagged comments
+              const expected = flaggedComments.length;
+              if (redArr.length !== expected) {
+                console.warn(`Redaction results length (${redArr.length}) does not match flagged count (${expected}). Adjusting.`);
+                if (redArr.length > expected) redArr = redArr.slice(0, expected);
+                while (redArr.length < expected) redArr.push('');
+              }
+              if (rephArr.length !== expected) {
+                console.warn(`Rephrase results length (${rephArr.length}) does not match flagged count (${expected}). Adjusting.`);
+                if (rephArr.length > expected) rephArr = rephArr.slice(0, expected);
+                while (rephArr.length < expected) rephArr.push('');
+              }
+
               let flaggedIndex = 0;
               for (let k = 0; k < scannedComments.length; k++) {
                 if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                  scannedComments[k].redactedText = redactedTexts[flaggedIndex];
-                  scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex];
+                  scannedComments[k].redactedText = redArr[flaggedIndex];
+                  scannedComments[k].rephrasedText = rephArr[flaggedIndex];
                   
                   // Set final text based on mode
-                  if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
-                    scannedComments[k].text = redactedTexts[flaggedIndex];
-                  } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
-                    scannedComments[k].text = rephrasedTexts[flaggedIndex];
+                  if (scannedComments[k].mode === 'redact' && redArr[flaggedIndex]) {
+                    scannedComments[k].text = redArr[flaggedIndex];
+                  } else if (scannedComments[k].mode === 'rephrase' && rephArr[flaggedIndex]) {
+                    scannedComments[k].text = rephArr[flaggedIndex];
                   }
                   
                   flaggedIndex++;
@@ -1227,7 +1266,25 @@ async function performAICall(provider: string, model: string, prompt: string, co
     } else if (responseType === 'batch_text') {
       try {
         // First attempt: direct JSON parse
-        return JSON.parse(content);
+        let parsed = JSON.parse(content);
+        // Normalize nested encodings and shapes
+        if (typeof parsed === 'string') {
+          const s = parsed.trim();
+          if (s.startsWith('[')) {
+            try { parsed = JSON.parse(s); } catch {}
+          }
+        }
+        if (Array.isArray(parsed) && parsed.length === 1 && typeof parsed[0] === 'string' && parsed[0].trim().startsWith('[')) {
+          try { parsed = JSON.parse(parsed[0].trim()); } catch {}
+        }
+        if (Array.isArray(parsed)) {
+          return parsed
+            .flatMap((item: any) => Array.isArray(item) ? item : [item])
+            .map((item: any) => typeof item === 'string' ? item : JSON.stringify(item))
+            .map((s: string) => s.trim().replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, ''))
+            .filter((s: string) => s.length > 0);
+        }
+        // If parsing yielded a non-array, fall back below
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
         
@@ -1247,19 +1304,21 @@ async function performAICall(provider: string, model: string, prompt: string, co
           cleanedContent = cleanedContent.replace(pattern, '');
         }
 
-        // Second attempt: JSON parse after cleanup
+        // Second attempt: JSON parse after cleanup, with normalization
         try {
-          const parsedAfterCleanup = JSON.parse(cleanedContent);
-          // Ensure we return an array of strings
-          if (Array.isArray(parsedAfterCleanup)) {
-            return parsedAfterCleanup;
-          }
-          // If it's a single string that itself looks like a JSON array, try parsing again
+          let parsedAfterCleanup: any = JSON.parse(cleanedContent);
           if (typeof parsedAfterCleanup === 'string' && parsedAfterCleanup.trim().startsWith('[')) {
-            try {
-              const nested = JSON.parse(parsedAfterCleanup.trim());
-              if (Array.isArray(nested)) return nested;
-            } catch {}
+            try { parsedAfterCleanup = JSON.parse(parsedAfterCleanup.trim()); } catch {}
+          }
+          if (Array.isArray(parsedAfterCleanup) && parsedAfterCleanup.length === 1 && typeof parsedAfterCleanup[0] === 'string' && parsedAfterCleanup[0].trim().startsWith('[')) {
+            try { parsedAfterCleanup = JSON.parse(parsedAfterCleanup[0].trim()); } catch {}
+          }
+          if (Array.isArray(parsedAfterCleanup)) {
+            return parsedAfterCleanup
+              .flatMap((item: any) => Array.isArray(item) ? item : [item])
+              .map((item: any) => typeof item === 'string' ? item : JSON.stringify(item))
+              .map((s: string) => s.trim().replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, ''))
+              .filter((s: string) => s.length > 0);
           }
         } catch {}
 
