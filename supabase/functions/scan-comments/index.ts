@@ -231,8 +231,9 @@ serve(async (req) => {
         // Strengthen Scan B (Mistral) guidance to prevent uniform false/false outputs and enforce PII detection
         if (scanB.model.startsWith('mistral.')) {
           const piiMusts = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information, including: personal names (e.g., John Smith), \"X from <department>\" referring to a specific person, emails, phone numbers, employee IDs/badge numbers, SSNs, or direct contact details.\n- Examples that MUST be identifiable=true: \"John from accounting\", \"phone: 555-1234\", \"(employee ID 12345)\", \"jane.doe@email.com\".\n- The array MAY contain a mix of true/false values; do not default to all false.\n- Keep results strictly aligned with the input order (1..${batch.length}).`;
+          const concerningClarifiers = `\n- CONCERNING=true not only for explicit harassment/threats/illegal/safety violations, but also for serious workplace risk indicators such as: severe morale collapse, unsafe processes/equipment, retaliation or coercion, policy changes that materially harm staff wellbeing, discrimination, or credible allegations of misconduct.\n- If the comment plausibly signals a risk requiring leadership attention (even without PII), set concerning=true.`;
           const brevity = `\n- Keep reasoning to a single short sentence (<= 15 words) to avoid truncation.`;
-          enforcedPromptB += piiMusts + brevity;
+          enforcedPromptB += piiMusts + concerningClarifiers + brevity;
         }
 
         const [scanAResponse, scanBResponse] = await Promise.all([
