@@ -556,9 +556,16 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
 
         // Batch process redaction and rephrasing for flagged comments
         const flaggedComments = scannedComments.filter(c => c.concerning || c.identifiable);
+        console.log(`[POST-ANALYSIS] Flagged comments for redaction/rephrase: ${flaggedComments.length}`);
         if (flaggedComments.length > 0) {
           const flaggedTexts = flaggedComments.map(c => c.originalText || c.text);
           const activeConfig = scanA; // Use scan_a config for batch operations
+          console.log(`[REDACTION] Preparing to call batch redaction & rephrase`, {
+            provider: activeConfig.provider,
+            model: activeConfig.model,
+            defaultMode,
+            flaggedCount: flaggedComments.length,
+          });
 
           try {
             // For Bedrock Mistral, prefer per-item processing for higher reliability
@@ -584,10 +591,17 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 }
               }
             } else {
+              console.log(`[REDACTION] Invoking batch redaction & rephrase via ${activeConfig.provider}/${activeConfig.model}`);
               const [redactedTexts, rephrasedTexts] = await Promise.all([
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters),
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters)
               ]);
+              console.log(`[REDACTION] Batch responses received`, {
+                redType: typeof redactedTexts,
+                rephType: typeof rephrasedTexts,
+                redPreview: Array.isArray(redactedTexts) ? (redactedTexts[0]?.substring?.(0,100) || String(redactedTexts[0]).substring(0,100)) : String(redactedTexts).substring(0,100),
+                rephPreview: Array.isArray(rephrasedTexts) ? (rephrasedTexts[0]?.substring?.(0,100) || String(rephrasedTexts[0]).substring(0,100)) : String(rephrasedTexts).substring(0,100)
+              });
 
               // Apply redacted and rephrased texts
               let redArr = Array.isArray(redactedTexts) ? redactedTexts : [String(redactedTexts ?? '')];
@@ -628,6 +642,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 if (rephArr.length > expected) rephArr = rephArr.slice(0, expected);
                 while (rephArr.length < expected) rephArr.push('');
               }
+              console.log(`[REDACTION] Normalized lengths`, { redLen: redArr.length, rephLen: rephArr.length, expected });
 
               let flaggedIndex = 0;
               for (let k = 0; k < scannedComments.length; k++) {
@@ -641,6 +656,12 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                   } else if (scannedComments[k].mode === 'rephrase' && rephArr[flaggedIndex]) {
                     scannedComments[k].text = rephArr[flaggedIndex];
                   }
+                  console.log(`[ASSIGN] Row mapped`, {
+                    rowId: scannedComments[k].id,
+                    mode: scannedComments[k].mode,
+                    redPreview: String(redArr[flaggedIndex]).substring(0,100),
+                    rephPreview: String(rephArr[flaggedIndex]).substring(0,100)
+                  });
                   
                   flaggedIndex++;
                 }
