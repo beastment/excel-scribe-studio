@@ -190,6 +190,8 @@ serve(async (req) => {
     };
 
     try {
+      const requestStartMs = Date.now();
+      const timeBudgetMs = 55000; // aim to return within ~55s to avoid client timeouts
       // Prepare batch input for AI models (use original text, not redacted)
       const batchTexts = batch.map(comment => comment.originalText || comment.text);
       const batchInput = `Comments to analyze:\n${batchTexts.map((text, idx) => `${idx + 1}. ${text}`).join('\n')}\n\nIMPORTANT: You must return exactly ${batch.length} JSON objects, one for each comment above. Do not return more or fewer results.`;
@@ -570,29 +572,41 @@ IMPORTANT: Only resolve the disagreement for the ${disagreementFields.join(' and
 ${concerningDisagreement ? '' : 'NOTE: Both scans agreed on concerning=' + scanAResultCopy.concerning + ', so preserve this value.'}
 ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResultCopy.identifiable + ', so preserve this value.'}`;
 
-            try {
-              const adjudicationResponse = await callAI(
-                adjudicator.provider, 
-                adjudicator.model, 
-                adjudicatorPrompt, 
-                '', 
-                'analysis',
-                'adjudicator',
-                rateLimiters,
-                sequentialQueue
-              );
-              adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
-            } catch (error) {
-              console.error(`Adjudicator failed for comment ${comment.id}:`, error);
-              throw new Error(`Adjudicator (${adjudicator.provider}/${adjudicator.model}) failed: ${error.message}`);
+            const adjudicatorIsVeryLowRpm = adjudicator.provider === 'bedrock' && /sonnet|opus/i.test(adjudicator.model);
+            const outOfTime = Date.now() - requestStartMs > timeBudgetMs;
+            if (!adjudicatorIsVeryLowRpm && !outOfTime) {
+              try {
+                const adjudicationResponse = await callAI(
+                  adjudicator.provider, 
+                  adjudicator.model, 
+                  adjudicatorPrompt, 
+                  '', 
+                  'analysis',
+                  'adjudicator',
+                  rateLimiters,
+                  sequentialQueue
+                );
+                adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
+              } catch (error) {
+                console.error(`Adjudicator failed for comment ${comment.id}:`, error);
+              }
             }
 
             // Create final result by preserving agreements and using adjudicator for disagreements
-            finalResult = {
-              concerning: concerningDisagreement ? adjudicationResult.concerning : scanAResultCopy.concerning,
-              identifiable: identifiableDisagreement ? adjudicationResult.identifiable : scanAResultCopy.identifiable,
-              reasoning: adjudicationResult.reasoning || scanAResultCopy.reasoning
-            };
+            if (adjudicationResult) {
+              finalResult = {
+                concerning: concerningDisagreement ? adjudicationResult.concerning : scanAResultCopy.concerning,
+                identifiable: identifiableDisagreement ? adjudicationResult.identifiable : scanAResultCopy.identifiable,
+                reasoning: adjudicationResult.reasoning || scanAResultCopy.reasoning
+              };
+            } else {
+              // Defer adjudication to avoid timeouts; preserve agreements and pick Scan A as tie-breaker
+              finalResult = {
+                concerning: scanAResultCopy.concerning,
+                identifiable: scanAResultCopy.identifiable,
+                reasoning: scanAResultCopy.reasoning
+              };
+            }
           } else {
             // Scan A and Scan B agree, use Scan A result
             finalResult = scanAResultCopy;
@@ -642,8 +656,12 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
           const activeConfig = scanA; // Use scan_a config for batch operations
 
           try {
-            // For Bedrock Mistral, prefer per-item processing for higher reliability
-            if (activeConfig.provider === 'bedrock' && activeConfig.model.startsWith('mistral.')) {
+            const activeIsVeryLowRpm = activeConfig.provider === 'bedrock' && /sonnet|opus/i.test(activeConfig.model);
+            const outOfTime = Date.now() - requestStartMs > timeBudgetMs;
+            // Skip post-processing if on very low RPM model or we're near time budget
+            if (activeIsVeryLowRpm || outOfTime) {
+              console.log('Skipping redaction/rephrasing to avoid timeouts (low RPM model or time budget exceeded)');
+            } else if (activeConfig.provider === 'bedrock' && activeConfig.model.startsWith('mistral.')) {
               for (let k = 0; k < scannedComments.length; k++) {
                 if (scannedComments[k].concerning || scannedComments[k].identifiable) {
                   try {
@@ -664,7 +682,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                   }
                 }
               }
-            } else {
+            } else if (!outOfTime) {
               const [redactedTexts, rephrasedTexts] = await Promise.all([
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters),
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters)
