@@ -170,86 +170,74 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     let currentBatch = 0;
     const totalBatches = Math.ceil(comments.length / BATCH_SIZE);
 
-    // Helper: invoke with retries to avoid transient network/edge errors
-    const MAX_RETRIES = 3;
-    const invokeBatch = async (batchStart: number, attempt: number = 1): Promise<any> => {
-      try {
+    try {
+      for (let batchStart = 0; batchStart < comments.length; batchStart += BATCH_SIZE) {
+        currentBatch++;
+        console.log(`Processing batch ${currentBatch}/${totalBatches}`);
+        
+        // Update progress
+        setScanProgress((currentBatch - 1) / totalBatches * 90);
+        
         const { data, error } = await supabase.functions.invoke('scan-comments', {
-          body: {
-            comments,
+          body: { 
+            comments, 
             defaultMode,
             batchStart,
-            batchSize: BATCH_SIZE,
-          },
-        });
-        if (error) throw new Error(error.message || JSON.stringify(error));
-        if (!data?.comments) throw new Error('No comment data received');
-        return data;
-      } catch (err) {
-        console.warn(`Batch invoke failed (attempt ${attempt}/${MAX_RETRIES})`, err);
-        if (attempt < MAX_RETRIES) {
-          const delay = 1000 * Math.pow(2, attempt - 1);
-          await new Promise((r) => setTimeout(r, delay));
-          return invokeBatch(batchStart, attempt + 1);
-        }
-        throw err;
-      }
-    };
-
-    const failedBatches: number[] = [];
-
-    for (let batchStart = 0; batchStart < comments.length; batchStart += BATCH_SIZE) {
-      currentBatch++;
-      console.log(`Processing batch ${currentBatch}/${totalBatches}`);
-
-      // Update progress
-      setScanProgress(((currentBatch - 1) / totalBatches) * 90);
-
-      try {
-        const data = await invokeBatch(batchStart);
-        console.log(`Batch ${currentBatch} response:`, { data });
-
-        // Normalize results to ensure UI flags match final decision
-        const normalizedComments = data.comments.map((c: any) => {
-          const fd = c?.debugInfo?.finalDecision;
-          const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!c.concerning;
-          const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!c.identifiable;
-          if (!concerning && !identifiable) {
-            return {
-              ...c,
-              concerning: false,
-              identifiable: false,
-              mode: 'original',
-              text: c.originalText || c.text,
-              redactedText: undefined,
-              rephrasedText: undefined,
-            };
+            batchSize: BATCH_SIZE
           }
-          return { ...c, concerning, identifiable };
         });
-
-        processedComments = [...processedComments, ...normalizedComments];
-        toast.info(`Processed batch ${currentBatch}/${totalBatches} (${processedComments.length}/${comments.length} comments)`);
-      } catch (error) {
-        console.error(`Batch ${currentBatch} failed after retries:`, error);
-        toast.error(`Batch ${currentBatch} failed after retries — continuing`);
-        failedBatches.push(currentBatch);
-        continue;
+        
+        console.log(`Batch ${currentBatch} response:`, { data, error });
+        
+        if (error) {
+          console.error(`Batch ${currentBatch} error:`, error);
+          throw new Error(`Batch ${currentBatch} failed: ${error.message || JSON.stringify(error)}`);
+        }
+        
+        if (data?.comments) {
+          // Normalize results to ensure UI flags match final decision
+          const normalizedComments = data.comments.map((c: any) => {
+            const fd = c?.debugInfo?.finalDecision;
+            const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!c.concerning;
+            const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!c.identifiable;
+            // If not flagged, force original text and safe mode
+            if (!concerning && !identifiable) {
+              return {
+                ...c,
+                concerning: false,
+                identifiable: false,
+                mode: 'original',
+                text: c.originalText || c.text,
+                redactedText: undefined,
+                rephrasedText: undefined,
+              };
+            }
+            return { ...c, concerning, identifiable };
+          });
+          
+          // Add normalized comments to our processed list
+          processedComments = [...processedComments, ...normalizedComments];
+          
+          // Update progress with partial results
+          toast.info(`Processed batch ${currentBatch}/${totalBatches} (${processedComments.length}/${comments.length} comments)`);
+        } else {
+          throw new Error(`Batch ${currentBatch}: No comment data received`);
+        }
       }
-    }
-
-    // Final update with all processed comments
-    setScanProgress(100);
-    setHasScanRun(true);
-    onCommentsUpdate(processedComments);
-    if (failedBatches.length > 0) {
-      toast.warning(`Completed with ${failedBatches.length} failed batch(es): ${failedBatches.join(', ')}`);
-    } else {
+      
+      // Final update with all processed comments
+      setScanProgress(100);
+      setHasScanRun(true);
+      onCommentsUpdate(processedComments);
       toast.success(`Successfully scanned all ${processedComments.length} comments!`);
+      
+    } catch (error) {
+      console.error('Scan failed:', error);
+      toast.error(`Scan failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsScanning(false);
+      setScanProgress(0);
     }
-
-    setIsScanning(false);
-    setScanProgress(0);
   };
   const handleSaveSession = async () => {
     if (!sessionName.trim()) {

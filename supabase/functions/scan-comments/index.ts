@@ -168,6 +168,27 @@ serve(async (req) => {
       
       console.log(`Provider limiter for ${key}: RPM=${minRpm}, TPM=${minTpm}`);
     });
+    // Helpers to enforce stable batch alignment
+    const buildBatchAnalysisPrompt = (basePrompt: string, expectedLen: number): string => {
+      return `${basePrompt}\n\nCRITICAL REQUIREMENTS:\n- Output ONLY a JSON array with exactly ${expectedLen} objects, in the SAME ORDER as the inputs (1..${expectedLen}).\n- Each object MUST include: {\"index\": number (1-based), \"concerning\": boolean, \"identifiable\": boolean, \"reasoning\": string}.\n- No prose, no code fences, no extra keys, no preface or suffix.`;
+    };
+    const realignResultsByIndex = (arr: any[], expectedLen: number) => {
+      const defaults = { concerning: false, identifiable: false, reasoning: 'Auto-aligned: missing result' };
+      const out = Array(expectedLen).fill(null);
+      for (const item of arr) {
+        if (item && typeof item === 'object' && typeof item.index === 'number') {
+          const i = Math.floor(item.index);
+          if (i >= 1 && i <= expectedLen) {
+            out[i - 1] = { concerning: !!item.concerning, identifiable: !!item.identifiable, reasoning: String(item.reasoning ?? '').trim() };
+          }
+        }
+      }
+      for (let i = 0; i < expectedLen; i++) {
+        if (!out[i]) out[i] = { ...defaults };
+      }
+      return out;
+    };
+
     try {
       // Prepare batch input for AI models (use original text, not redacted)
       const batchTexts = batch.map(comment => comment.originalText || comment.text);
@@ -180,13 +201,40 @@ serve(async (req) => {
 
         // Run Scan A and Scan B in parallel on the entire batch
       let scanAResults, scanBResults, scanARawResponse, scanBRawResponse;
+      // Helper: one strict retry to enforce JSON array of correct length without prose
+      const strictBatchRetry = async (
+        provider: string,
+        model: string,
+        basePrompt: string,
+        inputText: string,
+        expectedLen: number,
+        scannerKey: 'scan_a' | 'scan_b'
+      ) => {
+        const strictHeader = `STRICT MODE: Output ONLY a JSON array of exactly ${expectedLen} objects, in the same order as the inputs. Each object MUST have: {"concerning": boolean, "identifiable": boolean, "reasoning": string}. No prose, no code fences, no extra text.`;
+        const strictPrompt = `${strictHeader}\n\n${basePrompt}`;
+        try {
+          const resp = await callAI(provider, model, strictPrompt, inputText, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue);
+          const results = resp?.results ?? resp;
+          if (Array.isArray(results) && results.length === expectedLen) {
+            console.log(`[STRICT RETRY] Succeeded for ${provider}/${model} with ${expectedLen} results.`);
+            return results;
+          }
+          console.warn(`[STRICT RETRY] Returned invalid shape for ${provider}/${model}.`);
+        } catch (e) {
+          console.warn(`[STRICT RETRY] Failed for ${provider}/${model}:`, (e as Error).message);
+        }
+        return null;
+      };
       try {
+        const enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
+        const enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
+
         const [scanAResponse, scanBResponse] = await Promise.all([
-          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue).catch(e => {
+          callAI(scanA.provider, scanA.model, enforcedPromptA, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue).catch(e => {
             console.error(`Scan A (${scanA.provider}/${scanA.model}) failed for batch:`, e);
             throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
           }),
-          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', 'scan_b', rateLimiters, sequentialQueue).catch(e => {
+          callAI(scanB.provider, scanB.model, enforcedPromptB, batchInput, 'batch_analysis', 'scan_b', rateLimiters, sequentialQueue).catch(e => {
             console.error(`Scan B (${scanB.provider}/${scanB.model}) failed for batch:`, e);
             throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
           })
@@ -204,14 +252,26 @@ serve(async (req) => {
           console.log(`Scan A results field:`, scanAResponse?.results);
           console.log(`Scan B results field:`, scanBResponse?.results);
           
-          // If either scan returned a single object instead of array, convert it
-          if (scanAResults && !Array.isArray(scanAResults) && typeof scanAResults === 'object') {
-            console.log(`Scan A (${scanA.provider}/${scanA.model}) returned single object, converting to array for batch of ${batch.length}`);
-            scanAResults = Array(batch.length).fill(null).map(() => JSON.parse(JSON.stringify(scanAResults)));
+          // If either scan returned a single object or invalid shape, perform one strict batch retry instead of cloning the same object
+          if (scanAResults && !Array.isArray(scanAResults)) {
+            console.warn(`Scan A (${scanA.provider}/${scanA.model}) returned non-array for batch. Performing strict retry.`);
+            const retried = await strictBatchRetry(scanA.provider, scanA.model, enforcedPromptA, batchInput, batch.length, 'scan_a');
+            if (retried) scanAResults = retried;
           }
-          if (scanBResults && !Array.isArray(scanBResults) && typeof scanBResults === 'object') {
-            console.log(`Scan B (${scanB.provider}/${scanB.model}) returned single object, converting to array for batch of ${batch.length}`);
-            scanBResults = Array(batch.length).fill(null).map(() => JSON.parse(JSON.stringify(scanBResults)));
+          if (scanBResults && !Array.isArray(scanBResults)) {
+            console.warn(`Scan B (${scanB.provider}/${scanB.model}) returned non-array for batch. Performing strict retry.`);
+            const retried = await strictBatchRetry(scanB.provider, scanB.model, enforcedPromptB, batchInput, batch.length, 'scan_b');
+            if (retried) scanBResults = retried;
+          }
+
+          // Realign by explicit indices if provided by the model
+          if (Array.isArray(scanAResults) && scanAResults.some((x: any) => x && typeof x.index === 'number')) {
+            console.log('Realigning Scan A results by index field');
+            scanAResults = realignResultsByIndex(scanAResults, batch.length);
+          }
+          if (Array.isArray(scanBResults) && scanBResults.some((x: any) => x && typeof x.index === 'number')) {
+            console.log('Realigning Scan B results by index field');
+            scanBResults = realignResultsByIndex(scanBResults, batch.length);
           }
           
           // Additional debugging: Check if the AI returned a string that needs parsing
@@ -287,20 +347,24 @@ serve(async (req) => {
           for (let i = 0; i < Math.min(scanAResults.length, 5); i++) {
             console.log(`Scan A result ${i}:`, scanAResults[i]);
           }
-          
-          // Fix: Truncate Scan A results to match batch size if we have too many
-          if (scanAResults.length > batch.length) {
-            console.warn(`🔧 FIXING: Truncating Scan A results from ${scanAResults.length} to ${batch.length}`);
-            scanAResults = scanAResults.slice(0, batch.length);
-          }
-          
-          // Additional safety: If we still have mismatched results, pad with default values
-          if (scanAResults.length < batch.length) {
-            console.warn(`🔧 FIXING: Padding Scan A results from ${scanAResults.length} to ${batch.length}`);
-            const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
-            const defaultResultCopy = JSON.parse(JSON.stringify(defaultResult));
-            while (scanAResults.length < batch.length) {
-              scanAResults.push({ ...defaultResultCopy });
+          // Attempt one strict retry before truncation/padding
+          const retried = await strictBatchRetry(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, batch.length, 'scan_a');
+          if (retried) {
+            scanAResults = retried;
+          } else {
+            // Fix: Truncate Scan A results to match batch size if we have too many
+            if (scanAResults.length > batch.length) {
+              console.warn(`🔧 FIXING: Truncating Scan A results from ${scanAResults.length} to ${batch.length}`);
+              scanAResults = scanAResults.slice(0, batch.length);
+            }
+            // Additional safety: If we still have mismatched results, pad with default values
+            if (scanAResults.length < batch.length) {
+              console.warn(`🔧 FIXING: Padding Scan A results from ${scanAResults.length} to ${batch.length}`);
+              const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
+              const defaultResultCopy = JSON.parse(JSON.stringify(defaultResult));
+              while (scanAResults.length < batch.length) {
+                scanAResults.push({ ...defaultResultCopy });
+              }
             }
           }
         }
@@ -393,34 +457,8 @@ serve(async (req) => {
         
         // Final validation: Ensure we have valid results for each comment
         if (scanAResults.length !== batch.length || scanBResults.length !== batch.length) {
-          console.warn(`⚠️ Results count mismatch after validation. Attempting auto-repair. Batch: ${batch.length}, Scan A: ${scanAResults.length}, Scan B: ${scanBResults.length}`);
-
-          const defaultResult = { concerning: false, identifiable: false, reasoning: 'Auto-repaired missing result' };
-          const coerceArray = (val: any, expected: number) => {
-            let arr: any[];
-            if (Array.isArray(val)) arr = val.slice();
-            else if (val && typeof val === 'object') arr = Array(expected).fill(null).map(() => JSON.parse(JSON.stringify(val)));
-            else if (typeof val === 'string') {
-              try {
-                const parsed = JSON.parse(val);
-                if (Array.isArray(parsed)) arr = parsed;
-                else arr = Array(expected).fill(null).map(() => JSON.parse(JSON.stringify(parsed)));
-              } catch {
-                arr = Array(expected).fill(null).map(() => ({ ...defaultResult }));
-              }
-            } else {
-              arr = [];
-            }
-            // Pad or truncate
-            if (arr.length > expected) arr = arr.slice(0, expected);
-            while (arr.length < expected) arr.push({ ...defaultResult });
-            return arr;
-          };
-
-          scanAResults = coerceArray(scanAResults, batch.length);
-          scanBResults = coerceArray(scanBResults, batch.length);
-
-          console.log(`✅ Auto-repair complete. Scan A: ${scanAResults.length}, Scan B: ${scanBResults.length}`);
+          console.error(`❌ CRITICAL: Results count mismatch after validation! Batch: ${batch.length}, Scan A: ${scanAResults.length}, Scan B: ${scanBResults.length}`);
+          throw new Error(`Results count mismatch after validation: Batch ${batch.length}, Scan A ${scanAResults.length}, Scan B ${scanBResults.length}`);
         }
         
         for (let j = 0; j < batch.length; j++) {
@@ -582,16 +620,9 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
 
         // Batch process redaction and rephrasing for flagged comments
         const flaggedComments = scannedComments.filter(c => c.concerning || c.identifiable);
-        console.log(`[POST-ANALYSIS] Flagged comments for redaction/rephrase: ${flaggedComments.length}`);
         if (flaggedComments.length > 0) {
           const flaggedTexts = flaggedComments.map(c => c.originalText || c.text);
           const activeConfig = scanA; // Use scan_a config for batch operations
-          console.log(`[REDACTION] Preparing to call batch redaction & rephrase`, {
-            provider: activeConfig.provider,
-            model: activeConfig.model,
-            defaultMode,
-            flaggedCount: flaggedComments.length,
-          });
 
           try {
             // For Bedrock Mistral, prefer per-item processing for higher reliability
@@ -617,77 +648,24 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 }
               }
             } else {
-              console.log(`[REDACTION] Invoking batch redaction & rephrase via ${activeConfig.provider}/${activeConfig.model}`);
               const [redactedTexts, rephrasedTexts] = await Promise.all([
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters),
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters)
               ]);
-              console.log(`[REDACTION] Batch responses received`, {
-                redType: typeof redactedTexts,
-                rephType: typeof rephrasedTexts,
-                redPreview: Array.isArray(redactedTexts) ? (redactedTexts[0]?.substring?.(0,100) || String(redactedTexts[0]).substring(0,100)) : String(redactedTexts).substring(0,100),
-                rephPreview: Array.isArray(rephrasedTexts) ? (rephrasedTexts[0]?.substring?.(0,100) || String(rephrasedTexts[0]).substring(0,100)) : String(rephrasedTexts).substring(0,100)
-              });
 
               // Apply redacted and rephrased texts
-              let redArr = Array.isArray(redactedTexts) ? redactedTexts : [String(redactedTexts ?? '')];
-              let rephArr = Array.isArray(rephrasedTexts) ? rephrasedTexts : [String(rephrasedTexts ?? '')];
-
-              // Normalize nested encodings (common Haiku behavior)
-              const tryCoerce = (arr: any[]) => {
-                if (arr.length === 1 && typeof arr[0] === 'string') {
-                  const s = arr[0].trim();
-                  if (s.startsWith('```')) {
-                    // strip code fences
-                    const m = s.match(/```(?:json)?\n([\s\S]*?)```/i);
-                    if (m && m[1]) {
-                      arr = [m[1].trim()];
-                    }
-                  }
-                  if (s.startsWith('[')) {
-                    try {
-                      const parsed = JSON.parse(s);
-                      if (Array.isArray(parsed)) return parsed;
-                    } catch {}
-                  }
-                }
-                return arr;
-              };
-              redArr = tryCoerce(redArr).map((v: any) => typeof v === 'string' ? v.trim() : JSON.stringify(v));
-              rephArr = tryCoerce(rephArr).map((v: any) => typeof v === 'string' ? v.trim() : JSON.stringify(v));
-
-              // Ensure lengths match number of flagged comments
-              const expected = flaggedComments.length;
-              if (redArr.length !== expected) {
-                console.warn(`Redaction results length (${redArr.length}) does not match flagged count (${expected}). Adjusting.`);
-                if (redArr.length > expected) redArr = redArr.slice(0, expected);
-                while (redArr.length < expected) redArr.push('');
-              }
-              if (rephArr.length !== expected) {
-                console.warn(`Rephrase results length (${rephArr.length}) does not match flagged count (${expected}). Adjusting.`);
-                if (rephArr.length > expected) rephArr = rephArr.slice(0, expected);
-                while (rephArr.length < expected) rephArr.push('');
-              }
-              console.log(`[REDACTION] Normalized lengths`, { redLen: redArr.length, rephLen: rephArr.length, expected });
-
               let flaggedIndex = 0;
               for (let k = 0; k < scannedComments.length; k++) {
                 if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                  scannedComments[k].redactedText = redArr[flaggedIndex];
-                  scannedComments[k].rephrasedText = rephArr[flaggedIndex];
+                  scannedComments[k].redactedText = redactedTexts[flaggedIndex];
+                  scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex];
                   
                   // Set final text based on mode
-                  if (scannedComments[k].mode === 'redact' && redArr[flaggedIndex]) {
-                    scannedComments[k].text = redArr[flaggedIndex];
-                  } else if (scannedComments[k].mode === 'rephrase' && rephArr[flaggedIndex]) {
-                    scannedComments[k].text = rephArr[flaggedIndex];
+                  if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
+                    scannedComments[k].text = redactedTexts[flaggedIndex];
+                  } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
+                    scannedComments[k].text = rephrasedTexts[flaggedIndex];
                   }
-                  console.log(`[ASSIGN] Row mapped`, {
-                    rowId: scannedComments[k].id,
-                    mode: scannedComments[k].mode,
-                    redPreview: String(redArr[flaggedIndex]).substring(0,100),
-                    rephPreview: String(rephArr[flaggedIndex]).substring(0,100)
-                  });
                   
                   flaggedIndex++;
                 }
@@ -1312,117 +1290,12 @@ async function performAICall(provider: string, model: string, prompt: string, co
       }
     } else if (responseType === 'batch_text') {
       try {
-        // First attempt: direct JSON parse
-        let parsed = JSON.parse(content);
-        // Normalize nested encodings and shapes
-        if (typeof parsed === 'string') {
-          const s = parsed.trim();
-          if (s.startsWith('[')) {
-            try { parsed = JSON.parse(s); } catch {}
-          }
-        }
-        if (Array.isArray(parsed) && parsed.length === 1 && typeof parsed[0] === 'string' && parsed[0].trim().startsWith('[')) {
-          try { parsed = JSON.parse(parsed[0].trim()); } catch {}
-        }
-        if (Array.isArray(parsed)) {
-          return parsed
-            .flatMap((item: any) => Array.isArray(item) ? item : [item])
-            .map((item: any) => typeof item === 'string' ? item : JSON.stringify(item))
-            .map((s: string) => s.trim().replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, ''))
-            .filter((s: string) => s.length > 0);
-        }
-        // If parsing yielded a non-array, fall back below
+        return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        
-        // Clean up common prefix text patterns before attempting alternative parses
-        let cleanedContent = content.trim();
-        const prefixPatterns = [
-          /^here is the list of redacted comments:\s*/i,
-          /^here are the redacted comments:\s*/i,
-          /^here is the list of rephrased comments:\s*/i,
-          /^here are the rephrased comments:\s*/i,
-          /^here is the processed output:\s*/i,
-          /^processed output:\s*/i,
-          /^here is the result:\s*/i,
-          /^result:\s*/i
-        ];
-        for (const pattern of prefixPatterns) {
-          cleanedContent = cleanedContent.replace(pattern, '');
-        }
-
-        // Second attempt: JSON parse after cleanup, with normalization
-        try {
-          let parsedAfterCleanup: any = JSON.parse(cleanedContent);
-          if (typeof parsedAfterCleanup === 'string' && parsedAfterCleanup.trim().startsWith('[')) {
-            try { parsedAfterCleanup = JSON.parse(parsedAfterCleanup.trim()); } catch {}
-          }
-          if (Array.isArray(parsedAfterCleanup) && parsedAfterCleanup.length === 1 && typeof parsedAfterCleanup[0] === 'string' && parsedAfterCleanup[0].trim().startsWith('[')) {
-            try { parsedAfterCleanup = JSON.parse(parsedAfterCleanup[0].trim()); } catch {}
-          }
-          if (Array.isArray(parsedAfterCleanup)) {
-            return parsedAfterCleanup
-              .flatMap((item: any) => Array.isArray(item) ? item : [item])
-              .map((item: any) => typeof item === 'string' ? item : JSON.stringify(item))
-              .map((s: string) => s.trim().replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, ''))
-              .filter((s: string) => s.length > 0);
-          }
-        } catch {}
-
-        // Third attempt: extract a JSON array/object from within the text
-        const jsonMatch = cleanedContent.match(/(\[[\s\S]*?\]|\{[\s\S]*?\})/);
-        if (jsonMatch) {
-          try {
-            const extracted = JSON.parse(jsonMatch[0]);
-            if (Array.isArray(extracted)) {
-              return extracted;
-            }
-          } catch {}
-        }
-
-        // Final fallback: split by lines and strip list markers/bullets
-        return cleanedContent
-          .split('\n')
-          .map(l => l.trim())
-          .filter(l => l.length > 0)
-          .map(l => l.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, ''));
+        // If not valid JSON, split by lines or return array with single item
+        return content.split('\n').filter(line => line.trim().length > 0);
       }
-    } else if (responseType === 'text') {
-      // Clean up common prefix text patterns that models often include
-      let cleanedContent = content.trim();
-      
-      // Remove common introductory phrases
-      const prefixPatterns = [
-        /^here is the list of redacted comments:\s*/i,
-        /^here are the redacted comments:\s*/i,
-        /^here is the redacted version:\s*/i,
-        /^here is the rephrased version:\s*/i,
-        /^here is the rephrased comment:\s*/i,
-        /^redacted comment:\s*/i,
-        /^rephrased comment:\s*/i,
-        /^here is the processed comment:\s*/i,
-        /^processed comment:\s*/i,
-        /^here is the result:\s*/i,
-        /^result:\s*/i,
-        /^output:\s*/i,
-        /^here is the output:\s*/i
-      ];
-      
-      for (const pattern of prefixPatterns) {
-        cleanedContent = cleanedContent.replace(pattern, '');
-      }
-      
-      // Remove any leading/trailing whitespace and newlines
-      cleanedContent = cleanedContent.trim();
-      
-      // Log the cleaning process for debugging
-      if (cleanedContent !== content.trim()) {
-        console.log(`Cleaned OpenAI response for ${model}:`);
-        console.log(`Original: "${content.substring(0, 100)}..."`);
-        console.log(`Cleaned: "${cleanedContent.substring(0, 100)}..."`);
-      }
-      
-      return cleanedContent;
     } else {
       return content;
     }
@@ -1573,63 +1446,9 @@ async function performAICall(provider: string, model: string, prompt: string, co
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        
-        // Clean up common prefix text patterns before splitting
-        let cleanedContent = content.trim();
-        const prefixPatterns = [
-          /^here is the list of redacted comments:\s*/i,
-          /^here are the redacted comments:\s*/i,
-          /^here is the list of rephrased comments:\s*/i,
-          /^here are the rephrased comments:\s*/i,
-          /^here is the processed output:\s*/i,
-          /^processed output:\s*/i,
-          /^here is the result:\s*/i,
-          /^result:\s*/i
-        ];
-        
-        for (const pattern of prefixPatterns) {
-          cleanedContent = cleanedContent.replace(pattern, '');
-        }
-        
         // If not valid JSON, split by lines or return array with single item
-        return cleanedContent.split('\n').filter(line => line.trim().length > 0);
+        return content.split('\n').filter(line => line.trim().length > 0);
       }
-    } else if (responseType === 'text') {
-      // Clean up common prefix text patterns that models often include
-      let cleanedContent = content.trim();
-      
-      // Remove common introductory phrases
-      const prefixPatterns = [
-        /^here is the list of redacted comments:\s*/i,
-        /^here are the redacted comments:\s*/i,
-        /^here is the redacted version:\s*/i,
-        /^here is the rephrased version:\s*/i,
-        /^here is the rephrased comment:\s*/i,
-        /^redacted comment:\s*/i,
-        /^rephrased comment:\s*/i,
-        /^here is the processed comment:\s*/i,
-        /^processed comment:\s*/i,
-        /^here is the result:\s*/i,
-        /^result:\s*/i,
-        /^output:\s*/i,
-        /^here is the output:\s*/i
-      ];
-      
-      for (const pattern of prefixPatterns) {
-        cleanedContent = cleanedContent.replace(pattern, '');
-      }
-      
-      // Remove any leading/trailing whitespace and newlines
-      cleanedContent = cleanedContent.trim();
-      
-      // Log the cleaning process for debugging
-      if (cleanedContent !== content.trim()) {
-        console.log(`Cleaned Azure OpenAI response for ${model}:`);
-        console.log(`Original: "${content.substring(0, 100)}..."`);
-        console.log(`Cleaned: "${cleanedContent.substring(0, 100)}..."`);
-      }
-      
-      return cleanedContent;
     } else {
       return content;
     }
@@ -2219,63 +2038,9 @@ async function performAICall(provider: string, model: string, prompt: string, co
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        
-        // Clean up common prefix text patterns before splitting
-        let cleanedContent = content.trim();
-        const prefixPatterns = [
-          /^here is the list of redacted comments:\s*/i,
-          /^here are the redacted comments:\s*/i,
-          /^here is the list of rephrased comments:\s*/i,
-          /^here are the rephrased comments:\s*/i,
-          /^here is the processed output:\s*/i,
-          /^processed output:\s*/i,
-          /^here is the result:\s*/i,
-          /^result:\s*/i
-        ];
-        
-        for (const pattern of prefixPatterns) {
-          cleanedContent = cleanedContent.replace(pattern, '');
-        }
-        
         // If not valid JSON, split by lines or return array with single item
-        return cleanedContent.split('\n').filter(line => line.trim().length > 0);
+        return content.split('\n').filter(line => line.trim().length > 0);
       }
-    } else if (responseType === 'text') {
-      // Clean up common prefix text patterns that models like Haiku often include
-      let cleanedContent = content.trim();
-      
-      // Remove common introductory phrases
-      const prefixPatterns = [
-        /^here is the list of redacted comments:\s*/i,
-        /^here are the redacted comments:\s*/i,
-        /^here is the redacted version:\s*/i,
-        /^here is the rephrased version:\s*/i,
-        /^here is the rephrased comment:\s*/i,
-        /^redacted comment:\s*/i,
-        /^rephrased comment:\s*/i,
-        /^here is the processed comment:\s*/i,
-        /^processed comment:\s*/i,
-        /^here is the result:\s*/i,
-        /^result:\s*/i,
-        /^output:\s*/i,
-        /^here is the output:\s*/i
-      ];
-      
-      for (const pattern of prefixPatterns) {
-        cleanedContent = cleanedContent.replace(pattern, '');
-      }
-      
-      // Remove any leading/trailing whitespace and newlines
-      cleanedContent = cleanedContent.trim();
-      
-      // Log the cleaning process for debugging
-      if (cleanedContent !== content.trim()) {
-        console.log(`Cleaned response for ${model}:`);
-        console.log(`Original: "${content.substring(0, 100)}..."`);
-        console.log(`Cleaned: "${cleanedContent.substring(0, 100)}..."`);
-      }
-      
-      return cleanedContent;
     } else {
       return content;
     }
