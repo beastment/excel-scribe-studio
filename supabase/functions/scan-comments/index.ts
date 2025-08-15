@@ -1229,9 +1229,63 @@ async function performAICall(provider: string, model: string, prompt: string, co
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
+        
+        // Clean up common prefix text patterns before splitting
+        let cleanedContent = content.trim();
+        const prefixPatterns = [
+          /^here is the list of redacted comments:\s*/i,
+          /^here are the redacted comments:\s*/i,
+          /^here is the list of rephrased comments:\s*/i,
+          /^here are the rephrased comments:\s*/i,
+          /^here is the processed output:\s*/i,
+          /^processed output:\s*/i,
+          /^here is the result:\s*/i,
+          /^result:\s*/i
+        ];
+        
+        for (const pattern of prefixPatterns) {
+          cleanedContent = cleanedContent.replace(pattern, '');
+        }
+        
         // If not valid JSON, split by lines or return array with single item
-        return content.split('\n').filter(line => line.trim().length > 0);
+        return cleanedContent.split('\n').filter(line => line.trim().length > 0);
       }
+    } else if (responseType === 'text') {
+      // Clean up common prefix text patterns that models often include
+      let cleanedContent = content.trim();
+      
+      // Remove common introductory phrases
+      const prefixPatterns = [
+        /^here is the list of redacted comments:\s*/i,
+        /^here are the redacted comments:\s*/i,
+        /^here is the redacted version:\s*/i,
+        /^here is the rephrased version:\s*/i,
+        /^here is the rephrased comment:\s*/i,
+        /^redacted comment:\s*/i,
+        /^rephrased comment:\s*/i,
+        /^here is the processed comment:\s*/i,
+        /^processed comment:\s*/i,
+        /^here is the result:\s*/i,
+        /^result:\s*/i,
+        /^output:\s*/i,
+        /^here is the output:\s*/i
+      ];
+      
+      for (const pattern of prefixPatterns) {
+        cleanedContent = cleanedContent.replace(pattern, '');
+      }
+      
+      // Remove any leading/trailing whitespace and newlines
+      cleanedContent = cleanedContent.trim();
+      
+      // Log the cleaning process for debugging
+      if (cleanedContent !== content.trim()) {
+        console.log(`Cleaned OpenAI response for ${model}:`);
+        console.log(`Original: "${content.substring(0, 100)}..."`);
+        console.log(`Cleaned: "${cleanedContent.substring(0, 100)}..."`);
+      }
+      
+      return cleanedContent;
     } else {
       return content;
     }
@@ -1382,9 +1436,63 @@ async function performAICall(provider: string, model: string, prompt: string, co
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
+        
+        // Clean up common prefix text patterns before splitting
+        let cleanedContent = content.trim();
+        const prefixPatterns = [
+          /^here is the list of redacted comments:\s*/i,
+          /^here are the redacted comments:\s*/i,
+          /^here is the list of rephrased comments:\s*/i,
+          /^here are the rephrased comments:\s*/i,
+          /^here is the processed output:\s*/i,
+          /^processed output:\s*/i,
+          /^here is the result:\s*/i,
+          /^result:\s*/i
+        ];
+        
+        for (const pattern of prefixPatterns) {
+          cleanedContent = cleanedContent.replace(pattern, '');
+        }
+        
         // If not valid JSON, split by lines or return array with single item
-        return content.split('\n').filter(line => line.trim().length > 0);
+        return cleanedContent.split('\n').filter(line => line.trim().length > 0);
       }
+    } else if (responseType === 'text') {
+      // Clean up common prefix text patterns that models often include
+      let cleanedContent = content.trim();
+      
+      // Remove common introductory phrases
+      const prefixPatterns = [
+        /^here is the list of redacted comments:\s*/i,
+        /^here are the redacted comments:\s*/i,
+        /^here is the redacted version:\s*/i,
+        /^here is the rephrased version:\s*/i,
+        /^here is the rephrased comment:\s*/i,
+        /^redacted comment:\s*/i,
+        /^rephrased comment:\s*/i,
+        /^here is the processed comment:\s*/i,
+        /^processed comment:\s*/i,
+        /^here is the result:\s*/i,
+        /^result:\s*/i,
+        /^output:\s*/i,
+        /^here is the output:\s*/i
+      ];
+      
+      for (const pattern of prefixPatterns) {
+        cleanedContent = cleanedContent.replace(pattern, '');
+      }
+      
+      // Remove any leading/trailing whitespace and newlines
+      cleanedContent = cleanedContent.trim();
+      
+      // Log the cleaning process for debugging
+      if (cleanedContent !== content.trim()) {
+        console.log(`Cleaned Azure OpenAI response for ${model}:`);
+        console.log(`Original: "${content.substring(0, 100)}..."`);
+        console.log(`Cleaned: "${cleanedContent.substring(0, 100)}..."`);
+      }
+      
+      return cleanedContent;
     } else {
       return content;
     }
@@ -1974,9 +2082,63 @@ async function performAICall(provider: string, model: string, prompt: string, co
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
+        
+        // Clean up common prefix text patterns before splitting
+        let cleanedContent = content.trim();
+        const prefixPatterns = [
+          /^here is the list of redacted comments:\s*/i,
+          /^here are the redacted comments:\s*/i,
+          /^here is the list of rephrased comments:\s*/i,
+          /^here are the rephrased comments:\s*/i,
+          /^here is the processed output:\s*/i,
+          /^processed output:\s*/i,
+          /^here is the result:\s*/i,
+          /^result:\s*/i
+        ];
+        
+        for (const pattern of prefixPatterns) {
+          cleanedContent = cleanedContent.replace(pattern, '');
+        }
+        
         // If not valid JSON, split by lines or return array with single item
-        return content.split('\n').filter(line => line.trim().length > 0);
+        return cleanedContent.split('\n').filter(line => line.trim().length > 0);
       }
+    } else if (responseType === 'text') {
+      // Clean up common prefix text patterns that models like Haiku often include
+      let cleanedContent = content.trim();
+      
+      // Remove common introductory phrases
+      const prefixPatterns = [
+        /^here is the list of redacted comments:\s*/i,
+        /^here are the redacted comments:\s*/i,
+        /^here is the redacted version:\s*/i,
+        /^here is the rephrased version:\s*/i,
+        /^here is the rephrased comment:\s*/i,
+        /^redacted comment:\s*/i,
+        /^rephrased comment:\s*/i,
+        /^here is the processed comment:\s*/i,
+        /^processed comment:\s*/i,
+        /^here is the result:\s*/i,
+        /^result:\s*/i,
+        /^output:\s*/i,
+        /^here is the output:\s*/i
+      ];
+      
+      for (const pattern of prefixPatterns) {
+        cleanedContent = cleanedContent.replace(pattern, '');
+      }
+      
+      // Remove any leading/trailing whitespace and newlines
+      cleanedContent = cleanedContent.trim();
+      
+      // Log the cleaning process for debugging
+      if (cleanedContent !== content.trim()) {
+        console.log(`Cleaned response for ${model}:`);
+        console.log(`Original: "${content.substring(0, 100)}..."`);
+        console.log(`Cleaned: "${cleanedContent.substring(0, 100)}..."`);
+      }
+      
+      return cleanedContent;
     } else {
       return content;
     }
