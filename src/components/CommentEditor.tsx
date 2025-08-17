@@ -165,27 +165,47 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setScanProgress(0);
     toast.info(`Scanning ${comments.length} comments with AI...`);
 
-    const BATCH_SIZE = 20;
-    const PHASE2_CHUNK = 10; // smaller follow-up chunks to avoid edge timeouts
+    // Adaptive batching for speed and stability at scale
+    let initialBatchSize = 20; // starting point; will auto-tune
+    let minBatchSize = 5;
+    let maxBatchSize = 100; // prevent overly large payloads
+    let batchSize = Math.max(minBatchSize, Math.min(maxBatchSize, initialBatchSize));
     let processedComments: any[] = [];
     let currentBatch = 0;
-    const totalBatches = Math.ceil(comments.length / BATCH_SIZE);
+    
+    const adjustBatchSize = (elapsedMs: number) => {
+      // Target ~10–30s per batch; back off on long runs, grow if very fast
+      if (elapsedMs > 50000) {
+        batchSize = Math.max(minBatchSize, Math.floor(batchSize * 0.6));
+      } else if (elapsedMs > 30000) {
+        batchSize = Math.max(minBatchSize, Math.floor(batchSize * 0.8));
+      } else if (elapsedMs < 10000) {
+        batchSize = Math.min(maxBatchSize, Math.ceil(batchSize * 1.3));
+      } else if (elapsedMs < 20000) {
+        batchSize = Math.min(maxBatchSize, Math.ceil(batchSize * 1.15));
+      }
+    };
 
     try {
-      for (let batchStart = 0; batchStart < comments.length; batchStart += BATCH_SIZE) {
+      let batchStart = 0;
+      while (batchStart < comments.length) {
         currentBatch++;
-        console.log(`Processing batch ${currentBatch}/${totalBatches}`);
+        const remaining = comments.length - batchStart;
+        const currentSize = Math.min(batchSize, remaining);
+        const totalBatches = Math.ceil((comments.length - batchStart) / Math.max(currentSize, 1));
+        console.log(`Processing batch ${currentBatch} (size=${currentSize})`);
         
         // Update progress
-        setScanProgress((currentBatch - 1) / totalBatches * 90);
+        setScanProgress((batchStart / comments.length) * 90);
         
+        const t0 = performance.now();
         // Phase 1: fast analysis only — skip adjudicator and postprocess
         const { data, error } = await supabase.functions.invoke('scan-comments', {
           body: { 
             comments, 
             defaultMode,
             batchStart,
-            batchSize: BATCH_SIZE,
+            batchSize: currentSize,
             skipAdjudicator: true,
             skipPostprocess: true
           }
@@ -229,18 +249,24 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           setHasScanRun(true);
 
           // Update progress with partial results
-          toast.info(`Processed batch ${currentBatch}/${totalBatches} (${processedComments.length}/${comments.length} comments)`);
+          toast.info(`Processed ${processedComments.length}/${comments.length} comments`);
         } else {
           throw new Error(`Batch ${currentBatch}: No comment data received`);
         }
+
+        const elapsed = performance.now() - t0;
+        adjustBatchSize(elapsed);
+        batchStart += currentSize;
       }
       
       // Phase 2: follow-up adjudication and postprocess on subset
       const needsFollowup = processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || c.concerning || c.identifiable);
       if (needsFollowup.length > 0) {
         toast.info(`Running follow-up on ${needsFollowup.length} flagged comments...`);
-        for (let i = 0; i < needsFollowup.length; i += PHASE2_CHUNK) {
-          const chunk = needsFollowup.slice(i, i + PHASE2_CHUNK);
+        // Phase 2 chunk size follows the adapted batch size, but smaller to avoid timeouts
+        const phase2Base = Math.max(5, Math.floor(batchSize / 2));
+        for (let i = 0; i < needsFollowup.length; i += phase2Base) {
+          const chunk = needsFollowup.slice(i, i + phase2Base);
           const { data: data2, error: error2 } = await supabase.functions.invoke('scan-comments', {
             body: {
               comments: chunk,

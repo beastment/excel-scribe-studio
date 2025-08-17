@@ -702,23 +702,29 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 }
               }
             } else if (!outOfTime) {
-              const [redactedTexts, rephrasedTexts] = await Promise.all([
+              const [rawRedacted, rawRephrased] = await Promise.all([
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters),
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters)
               ]);
+
+              // Normalize batch text outputs to strip headers like "Here is the list..." and align items
+              const redactedTexts = normalizeBatchTextOutput(rawRedacted, flaggedTexts.length);
+              const rephrasedTexts = normalizeBatchTextOutput(rawRephrased, flaggedTexts.length);
 
               // Apply redacted and rephrased texts
               let flaggedIndex = 0;
               for (let k = 0; k < scannedComments.length; k++) {
                 if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                  scannedComments[k].redactedText = redactedTexts[flaggedIndex];
-                  scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex];
+                  const red = redactedTexts[flaggedIndex];
+                  const reph = rephrasedTexts[flaggedIndex];
+                  scannedComments[k].redactedText = red;
+                  scannedComments[k].rephrasedText = reph;
                   
                   // Set final text based on mode
-                  if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
-                    scannedComments[k].text = redactedTexts[flaggedIndex];
-                  } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
-                    scannedComments[k].text = rephrasedTexts[flaggedIndex];
+                  if (scannedComments[k].mode === 'redact' && red) {
+                    scannedComments[k].text = red;
+                  } else if (scannedComments[k].mode === 'rephrase' && reph) {
+                    scannedComments[k].text = reph;
                   }
                   
                   flaggedIndex++;
@@ -1523,6 +1529,52 @@ async function performAICall(provider: string, model: string, prompt: string, co
     return await retryWithBackoff(async () => {
       return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion);
     }, 4, 2000, model); // Increased retries and base delay for Bedrock
+  }
+
+  // Normalize provider "batch_text" outputs into a clean string[] of desired length
+  function normalizeBatchTextOutput(raw: any, expectedLength: number): string[] {
+    // If already an array of strings, shallow copy and trim
+    const toArray = (val: any): any[] => Array.isArray(val) ? val : [val];
+    let items = toArray(raw)
+      .flatMap((entry: any) => {
+        if (Array.isArray(entry)) return entry;
+        if (typeof entry === 'string') return [entry];
+        if (entry == null) return [];
+        return [String(entry)];
+      })
+      .flatMap((s: any) => typeof s === 'string' ? s.split(/\r?\n/).filter(Boolean) : [String(s)])
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+
+    // Remove generic headers/prefaces that some models prepend
+    const headerPatterns = [
+      /^here(?:'s| is)\b.*?(list|results|redacted comments)[:\-]?$/i,
+      /^the\s+(?:following|result|response)\b.*$/i,
+      /^output\s*[:\-].*$/i
+    ];
+    items = items.filter(line => !headerPatterns.some(rx => rx.test(line)));
+
+    // If items look like bullet/numbered list, strip bullets and indices
+    items = items.map(line => line.replace(/^[-*•]\s*/, '').replace(/^\d+[).]\s*/, '').trim());
+
+    // If we still have a single blob that looks like JSON array, try parsing it
+    if (items.length === 1 && /\[.*\]|\{.*\}/.test(items[0])) {
+      try {
+        const parsed = JSON.parse(items[0]);
+        if (Array.isArray(parsed)) {
+          items = parsed.map(x => typeof x === 'string' ? x : JSON.stringify(x));
+        }
+      } catch {}
+    }
+
+    // Enforce expected length: pad or trim
+    if (items.length < expectedLength) {
+      const last = items[items.length - 1] || '';
+      while (items.length < expectedLength) items.push(last);
+    }
+    if (items.length > expectedLength) items = items.slice(0, expectedLength);
+
+    return items;
   }
 
   // Retry function with exponential backoff - enhanced for Bedrock
