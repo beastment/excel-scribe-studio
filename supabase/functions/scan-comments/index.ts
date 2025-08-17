@@ -722,17 +722,20 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 }
               }
             } else if (!outOfTime) {
-              const [redactedTexts, rephrasedTexts] = await Promise.all([
+              const [rawRedacted, rawRephrased] = await Promise.all([
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters),
                 callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters)
               ]);
+
+              const redactedTexts = normalizeBatchTextParsed(rawRedacted);
+              const rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
 
               // Apply redacted and rephrased texts
               let flaggedIndex = 0;
               for (let k = 0; k < scannedComments.length; k++) {
                 if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                  scannedComments[k].redactedText = redactedTexts[flaggedIndex];
-                  scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex];
+                  scannedComments[k].redactedText = redactedTexts[flaggedIndex] ?? null;
+                  scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex] ?? null;
                   
                   // Set final text based on mode
                   if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
@@ -1096,6 +1099,107 @@ function heuristicAnalyze(text: string): { concerning: boolean; identifiable: bo
   };
 }
 
+// Robust parser for batch_text responses that may include prose headers or wrapped JSON
+function parseBatchTextList(content: string): string[] {
+  try {
+    // Fast path: already a valid JSON array
+    const direct = JSON.parse(content);
+    if (Array.isArray(direct)) {
+      return direct.map((v: any) => (typeof v === 'string' ? v : JSON.stringify(v)));
+    }
+  } catch {}
+
+  // Cleanup common wrappers and markdown fences
+  let c = String(content || '').trim();
+  c = c.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+
+  // Remove leading prose like "Here is/are the list ..."
+  c = c.replace(/^(?:here\s+(?:is|are)[\s\S]*?:)\s*/i, '');
+
+  // Extract the first JSON array present
+  const jsonArrayMatch = c.match(/\[[\s\S]*?\]/);
+  if (jsonArrayMatch) {
+    const arrText = jsonArrayMatch[0];
+    try {
+      let arr = JSON.parse(arrText);
+      // If the array contains a single string that itself is a JSON array, parse that
+      if (
+        Array.isArray(arr) &&
+        arr.length === 1 &&
+        typeof arr[0] === 'string' &&
+        arr[0].trim().startsWith('[')
+      ) {
+        try {
+          const inner = JSON.parse(arr[0]);
+          if (Array.isArray(inner)) arr = inner;
+        } catch {}
+      }
+      if (Array.isArray(arr)) {
+        return arr.map((v: any) => (typeof v === 'string' ? v : JSON.stringify(v)));
+      }
+    } catch {}
+  }
+
+  // Fallback: split by lines, drop obvious headers, and if a single JSON-like line remains, parse it
+  const lines = c
+    .split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter(line => !/^here\s+(?:is|are)/i.test(line));
+
+  if (lines.length === 1 && lines[0].startsWith('[')) {
+    try {
+      const parsed = JSON.parse(lines[0]);
+      if (Array.isArray(parsed)) {
+        return parsed.map((v: any) => (typeof v === 'string' ? v : JSON.stringify(v)));
+      }
+    } catch {}
+  }
+
+  // Last resort: return non-empty lines or whole content as a single item
+  return lines.length > 0 ? lines : [c];
+}
+
+function normalizeBatchTextParsed(parsed: any): string[] {
+  // If already a string array, drop header-like lines and return
+  if (Array.isArray(parsed)) {
+    const cleaned = parsed
+      .filter((v) => v != null)
+      .map((v) => (typeof v === 'string' ? v.trim() : JSON.stringify(v)))
+      .filter((s) => s.length > 0)
+      .filter((s) => !/^here\s+(?:is|are)[\s\S]*?:\s*$/i.test(s));
+
+    // If single element that is itself a JSON array string, parse it
+    if (cleaned.length === 1 && cleaned[0].startsWith('[')) {
+      try {
+        const inner = JSON.parse(cleaned[0]);
+        if (Array.isArray(inner)) {
+          return inner.map((v: any) => (typeof v === 'string' ? v : JSON.stringify(v)));
+        }
+      } catch {}
+    }
+
+    // If two elements where the second looks like a JSON array string, parse second
+    if (
+      cleaned.length === 2 &&
+      cleaned[1] &&
+      cleaned[1].startsWith('[')
+    ) {
+      try {
+        const inner = JSON.parse(cleaned[1]);
+        if (Array.isArray(inner)) {
+          return inner.map((v: any) => (typeof v === 'string' ? v : JSON.stringify(v)));
+        }
+      } catch {}
+    }
+
+    return cleaned;
+  }
+
+  // Fallback to string-based parser
+  return parseBatchTextList(String(parsed ?? ''));
+}
+
 // Helper function to call AI services with rate limiting
 async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>, sequentialQueue?: Map<string, any>) {
   // Estimate tokens for this request
@@ -1367,8 +1471,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        // If not valid JSON, split by lines or return array with single item
-        return content.split('\n').filter(line => line.trim().length > 0);
+        return parseBatchTextList(content);
       }
     } else {
       return content;
@@ -1520,8 +1623,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
         return JSON.parse(content);
       } catch (parseError) {
         console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        // If not valid JSON, split by lines or return array with single item
-        return content.split('\n').filter(line => line.trim().length > 0);
+        return parseBatchTextList(content);
       }
     } else {
       return content;
