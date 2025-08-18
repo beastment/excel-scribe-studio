@@ -70,26 +70,26 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
         
         // Find demographic columns (prefer specific names; avoid generic 'area' matches)
         const normalizedHeaders = headers.map(h => (h || '').toString().trim().toLowerCase());
+        // Prefer a single column per import, in this priority; do not combine across columns
         const priorityOrder = [
-          'demographics', 'demographic',
-          'department',
           'work area', 'workarea',
-          'team',
+          'department',
           'division',
+          'team',
           'location',
-          'region'
+          'region',
+          'demographics', 'demographic'
         ];
-        const demographicIndices: number[] = [];
+        let demographicIndex: number = -1;
         for (const key of priorityOrder) {
           const idx = normalizedHeaders.findIndex(h => h === key);
-          if (idx !== -1) demographicIndices.push(idx);
+          if (idx !== -1) { demographicIndex = idx; break; }
         }
-        // Backward-compatible fallback: allow contains only for clearly scoped keys
-        if (demographicIndices.length === 0) {
-          const containsCandidates = ['work area', 'department', 'division', 'team', 'location', 'region'];
-          for (const key of containsCandidates) {
+        // Backward-compatible fallback: if no exact match, pick the first header that contains a key
+        if (demographicIndex === -1) {
+          for (const key of priorityOrder) {
             const idx = normalizedHeaders.findIndex(h => h.includes(key));
-            if (idx !== -1 && !demographicIndices.includes(idx)) demographicIndices.push(idx);
+            if (idx !== -1) { demographicIndex = idx; break; }
           }
         }
         
@@ -105,14 +105,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
           const commentText = row[commentColumnIndex];
           
           if (commentText && typeof commentText === 'string' && commentText.trim()) {
-            // Compose demographics from all detected columns (in priority order)
+            // Use the selected single demographics column (per file). If empty, leave undefined.
             let demographics: string | undefined = undefined;
-            if (demographicIndices.length > 0) {
-              const parts = demographicIndices
-                .map(idx => row[idx])
-                .map(v => (v == null ? '' : String(v).trim()))
-                .filter(v => v.length > 0);
-              if (parts.length > 0) demographics = parts.join(' / ');
+            if (demographicIndex >= 0) {
+              const val = row[demographicIndex];
+              const s = val == null ? '' : String(val).trim();
+              if (s.length > 0) demographics = s;
             }
             comments.push({
               id: `${importId}_row_${i}`,
