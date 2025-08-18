@@ -784,28 +784,8 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
               let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
 
               // If model returned aligned ID-tagged strings, strip tags and re-align by ID
-              const idTag = /^\s*<<<ID\s+(\d+)>>>\s*/i;
-              const stripAndIndex = (arr: string[]) => arr.map(s => {
-                const m = idTag.exec(s || '');
-                return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
-              });
-              const redIdx = stripAndIndex(redactedTexts);
-              const rephIdx = stripAndIndex(rephrasedTexts);
-              const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
-              if (allHaveIds) {
-                const expected = flaggedTexts.length;
-                const byId = (list: { idx: number|null; text: string }[]) => {
-                  const out: string[] = Array(expected).fill('');
-                  for (const it of list) {
-                    if (it.idx && it.idx >= 1 && it.idx <= expected) out[it.idx - 1] = it.text;
-                  }
-                  return out;
-                };
-                redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
-                rephrasedTexts = byId(rephIdx);
-              } else {
-                redactedTexts = redactedTexts.map(enforceRedactionPolicy);
-              }
+              redactedTexts = realignByIdTag(redactedTexts, flaggedTexts.length).map(enforceRedactionPolicy) as string[];
+              rephrasedTexts = realignByIdTag(rephrasedTexts, flaggedTexts.length);
 
               // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
               const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
@@ -1344,6 +1324,35 @@ function normalizeBatchTextParsed(parsed: any): string[] {
 
   // Fallback to string-based parser
   return parseBatchTextList(String(parsed ?? ''));
+}
+
+// Re-align an array of model outputs that may optionally begin with an <<<ID k>>> tag.
+// Returns an array of length `expected`, stripping any ID tags when present.
+function realignByIdTag(items: string[], expected: number): string[] {
+  const idTag = /^\s*<<<ID\s+(\d+)>>>\s*/i;
+  const out: string[] = Array(expected).fill('');
+  const remainder: string[] = [];
+  for (const s of items) {
+    const str = (s == null ? '' : String(s)).trim();
+    const m = idTag.exec(str);
+    if (m) {
+      const idx = parseInt(m[1], 10);
+      const val = str.replace(idTag, '').trim();
+      if (idx >= 1 && idx <= expected) {
+        out[idx - 1] = val;
+      } else {
+        remainder.push(val);
+      }
+    } else {
+      remainder.push(str);
+    }
+  }
+  // Fill any gaps in order with remainder values
+  let r = 0;
+  for (let i = 0; i < expected; i++) {
+    if (!out[i] && r < remainder.length) out[i] = remainder[r++];
+  }
+  return out;
 }
 
 // Attempt to extract a valid JSON array or a sequence of JSON objects from noisy text
