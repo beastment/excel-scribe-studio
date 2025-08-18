@@ -784,11 +784,37 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
               let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
 
               // If model returned aligned ID-tagged strings, strip tags and re-align by ID
-              redactedTexts = realignByIdTag(redactedTexts, flaggedTexts.length).map(enforceRedactionPolicy) as string[];
-              rephrasedTexts = realignByIdTag(rephrasedTexts, flaggedTexts.length);
+              const idTag = /^\s*<<<ID\s+(\d+)>>>\s*/i;
+              const stripAndIndex = (arr: string[]) => arr.map(s => {
+                const m = idTag.exec(s || '');
+                return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
+              });
+              const redIdx = stripAndIndex(redactedTexts);
+              const rephIdx = stripAndIndex(rephrasedTexts);
+              const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
+              if (allHaveIds) {
+                const expected = flaggedTexts.length;
+                const byId = (list: { idx: number|null; text: string }[]) => {
+                  const out: string[] = Array(expected).fill('');
+                  for (const it of list) {
+                    if (it.idx && it.idx >= 1 && it.idx <= expected) out[it.idx - 1] = it.text;
+                  }
+                  return out;
+                };
+                redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
+                rephrasedTexts = byId(rephIdx);
+              } else {
+                redactedTexts = redactedTexts.map(enforceRedactionPolicy);
+              }
 
               // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
-              const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
+              const isInvalid = (s: string | null | undefined) => {
+                const t = String(s ?? '').trim();
+                if (!t) return true;
+                if (/^(\[|here\s+(is|are))/i.test(t)) return true; // headers or raw array tokens
+                if (/^<<<(?:ID|END|ITEM)\s+\d+>>>\s*$/i.test(t)) return true; // bare sentinel only
+                return false;
+              };
               const expected = flaggedTexts.length;
               let needsFallback = redactedTexts.length !== expected || rephrasedTexts.length !== expected || redactedTexts.some(isInvalid) || rephrasedTexts.some(isInvalid);
               if (needsFallback) {
@@ -817,22 +843,24 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 }
               }
 
-              // Apply redacted and rephrased texts
+              // Apply outputs to flagged comments only, keeping positions aligned to original list
               let flaggedIndex = 0;
-              for (let k = 0; k < scannedComments.length; k++) {
-                if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                  scannedComments[k].redactedText = redactedTexts[flaggedIndex] ?? null;
-                  scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex] ?? null;
-                  
-                  // Set final text based on mode
-                  if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
-                    scannedComments[k].text = enforceRedactionPolicy(redactedTexts[flaggedIndex]);
-                  } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
-                    scannedComments[k].text = rephrasedTexts[flaggedIndex];
-                  }
-                  
-                  flaggedIndex++;
+              for (let j = 0; j < scannedComments.length; j++) {
+                const c = scannedComments[j];
+                if (!c.concerning && !c.identifiable) {
+                  // Ensure non-flagged rows remain untouched
+                  continue;
                 }
+                const red = redactedTexts[flaggedIndex] ?? '';
+                const reph = rephrasedTexts[flaggedIndex] ?? '';
+                c.redactedText = red || null;
+                c.rephrasedText = reph || null;
+                if (c.mode === 'redact' && red) {
+                  c.text = enforceRedactionPolicy(red) as string;
+                } else if (c.mode === 'rephrase' && reph) {
+                  c.text = reph;
+                }
+                flaggedIndex++;
               }
             }
           } catch (error) {
@@ -1324,35 +1352,6 @@ function normalizeBatchTextParsed(parsed: any): string[] {
 
   // Fallback to string-based parser
   return parseBatchTextList(String(parsed ?? ''));
-}
-
-// Re-align an array of model outputs that may optionally begin with an <<<ID k>>> tag.
-// Returns an array of length `expected`, stripping any ID tags when present.
-function realignByIdTag(items: string[], expected: number): string[] {
-  const idTag = /^\s*<<<ID\s+(\d+)>>>\s*/i;
-  const out: string[] = Array(expected).fill('');
-  const remainder: string[] = [];
-  for (const s of items) {
-    const str = (s == null ? '' : String(s)).trim();
-    const m = idTag.exec(str);
-    if (m) {
-      const idx = parseInt(m[1], 10);
-      const val = str.replace(idTag, '').trim();
-      if (idx >= 1 && idx <= expected) {
-        out[idx - 1] = val;
-      } else {
-        remainder.push(val);
-      }
-    } else {
-      remainder.push(str);
-    }
-  }
-  // Fill any gaps in order with remainder values
-  let r = 0;
-  for (let i = 0; i < expected; i++) {
-    if (!out[i] && r < remainder.length) out[i] = remainder[r++];
-  }
-  return out;
 }
 
 // Attempt to extract a valid JSON array or a sequence of JSON objects from noisy text

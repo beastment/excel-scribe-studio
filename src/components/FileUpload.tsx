@@ -68,30 +68,18 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
           header && (header.toLowerCase().includes('author') || header.toLowerCase().includes('name'))
         );
         
-        // Find demographic columns (prefer specific names; avoid generic 'area' matches)
-        const normalizedHeaders = headers.map(h => (h || '').toString().trim().toLowerCase());
-        // Prefer a single column per import, in this priority; do not combine across columns
-        const priorityOrder = [
-          'work area', 'workarea',
-          'department',
-          'division',
-          'team',
-          'location',
-          'region',
-          'demographics', 'demographic'
-        ];
-        let demographicIndex: number = -1;
-        for (const key of priorityOrder) {
-          const idx = normalizedHeaders.findIndex(h => h === key);
-          if (idx !== -1) { demographicIndex = idx; break; }
-        }
-        // Backward-compatible fallback: if no exact match, pick the first header that contains a key
-        if (demographicIndex === -1) {
-          for (const key of priorityOrder) {
-            const idx = normalizedHeaders.findIndex(h => h.includes(key));
-            if (idx !== -1) { demographicIndex = idx; break; }
-          }
-        }
+        // Find demographic columns (department, work area, etc.)
+        const demographicColumnIndex = headers.findIndex(header => 
+          header && (
+            header.toLowerCase().includes('department') ||
+            header.toLowerCase().includes('work area') ||
+            header.toLowerCase().includes('area') ||
+            header.toLowerCase().includes('division') ||
+            header.toLowerCase().includes('team') ||
+            header.toLowerCase().includes('location') ||
+            header.toLowerCase().includes('region')
+          )
+        );
         
         if (commentColumnIndex === -1) {
           toast.error('No comment column found in the Excel file');
@@ -99,21 +87,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
         }
 
         // Extract comments starting from row 1 (skip header)
-        const importId = `${Date.now().toString(36)}_${Math.floor(Math.random()*1e6).toString(36)}`;
         for (let i = 1; i < jsonData.length; i++) {
           const row = jsonData[i] as any[];
           const commentText = row[commentColumnIndex];
           
           if (commentText && typeof commentText === 'string' && commentText.trim()) {
-            // Use the selected single demographics column (per file). If empty, leave undefined.
-            let demographics: string | undefined = undefined;
-            if (demographicIndex >= 0) {
-              const val = row[demographicIndex];
-              const s = val == null ? '' : String(val).trim();
-              if (s.length > 0) demographics = s;
-            }
             comments.push({
-              id: `${importId}_row_${i}`,
+              id: `comment_${i}`,
               originalText: commentText.trim(),
               text: commentText.trim(),
               author: authorColumnIndex >= 0 ? row[authorColumnIndex] : undefined,
@@ -122,7 +102,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
               checked: false,
               concerning: false,
               identifiable: false,
-              demographics
+              demographics: demographicColumnIndex >= 0 ? row[demographicColumnIndex] : undefined
             });
           }
         }
