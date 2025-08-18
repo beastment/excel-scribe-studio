@@ -215,7 +215,7 @@ serve(async (req) => {
     try {
       const requestStartMs = Date.now();
       const timeBudgetMs = 55000; // aim to return within ~55s to avoid client timeouts
-      const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace any organization/employer names with \"XXXX\".\n- Replace job level/grade indicators (e.g., \"Level 5\", \"L5\", \"Band 3\") with \"XXXX\".\n- Replace tenure/time-in-role statements (e.g., \"3 years in role\", \"tenure\") with \"XXXX\".`;
+      const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace job level/grade indicators (e.g., \"Level 5\", \"L5\", \"Band 3\") with \"XXXX\".\n- Replace tenure/time-in-role statements (e.g., \"3 years in role\", \"tenure\") with \"XXXX\".`;
       // Prepare batch input for AI models (use original text, not redacted)
       const batchTexts = batch.map(comment => comment.originalText || comment.text);
       const batchInput = buildSentinelInput(batchTexts);
@@ -568,8 +568,8 @@ serve(async (req) => {
               r.identifiable = true;
               try { (r as any).__piiSafetyNetApplied = true; } catch {}
               if (!r.reasoning || r.reasoning.trim() === '') {
-                r.reasoning = 'Safety net: Detected PII (email/phone/ID/name) in the original text.';
-              } else if (!/PII|personally identifiable|email|phone|id|badge|SSN/i.test(r.reasoning)) {
+                r.reasoning = 'Safety net: Detected PII (email/phone/ID/name/level/tenure) in the original text.';
+              } else if (!/PII|personally identifiable|email|phone|id|badge|SSN|level|grade|tenure/i.test(r.reasoning)) {
                 r.reasoning += ' | Safety net: Detected PII in the original text.';
               }
             }
@@ -1292,6 +1292,66 @@ function normalizeBatchTextParsed(parsed: any): string[] {
   return parseBatchTextList(String(parsed ?? ''));
 }
 
+// Attempt to extract a valid JSON array or a sequence of JSON objects from noisy text
+function extractJsonArrayOrObjects(content: string): any[] | null {
+  try {
+    const trimmed = String(content || '').trim().replace(/```json\s*/gi, '').replace(/```/g, '');
+    // If there's an obvious array, try to isolate the outermost [ ... ] by slicing to the last closing bracket
+    const firstBracket = trimmed.indexOf('[');
+    const lastBracket = trimmed.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      const maybeArray = trimmed.slice(firstBracket, lastBracket + 1);
+      try {
+        const parsed = JSON.parse(maybeArray);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+  } catch {}
+
+  // As a fallback, scan for top-level JSON objects and build an array
+  const text = String(content || '');
+  const objects: any[] = [];
+  let depth = 0;
+  let inString = false;
+  let stringQuote: string | null = null;
+  let escapeNext = false;
+  let startIdx: number | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escapeNext) {
+        escapeNext = false;
+      } else if (ch === '\\') {
+        escapeNext = true;
+      } else if (ch === stringQuote) {
+        inString = false;
+        stringQuote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      stringQuote = ch;
+      continue;
+    }
+    if (ch === '{') {
+      if (depth === 0) startIdx = i;
+      depth++;
+    } else if (ch === '}') {
+      if (depth > 0) depth--;
+      if (depth === 0 && startIdx != null) {
+        const candidate = text.slice(startIdx, i + 1);
+        try {
+          const obj = JSON.parse(candidate);
+          objects.push(obj);
+        } catch {}
+        startIdx = null;
+      }
+    }
+  }
+  return objects.length > 0 ? objects : null;
+}
+
 // Deterministic redaction enforcement to catch items models may miss
 function enforceRedactionPolicy(text: string | null | undefined): string | null {
   if (!text) return text ?? null;
@@ -1449,7 +1509,6 @@ async function performAICall(provider: string, model: string, prompt: string, co
       { role: 'user', content: commentText }
     ];
 
-    logAIRequest('openai', model, responseType, prompt, commentText);
     const payload = JSON.stringify({ model, messages, temperature: 0.1 });
     logAIRequest('openai', model, responseType, prompt, commentText, payload);
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1624,7 +1683,6 @@ async function performAICall(provider: string, model: string, prompt: string, co
     // Azure OpenAI uses deployment name, which should match the model name
     const url = `${cleanEndpoint}/openai/deployments/${model}/chat/completions?api-version=${apiVersion}`;
 
-    logAIRequest('azure', model, responseType, prompt, commentText);
     const azPayload = JSON.stringify({ messages, temperature: 0.1 });
     logAIRequest('azure', model, responseType, prompt, commentText, azPayload);
     const response = await fetch(url, {
@@ -2109,6 +2167,22 @@ async function performAICall(provider: string, model: string, prompt: string, co
           
           // Try multiple extraction strategies
           let extractedJson: any = null;
+
+          // Anthropic/Claude fallback: attempt to extract an array or sequence of objects from noisy text
+          if (model.startsWith('anthropic.claude')) {
+            try {
+              const arr = extractJsonArrayOrObjects(jsonContent) || extractJsonArrayOrObjects(content);
+              if (arr && Array.isArray(arr) && arr.length > 0) {
+                if (responseType === 'analysis') {
+                  // Use the first object-like entry if present
+                  const first = arr.find((x: any) => x && typeof x === 'object') ?? arr[0];
+                  return { results: first, rawResponse: null };
+                }
+                // For batch, return the array directly
+                return { results: arr, rawResponse: null };
+              }
+            } catch {}
+          }
           
           // Strategy 1: Extract from explicit <json> ... </json>
           if (model.startsWith('amazon.titan')) {
@@ -2340,9 +2414,8 @@ async function performAICall(provider: string, model: string, prompt: string, co
       try {
         return JSON.parse(content);
       } catch (parseError) {
-        console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
-        // If not valid JSON, split by lines or return array with single item
-        return content.split('\n').filter(line => line.trim().length > 0);
+        if (isDebug) console.log(`JSON parsing failed for batch_text: ${String(parseError)} preview=${preview(content, 300)}`);
+        return parseBatchTextList(content);
       }
     } else {
       return content;
