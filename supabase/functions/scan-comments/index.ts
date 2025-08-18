@@ -271,13 +271,13 @@ serve(async (req) => {
           if (isDebug) console.log(`Scan A results field type: ${typeof scanAResponse?.results}`);
           if (isDebug) console.log(`Scan B results field type: ${typeof scanBResponse?.results}`);
           
-          // If either scan returned a single object or invalid shape, perform one strict batch retry instead of cloning the same object
-          if (scanAResults && !Array.isArray(scanAResults)) {
+          // If either scan returned a single object or invalid shape, perform one strict batch retry
+          if (scanAResults && (!Array.isArray(scanAResults) || scanAResults.length !== batch.length)) {
             console.warn(`Scan A (${scanA.provider}/${scanA.model}) returned non-array for batch. Performing strict retry.`);
             const retried = await strictBatchRetry(scanA.provider, scanA.model, enforcedPromptA, batchInput, batch.length, 'scan_a');
             if (retried) scanAResults = retried;
           }
-          if (scanBResults && !Array.isArray(scanBResults)) {
+          if (scanBResults && (!Array.isArray(scanBResults) || scanBResults.length !== batch.length)) {
             console.warn(`Scan B (${scanB.provider}/${scanB.model}) returned non-array for batch. Performing strict retry.`);
             const retried = await strictBatchRetry(scanB.provider, scanB.model, enforcedPromptB, batchInput, batch.length, 'scan_b');
             if (retried) scanBResults = retried;
@@ -1224,20 +1224,18 @@ function preview(text: any, length: number = 200): string {
   const t = typeof text === 'string' ? text : String(text ?? '');
   return t.length > length ? t.slice(0, length) + '...' : t;
 }
-function logAIRequest(provider: string, model: string, responseType: string, prompt: string, input: string, payload?: string, runId?: string) {
-  const prefix = runId ? `[RUN ${runId}] ` : '';
-  console.log(`${prefix}[AI REQUEST] ${provider}/${model} type=${responseType}\nprompt=${prompt}\ninput=${input}${payload ? `\npayload=${payload}` : ''}`);
+function logAIRequest(provider: string, model: string, responseType: string, prompt: string, input: string, payload?: string) {
+  console.log(`[AI REQUEST] ${provider}/${model} type=${responseType}\nprompt=${prompt}\ninput=${input}${payload ? `\npayload=${payload}` : ''}`);
 }
-function logAIResponse(provider: string, model: string, responseType: string, result: any, runId?: string) {
-  const prefix = runId ? `[RUN ${runId}] ` : '';
+function logAIResponse(provider: string, model: string, responseType: string, result: any) {
   try {
     const results = (result && typeof result === 'object' && 'results' in result) ? (result as any).results : result;
     const raw = (result && typeof result === 'object' && 'rawResponse' in result) ? (result as any).rawResponse : undefined;
     const resultsStr = typeof results === 'string' ? results : JSON.stringify(results, null, 2);
     const rawStr = raw === undefined ? '' : (typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2));
-    console.log(`${prefix}[AI RESPONSE] ${provider}/${model} type=${responseType}\nresults=${resultsStr}${raw !== undefined ? `\nraw=${rawStr}` : ''}`);
+    console.log(`[AI RESPONSE] ${provider}/${model} type=${responseType}\nresults=${resultsStr}${raw !== undefined ? `\nraw=${rawStr}` : ''}`);
   } catch (e) {
-    console.log(`${prefix}[AI RESPONSE] ${provider}/${model} type=${responseType} (unserializable) error=${(e as Error).message}`);
+    console.log(`[AI RESPONSE] ${provider}/${model} type=${responseType} (unserializable) error=${(e as Error).message}`);
   }
 }
 
@@ -1349,7 +1347,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     throw new Error(`Unsupported AI provider: ${provider}`);
   }
   
-  logAIResponse(provider, model, responseType, result, (globalThis as any).__scanRunId);
+  logAIResponse(provider, model, responseType, result);
   return result;
 }
 
@@ -1364,7 +1362,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
 
     logAIRequest('openai', model, responseType, prompt, commentText);
     const payload = JSON.stringify({ model, messages, temperature: 0.1 });
-    logAIRequest('openai', model, responseType, prompt, commentText, payload, (globalThis as any).__scanRunId);
+    logAIRequest('openai', model, responseType, prompt, commentText, payload);
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -1539,7 +1537,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
 
     logAIRequest('azure', model, responseType, prompt, commentText);
     const azPayload = JSON.stringify({ messages, temperature: 0.1 });
-    logAIRequest('azure', model, responseType, prompt, commentText, azPayload, (globalThis as any).__scanRunId);
+    logAIRequest('azure', model, responseType, prompt, commentText, azPayload);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1834,7 +1832,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     console.log(`Bedrock request to: ${endpoint}`);
     if (isDebug) console.log(`Authorization: ${authorizationHeader}`);
     
-    logAIRequest('bedrock', model, responseType, prompt, commentText, requestBody, (globalThis as any).__scanRunId);
+    logAIRequest('bedrock', model, responseType, prompt, commentText, requestBody);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
