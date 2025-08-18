@@ -555,6 +555,7 @@ serve(async (req) => {
             // PII safety net: if model says identifiable=false but text clearly has PII, flip to true
             if (r.identifiable === false && heur.identifiable === true) {
               r.identifiable = true;
+              try { (r as any).__piiSafetyNetApplied = true; } catch {}
               if (!r.reasoning || r.reasoning.trim() === '') {
                 r.reasoning = 'Safety net: Detected PII (email/phone/ID/name) in the original text.';
               } else if (!/PII|personally identifiable|email|phone|id|badge|SSN/i.test(r.reasoning)) {
@@ -717,7 +718,8 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 scanAResponse: scanARawResponse,
                 scanBResponse: scanBRawResponse,
                 adjudicationResponse: adjudicationResult?.rawResponse
-              }
+              },
+              piiSafetyNetApplied: Boolean((scanAResultCopy as any)?.__piiSafetyNetApplied || (scanBResultCopy as any)?.__piiSafetyNetApplied || (finalResult as any)?.__piiSafetyNetApplied)
             }
           };
 
@@ -901,6 +903,14 @@ async function processIndividualComment(comment, scanAResult, scanBResult, scanA
       }
     } else {
       console.log(`AI reasoning preserved: "${result.reasoning}"`);
+    }
+    // PII safety net when AI says false but heuristic detects PII
+    if (result.identifiable === false && heur.identifiable === true) {
+      result.identifiable = true;
+      try { (result as any).__piiSafetyNetApplied = true; } catch {}
+      if (!/PII|personally identifiable|email|phone|id|badge|SSN/i.test(result.reasoning)) {
+        result.reasoning = (result.reasoning ? result.reasoning + ' | ' : '') + 'Safety net: Detected PII in the original text.';
+      }
     }
     // Always preserve AI reasoning when it exists - don't override it
     return result;

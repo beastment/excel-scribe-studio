@@ -797,6 +797,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                                    {comment.debugInfo.scanAResult.reasoning}
                                  </p>
                                )}
+                               {comment.debugInfo.piiSafetyNetApplied && (
+                                 <p className="text-[10px] text-blue-600 dark:text-blue-300 mt-1">PII safety net applied</p>
+                               )}
                              </div>
                            )}
                            
@@ -814,6 +817,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                                    {comment.debugInfo.scanBResult.reasoning}
                                  </p>
                                )}
+                               {comment.debugInfo.piiSafetyNetApplied && (
+                                 <p className="text-[10px] text-green-700 dark:text-green-300 mt-1">PII safety net applied</p>
+                               )}
                              </div>
                            )}
                            
@@ -830,6 +836,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                                  <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
                                    {comment.debugInfo.adjudicationResult.reasoning}
                                  </p>
+                               )}
+                               {comment.debugInfo.piiSafetyNetApplied && (
+                                 <p className="text-[10px] text-purple-700 dark:text-purple-300 mt-1">PII safety net applied</p>
                                )}
                              </div>
                            )}
