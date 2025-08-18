@@ -271,13 +271,13 @@ serve(async (req) => {
           if (isDebug) console.log(`Scan A results field type: ${typeof scanAResponse?.results}`);
           if (isDebug) console.log(`Scan B results field type: ${typeof scanBResponse?.results}`);
           
-          // If either scan returned a single object or invalid shape, perform one strict batch retry
-          if (scanAResults && (!Array.isArray(scanAResults) || scanAResults.length !== batch.length)) {
+          // If either scan did not return an array, perform one strict batch retry
+          if (scanAResults && !Array.isArray(scanAResults)) {
             console.warn(`Scan A (${scanA.provider}/${scanA.model}) returned non-array for batch. Performing strict retry.`);
             const retried = await strictBatchRetry(scanA.provider, scanA.model, enforcedPromptA, batchInput, batch.length, 'scan_a');
             if (retried) scanAResults = retried;
           }
-          if (scanBResults && (!Array.isArray(scanBResults) || scanBResults.length !== batch.length)) {
+          if (scanBResults && !Array.isArray(scanBResults)) {
             console.warn(`Scan B (${scanB.provider}/${scanB.model}) returned non-array for batch. Performing strict retry.`);
             const retried = await strictBatchRetry(scanB.provider, scanB.model, enforcedPromptB, batchInput, batch.length, 'scan_b');
             if (retried) scanBResults = retried;
