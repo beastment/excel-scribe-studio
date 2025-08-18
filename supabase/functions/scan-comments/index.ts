@@ -783,6 +783,36 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
               const redactedTexts = normalizeBatchTextParsed(rawRedacted).map(enforceRedactionPolicy);
               const rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
 
+              // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
+              const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
+              const expected = flaggedTexts.length;
+              let needsFallback = redactedTexts.length !== expected || rephrasedTexts.length !== expected || redactedTexts.some(isInvalid) || rephrasedTexts.some(isInvalid);
+              if (needsFallback) {
+                console.warn(`Batch text outputs invalid or mismatched (expected=${expected}, red=${redactedTexts.length}, reph=${rephrasedTexts.length}). Running per-item fallback for failed entries.`);
+                // Build index list of flagged comments to process individually for the failed ones
+                let flaggedIndex = 0;
+                for (let k = 0; k < scannedComments.length; k++) {
+                  if (!(scannedComments[k].concerning || scannedComments[k].identifiable)) continue;
+                  const red = redactedTexts[flaggedIndex];
+                  const reph = rephrasedTexts[flaggedIndex];
+                  const redBad = flaggedIndex >= redactedTexts.length || isInvalid(red);
+                  const rephBad = flaggedIndex >= rephrasedTexts.length || isInvalid(reph);
+                  if (redBad || rephBad) {
+                    try {
+                      const [red1, reph1] = await Promise.all([
+                        redBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters) : Promise.resolve(red),
+                        rephBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters) : Promise.resolve(reph)
+                      ]);
+                      if (redBad) redactedTexts[flaggedIndex] = enforceRedactionPolicy(red1 as string);
+                      if (rephBad) rephrasedTexts[flaggedIndex] = reph1 as string;
+                    } catch (perItemErr) {
+                      console.warn(`Per-item fallback failed for flagged index ${flaggedIndex}:`, perItemErr);
+                    }
+                  }
+                  flaggedIndex++;
+                }
+              }
+
               // Apply redacted and rephrased texts
               let flaggedIndex = 0;
               for (let k = 0; k < scannedComments.length; k++) {
