@@ -20,6 +20,8 @@ interface AIConfiguration {
   rephrase_prompt: string;
   rpm_limit?: number;
   tpm_limit?: number;
+  input_token_limit?: number;
+  output_token_limit?: number;
 }
 
 const PROVIDERS = [
@@ -55,7 +57,7 @@ const SCANNER_CONFIGS = [
 export const AIConfigurationManagement = () => {
   const { toast } = useToast();
   const [configs, setConfigs] = useState<Record<string, AIConfiguration>>({});
-  const [modelLimits, setModelLimits] = useState<Record<string, { rpm_limit?: number; tpm_limit?: number }>>({});
+  const [modelLimits, setModelLimits] = useState<Record<string, { rpm_limit?: number; tpm_limit?: number; input_token_limit?: number; output_token_limit?: number }>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('scan_a');
@@ -98,14 +100,16 @@ export const AIConfigurationManagement = () => {
       }
 
       const configMap: Record<string, AIConfiguration> = {};
-      const limitsMap: Record<string, { rpm_limit?: number; tpm_limit?: number }> = {};
+      const limitsMap: Record<string, { rpm_limit?: number; tpm_limit?: number; input_token_limit?: number; output_token_limit?: number }> = {};
       
       // Process scanner configurations
       scannerData?.forEach(config => {
         configMap[config.scanner_type] = {
           ...config,
           rpm_limit: config.rpm_limit || undefined,
-          tpm_limit: config.tpm_limit || undefined
+          tpm_limit: config.tpm_limit || undefined,
+          input_token_limit: undefined,
+          output_token_limit: undefined
         };
       });
 
@@ -114,7 +118,9 @@ export const AIConfigurationManagement = () => {
         const modelKey = `${modelConfig.provider}:${modelConfig.model}`;
         limitsMap[modelKey] = {
           rpm_limit: modelConfig.rpm_limit || undefined,
-          tpm_limit: modelConfig.tpm_limit || undefined
+          tpm_limit: modelConfig.tpm_limit || undefined,
+          input_token_limit: modelConfig.input_token_limit || undefined,
+          output_token_limit: modelConfig.output_token_limit || undefined
         };
       });
       
@@ -125,7 +131,9 @@ export const AIConfigurationManagement = () => {
           if (!limitsMap[modelKey]) {
             limitsMap[modelKey] = {
               rpm_limit: undefined,
-              tpm_limit: undefined
+              tpm_limit: undefined,
+              input_token_limit: undefined,
+              output_token_limit: undefined
             };
           }
         });
@@ -140,7 +148,9 @@ export const AIConfigurationManagement = () => {
           configMap[scannerType] = {
             ...config,
             rpm_limit: modelLimits.rpm_limit,
-            tpm_limit: modelLimits.tpm_limit
+            tpm_limit: modelLimits.tpm_limit,
+            input_token_limit: modelLimits.input_token_limit,
+            output_token_limit: modelLimits.output_token_limit
           };
         }
       });
@@ -169,6 +179,8 @@ export const AIConfigurationManagement = () => {
           model: config.model,
           rpm_limit: config.rpm_limit,
           tpm_limit: config.tpm_limit,
+          input_token_limit: config.input_token_limit,
+          output_token_limit: config.output_token_limit,
           updated_at: new Date().toISOString(),
         }, {
           onConflict: 'provider,model'
@@ -213,7 +225,9 @@ export const AIConfigurationManagement = () => {
         ...prev,
         [modelKey]: {
           rpm_limit: config.rpm_limit,
-          tpm_limit: config.tpm_limit
+          tpm_limit: config.tpm_limit,
+          input_token_limit: config.input_token_limit,
+          output_token_limit: config.output_token_limit
         }
       }));
 
@@ -225,7 +239,9 @@ export const AIConfigurationManagement = () => {
             updated[key] = {
               ...updated[key],
               rpm_limit: config.rpm_limit,
-              tpm_limit: config.tpm_limit
+              tpm_limit: config.tpm_limit,
+              input_token_limit: config.input_token_limit,
+              output_token_limit: config.output_token_limit
             };
           }
         });
@@ -267,14 +283,16 @@ export const AIConfigurationManagement = () => {
       };
       
       // If limit values are being updated, also update the modelLimits lookup
-      if (updates.rpm_limit !== undefined || updates.tpm_limit !== undefined) {
+      if (updates.rpm_limit !== undefined || updates.tpm_limit !== undefined || updates.input_token_limit !== undefined || updates.output_token_limit !== undefined) {
         const config = updated[scannerType];
         const modelKey = `${config.provider}:${config.model}`;
         setModelLimits(prevLimits => ({
           ...prevLimits,
           [modelKey]: {
             rpm_limit: config.rpm_limit,
-            tpm_limit: config.tpm_limit
+            tpm_limit: config.tpm_limit,
+            input_token_limit: config.input_token_limit,
+            output_token_limit: config.output_token_limit
           }
         }));
       }
@@ -296,9 +314,13 @@ export const AIConfigurationManagement = () => {
     if (savedLimits) {
       updates.rpm_limit = savedLimits.rpm_limit;
       updates.tpm_limit = savedLimits.tpm_limit;
+      updates.input_token_limit = savedLimits.input_token_limit;
+      updates.output_token_limit = savedLimits.output_token_limit;
     } else {
       updates.rpm_limit = undefined;
       updates.tpm_limit = undefined;
+      updates.input_token_limit = undefined;
+      updates.output_token_limit = undefined;
     }
 
     updateConfig(scannerType, updates);
@@ -383,6 +405,32 @@ export const AIConfigurationManagement = () => {
               value={config.tpm_limit || ''}
               onChange={(e) => updateConfig(scannerConfig.type, { tpm_limit: e.target.value ? parseInt(e.target.value) : undefined })}
               placeholder="Tokens per minute"
+              min="0"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor={`input-token-${scannerConfig.type}`}>Input Token Limit</Label>
+            <Input
+              id={`input-token-${scannerConfig.type}`}
+              type="number"
+              value={config.input_token_limit || ''}
+              onChange={(e) => updateConfig(scannerConfig.type, { input_token_limit: e.target.value ? parseInt(e.target.value) : undefined })}
+              placeholder="Maximum input tokens"
+              min="0"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`output-token-${scannerConfig.type}`}>Output Token Limit</Label>
+            <Input
+              id={`output-token-${scannerConfig.type}`}
+              type="number"
+              value={config.output_token_limit || ''}
+              onChange={(e) => updateConfig(scannerConfig.type, { output_token_limit: e.target.value ? parseInt(e.target.value) : undefined })}
+              placeholder="Maximum output tokens"
               min="0"
             />
           </div>
