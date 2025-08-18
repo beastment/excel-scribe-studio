@@ -18,7 +18,7 @@ serve(async (req) => {
   try {
     const requestBody = await req.json();
     // Generate a per-request scanRunId for log correlation
-    const scanRunId = requestBody.scanRunId || crypto.randomUUID();
+    const scanRunId = requestBody.scanRunId || String(Math.floor(1000 + Math.random() * 9000));
     ;(globalThis as any).__scanRunId = scanRunId;
     // Prefix all logs for this request with the run id
     const __origLog = console.log;

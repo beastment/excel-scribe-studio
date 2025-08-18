@@ -165,10 +165,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setScanProgress(0);
     toast.info(`Scanning ${comments.length} comments with AI...`);
 
-    // Generate a scanRunId so backend logs can be filtered to this click
-    const scanRunId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
-      ? (crypto as any).randomUUID()
-      : `scan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // Generate a short 4-digit scanRunId so backend logs can be filtered to this click
+    const scanRunId = String(Math.floor(1000 + Math.random() * 9000));
 
     // Adaptive batching for speed and stability at scale
     let initialBatchSize = 20; // starting point; will auto-tune
