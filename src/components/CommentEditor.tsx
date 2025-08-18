@@ -165,6 +165,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     setScanProgress(0);
     toast.info(`Scanning ${comments.length} comments with AI...`);
 
+    // Generate a scanRunId so backend logs can be filtered to this click
+    const scanRunId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+      ? (crypto as any).randomUUID()
+      : `scan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     // Adaptive batching for speed and stability at scale
     let initialBatchSize = 20; // starting point; will auto-tune
     let minBatchSize = 5;
@@ -207,7 +212,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             batchStart,
             batchSize: currentSize,
             skipAdjudicator: true,
-            skipPostprocess: true
+            skipPostprocess: true,
+            scanRunId
           }
         });
         
@@ -272,7 +278,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               comments: chunk,
               defaultMode,
               skipAdjudicator: false,
-              skipPostprocess: false
+              skipPostprocess: false,
+              scanRunId
             }
           });
           if (error2) {

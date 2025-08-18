@@ -17,6 +17,19 @@ serve(async (req) => {
 
   try {
     const requestBody = await req.json();
+    // Generate a per-request scanRunId for log correlation
+    const scanRunId = requestBody.scanRunId || crypto.randomUUID();
+    ;(globalThis as any).__scanRunId = scanRunId;
+    // Prefix all logs for this request with the run id
+    const __origLog = console.log;
+    const __origWarn = console.warn;
+    const __origError = console.error;
+    ;(globalThis as any).__origLog = __origLog;
+    ;(globalThis as any).__origWarn = __origWarn;
+    ;(globalThis as any).__origError = __origError;
+    console.log = (...args: any[]) => __origLog(`[RUN ${scanRunId}]`, ...args);
+    console.warn = (...args: any[]) => __origWarn(`[RUN ${scanRunId}]`, ...args);
+    console.error = (...args: any[]) => __origError(`[RUN ${scanRunId}]`, ...args);
     console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart} batchSize=${requestBody.batchSize}`);
     
     const { 
@@ -84,7 +97,7 @@ serve(async (req) => {
     const scannedComments = [];
     let summary = { total: batch.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
 
-    console.log(`[PROCESS] Batch ${batchStart + 1}-${Math.min(batchStart + batchSize, comments.length)} of ${comments.length}`);
+    console.log(`[RUN ${scanRunId}] [PROCESS] Batch ${batchStart + 1}-${Math.min(batchStart + batchSize, comments.length)} of ${comments.length}`);
 
     if (batch.length === 0) {
       throw new Error('No comments in specified batch range');
@@ -472,9 +485,9 @@ serve(async (req) => {
       } else {
 
                   // Process each comment in the batch
-        console.log(`✅ BATCH PROCESSING: Processing ${batch.length} comments with validated results`);
-        console.log(`✅ Scan A results count: ${scanAResults.length}`);
-        console.log(`✅ Scan B results count: ${scanBResults.length}`);
+        console.log(`[RUN ${scanRunId}] ✅ BATCH PROCESSING: Processing ${batch.length} comments with validated results`);
+        console.log(`[RUN ${scanRunId}] ✅ Scan A results count: ${scanAResults.length}`);
+        console.log(`[RUN ${scanRunId}] ✅ Scan B results count: ${scanBResults.length}`);
         
         // Final validation: Ensure we have valid results for each comment
         if (scanAResults.length !== batch.length || scanBResults.length !== batch.length) {
@@ -487,14 +500,14 @@ serve(async (req) => {
           const scanAResult = scanAResults[j];
           const scanBResult = scanBResults[j];
           
-          if (isDebug) console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan A: ${preview(JSON.stringify(scanAResult), 240)}`);
-          if (isDebug) console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan B: ${preview(JSON.stringify(scanBResult), 240)}`);
+          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing comment ${comment.id} (index ${j}) - Scan A: ${preview(JSON.stringify(scanAResult), 240)}`);
+          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing comment ${comment.id} (index ${j}) - Scan B: ${preview(JSON.stringify(scanBResult), 240)}`);
 
           // Heuristic safety net - only use when AI completely fails (use original text)
           const heur = heuristicAnalyze(comment.originalText || comment.text);
           const patchResult = (r: any) => {
             // Debug logging to see what's being passed in
-            if (isDebug) console.log(`patchResult called with: ${preview(JSON.stringify(r), 280)}`);
+            if (isDebug) console.log(`[RUN ${scanRunId}] patchResult called with: ${preview(JSON.stringify(r), 280)}`);
             
             // If no result at all, use heuristic
             if (!r) {
@@ -518,7 +531,7 @@ serve(async (req) => {
             
             // Only apply heuristic fallback if AI gave absolutely no reasoning
             if (!r.reasoning || r.reasoning.trim() === '') {
-              if (isDebug) console.log(`AI reasoning check failed, applying heuristic fallback`);
+              if (isDebug) console.log(`[RUN ${scanRunId}] AI reasoning check failed, applying heuristic fallback`);
               // Only override if heuristic detects violations AND AI gave no reasoning
               if (heur.concerning || heur.identifiable) {
                 r.concerning = heur.concerning;
@@ -528,7 +541,7 @@ serve(async (req) => {
                 r.reasoning = 'No concerning content or identifiable information detected.';
               }
             } else {
-              if (isDebug) console.log(`AI reasoning preserved`);
+              if (isDebug) console.log(`[RUN ${scanRunId}] AI reasoning preserved`);
             }
             // Always preserve AI reasoning when it exists - don't override it
             return r;
@@ -542,10 +555,10 @@ serve(async (req) => {
           const scanAResultToProcess = Array.isArray(scanAResultCopy) ? scanAResultCopy[0] : scanAResultCopy;
           const scanBResultToProcess = Array.isArray(scanBResultCopy) ? scanBResultCopy[0] : scanBResultCopy;
           
-          if (isDebug) console.log(`Batch processing: Original scanAResult: ${preview(JSON.stringify(scanAResult), 240)}`);
-          if (isDebug) console.log(`Batch processing: Original scanBResult: ${preview(JSON.stringify(scanBResult), 240)}`);
-          if (isDebug) console.log(`Batch processing: Processed scanAResult: ${preview(JSON.stringify(scanAResultToProcess), 240)}`);
-          if (isDebug) console.log(`Batch processing: Processed scanBResult: ${preview(JSON.stringify(scanBResultToProcess), 240)}`);
+          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing: Original scanAResult: ${preview(JSON.stringify(scanAResult), 240)}`);
+          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing: Original scanBResult: ${preview(JSON.stringify(scanBResult), 240)}`);
+          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing: Processed scanAResult: ${preview(JSON.stringify(scanAResultToProcess), 240)}`);
+          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing: Processed scanBResult: ${preview(JSON.stringify(scanBResultToProcess), 240)}`);
           
           patchResult(scanAResultToProcess);
           patchResult(scanBResultToProcess);
@@ -783,12 +796,26 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
     console.log('Returning response with comments count:', response.comments.length);
     console.log('Response summary:', response.summary);
 
+    // Restore console methods before returning
+    console.log = __origLog;
+    console.warn = __origWarn;
+    console.error = __origError;
+
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
     console.error('Error in scan-comments function:', error);
+    // Attempt to restore console methods if they were overridden
+    try {
+      const g: any = globalThis as any;
+      if (g.__origLog && g.__origWarn && g.__origError) {
+        console.log = g.__origLog;
+        console.warn = g.__origWarn;
+        console.error = g.__origError;
+      }
+    } catch {}
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -1197,18 +1224,20 @@ function preview(text: any, length: number = 200): string {
   const t = typeof text === 'string' ? text : String(text ?? '');
   return t.length > length ? t.slice(0, length) + '...' : t;
 }
-function logAIRequest(provider: string, model: string, responseType: string, prompt: string, input: string, payload?: string) {
-  console.log(`[AI REQUEST] ${provider}/${model} type=${responseType}\nprompt=${prompt}\ninput=${input}${payload ? `\npayload=${payload}` : ''}`);
+function logAIRequest(provider: string, model: string, responseType: string, prompt: string, input: string, payload?: string, runId?: string) {
+  const prefix = runId ? `[RUN ${runId}] ` : '';
+  console.log(`${prefix}[AI REQUEST] ${provider}/${model} type=${responseType}\nprompt=${prompt}\ninput=${input}${payload ? `\npayload=${payload}` : ''}`);
 }
-function logAIResponse(provider: string, model: string, responseType: string, result: any) {
+function logAIResponse(provider: string, model: string, responseType: string, result: any, runId?: string) {
+  const prefix = runId ? `[RUN ${runId}] ` : '';
   try {
     const results = (result && typeof result === 'object' && 'results' in result) ? (result as any).results : result;
     const raw = (result && typeof result === 'object' && 'rawResponse' in result) ? (result as any).rawResponse : undefined;
     const resultsStr = typeof results === 'string' ? results : JSON.stringify(results, null, 2);
     const rawStr = raw === undefined ? '' : (typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2));
-    console.log(`[AI RESPONSE] ${provider}/${model} type=${responseType}\nresults=${resultsStr}${raw !== undefined ? `\nraw=${rawStr}` : ''}`);
+    console.log(`${prefix}[AI RESPONSE] ${provider}/${model} type=${responseType}\nresults=${resultsStr}${raw !== undefined ? `\nraw=${rawStr}` : ''}`);
   } catch (e) {
-    console.log(`[AI RESPONSE] ${provider}/${model} type=${responseType} (unserializable) error=${(e as Error).message}`);
+    console.log(`${prefix}[AI RESPONSE] ${provider}/${model} type=${responseType} (unserializable) error=${(e as Error).message}`);
   }
 }
 
@@ -1320,7 +1349,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     throw new Error(`Unsupported AI provider: ${provider}`);
   }
   
-  logAIResponse(provider, model, responseType, result);
+  logAIResponse(provider, model, responseType, result, (globalThis as any).__scanRunId);
   return result;
 }
 
@@ -1335,7 +1364,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
 
     logAIRequest('openai', model, responseType, prompt, commentText);
     const payload = JSON.stringify({ model, messages, temperature: 0.1 });
-    logAIRequest('openai', model, responseType, prompt, commentText, payload);
+    logAIRequest('openai', model, responseType, prompt, commentText, payload, (globalThis as any).__scanRunId);
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -1510,7 +1539,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
 
     logAIRequest('azure', model, responseType, prompt, commentText);
     const azPayload = JSON.stringify({ messages, temperature: 0.1 });
-    logAIRequest('azure', model, responseType, prompt, commentText, azPayload);
+    logAIRequest('azure', model, responseType, prompt, commentText, azPayload, (globalThis as any).__scanRunId);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1805,7 +1834,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     console.log(`Bedrock request to: ${endpoint}`);
     if (isDebug) console.log(`Authorization: ${authorizationHeader}`);
     
-    logAIRequest('bedrock', model, responseType, prompt, commentText, requestBody);
+    logAIRequest('bedrock', model, responseType, prompt, commentText, requestBody, (globalThis as any).__scanRunId);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
