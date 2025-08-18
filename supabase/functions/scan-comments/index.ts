@@ -215,6 +215,7 @@ serve(async (req) => {
     try {
       const requestStartMs = Date.now();
       const timeBudgetMs = 55000; // aim to return within ~55s to avoid client timeouts
+      const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace any organization/employer names with \"XXXX\".\n- Replace job level/grade indicators (e.g., \"Level 5\", \"L5\", \"Band 3\") with \"XXXX\".\n- Replace tenure/time-in-role statements (e.g., \"3 years in role\", \"tenure\") with \"XXXX\".`;
       // Prepare batch input for AI models (use original text, not redacted)
       const batchTexts = batch.map(comment => comment.originalText || comment.text);
       const batchInput = buildSentinelInput(batchTexts);
@@ -756,11 +757,11 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                       callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters),
                       callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters)
                     ]);
-                    scannedComments[k].redactedText = red;
+                    scannedComments[k].redactedText = enforceRedactionPolicy(red);
                     scannedComments[k].rephrasedText = reph;
 
                     if (scannedComments[k].mode === 'redact' && red) {
-                      scannedComments[k].text = red;
+                      scannedComments[k].text = enforceRedactionPolicy(red);
                     } else if (scannedComments[k].mode === 'rephrase' && reph) {
                       scannedComments[k].text = reph;
                     }
@@ -770,7 +771,8 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 }
               }
             } else if (!outOfTime) {
-              const redPrompt = buildBatchTextPrompt(activeConfig.redact_prompt, flaggedTexts.length);
+              // Inject redaction policy to improve correctness
+              const redPrompt = buildBatchTextPrompt(activeConfig.redact_prompt + REDACTION_POLICY, flaggedTexts.length);
               const rephPrompt = buildBatchTextPrompt(activeConfig.rephrase_prompt, flaggedTexts.length);
               const sentinelInput = buildSentinelInput(flaggedTexts);
               const [rawRedacted, rawRephrased] = await Promise.all([
@@ -778,7 +780,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters)
               ]);
 
-              const redactedTexts = normalizeBatchTextParsed(rawRedacted);
+              const redactedTexts = normalizeBatchTextParsed(rawRedacted).map(enforceRedactionPolicy);
               const rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
 
               // Apply redacted and rephrased texts
@@ -790,7 +792,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                   
                   // Set final text based on mode
                   if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
-                    scannedComments[k].text = redactedTexts[flaggedIndex];
+                    scannedComments[k].text = enforceRedactionPolicy(redactedTexts[flaggedIndex]);
                   } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
                     scannedComments[k].text = rephrasedTexts[flaggedIndex];
                   }
@@ -1288,6 +1290,20 @@ function normalizeBatchTextParsed(parsed: any): string[] {
 
   // Fallback to string-based parser
   return parseBatchTextList(String(parsed ?? ''));
+}
+
+// Deterministic redaction enforcement to catch items models may miss
+function enforceRedactionPolicy(text: string | null | undefined): string | null {
+  if (!text) return text ?? null;
+  let out = String(text);
+  // Job level/grade indicators: Level 5, L5, Band 3
+  out = out.replace(/\b(?:Level|Band)\s*\d+\b/gi, 'XXXX');
+  out = out.replace(/\bL\s*\d+\b/gi, 'XXXX');
+  out = out.replace(/\bL(?:evel)?\s*\d+\b/gi, 'XXXX');
+  // Tenure/time-in-role
+  out = out.replace(/\b\d+\s*(?:years?|yrs?)\s+(?:in\s+role|experience|tenure)\b/gi, 'XXXX');
+  out = out.replace(/\btenure\b/gi, 'XXXX');
+  return out;
 }
 
 // Logging utilities
