@@ -277,6 +277,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               defaultMode,
               skipAdjudicator: false,
               skipPostprocess: false,
+              useCachedAnalysis: true,
               scanRunId
             }
           });

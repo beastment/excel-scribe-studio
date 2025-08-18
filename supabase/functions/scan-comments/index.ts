@@ -40,6 +40,7 @@ serve(async (req) => {
       // Optional orchestration flags to ensure fast responses under edge timeouts
       skipAdjudicator = false,
       skipPostprocess = false,
+      useCachedAnalysis = false,
       phase = 'analysis' // 'analysis' | 'postprocess' (for future use)
     } = requestBody;
     
@@ -237,91 +238,100 @@ serve(async (req) => {
         }
         return null;
       };
-      try {
-        const enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
-        let enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
-        // Strengthen Scan B (Mistral) guidance to prevent uniform false/false outputs and enforce PII detection
-        if (scanB.model.startsWith('mistral.')) {
-          const piiMusts = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information, including: personal names (e.g., John Smith), \"X from <department>\" referring to a specific person, emails, phone numbers, employee IDs/badge numbers, SSNs, or direct contact details.\n- Examples that MUST be identifiable=true: \"John from accounting\", \"phone: 555-1234\", \"(employee ID 12345)\", \"jane.doe@email.com\".\n- The array MAY contain a mix of true/false values; do not default to all false.\n- Keep results strictly aligned with the input order (1..${batch.length}).`;
-          const concerningClarifiers = `\n- CONCERNING=true not only for explicit harassment/threats/illegal/safety violations, but also for serious workplace risk indicators such as: severe morale collapse, unsafe processes/equipment, retaliation or coercion, policy changes that materially harm staff wellbeing, discrimination, or credible allegations of misconduct.\n- If the comment plausibly signals a risk requiring leadership attention (even without PII), set concerning=true.`;
-          const brevity = `\n- Keep reasoning to a single short sentence (<= 15 words) to avoid truncation.`;
-          enforcedPromptB += piiMusts + concerningClarifiers + brevity;
+      if (!useCachedAnalysis) {
+        try {
+          const enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
+          let enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
+          // Strengthen Scan B (Mistral) guidance
+          if (scanB.model.startsWith('mistral.')) {
+            const piiMusts = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information, including: personal names (e.g., John Smith), \"X from <department>\" referring to a specific person, emails, phone numbers, employee IDs/badge numbers, SSNs, or direct contact details.\n- Examples that MUST be identifiable=true: \"John from accounting\", \"phone: 555-1234\", \"(employee ID 12345)\", \"jane.doe@email.com\".\n- The array MAY contain a mix of true/false values; do not default to all false.\n- Keep results strictly aligned with the input order (1..${batch.length}).`;
+            const concerningClarifiers = `\n- CONCERNING=true not only for explicit harassment/threats/illegal/safety violations, but also for serious workplace risk indicators such as: severe morale collapse, unsafe processes/equipment, retaliation or coercion, policy changes that materially harm staff wellbeing, discrimination, or credible allegations of misconduct.\n- If the comment plausibly signals a risk requiring leadership attention (even without PII), set concerning=true.`;
+            const brevity = `\n- Keep reasoning to a single short sentence (<= 15 words) to avoid truncation.`;
+            enforcedPromptB += piiMusts + concerningClarifiers + brevity;
+          }
+
+          const [scanAResponse, scanBResponse] = await Promise.all([
+            callAI(scanA.provider, scanA.model, enforcedPromptA, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue).catch(e => {
+              console.error(`Scan A (${scanA.provider}/${scanA.model}) failed for batch:`, e);
+              throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
+            }),
+            callAI(scanB.provider, scanB.model, enforcedPromptB, batchInput, 'batch_analysis', 'scan_b', rateLimiters, sequentialQueue).catch(e => {
+              console.error(`Scan B (${scanB.provider}/${scanB.model}) failed for batch:`, e);
+              throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
+            })
+          ]);
+            
+            // Extract results and raw responses
+            scanAResults = scanAResponse?.results || scanAResponse;
+            scanBResults = scanBResponse?.results || scanBResponse;
+            scanARawResponse = scanAResponse?.rawResponse;
+            scanBRawResponse = scanBResponse?.rawResponse;
+            
+            if (isDebug) console.log(`🔍 RAW RESPONSES:`);
+            if (isDebug) console.log(`Scan A raw response preview: ${preview(scanARawResponse, 300)}`);
+            if (isDebug) console.log(`Scan B raw response preview: ${preview(scanBRawResponse, 300)}`);
+            if (isDebug) console.log(`Scan A results field type: ${typeof scanAResponse?.results}`);
+            if (isDebug) console.log(`Scan B results field type: ${typeof scanBResponse?.results}`);
+            
+            // Retry only if non-array
+            if (scanAResults && !Array.isArray(scanAResults)) {
+              console.warn(`Scan A (${scanA.provider}/${scanA.model}) returned non-array for batch. Performing strict retry.`);
+              const retried = await strictBatchRetry(scanA.provider, scanA.model, enforcedPromptA, batchInput, batch.length, 'scan_a');
+              if (retried) scanAResults = retried;
+            }
+            if (scanBResults && !Array.isArray(scanBResults)) {
+              console.warn(`Scan B (${scanB.provider}/${scanB.model}) returned non-array for batch. Performing strict retry.`);
+              const retried = await strictBatchRetry(scanB.provider, scanB.model, enforcedPromptB, batchInput, batch.length, 'scan_b');
+              if (retried) scanBResults = retried;
+            }
+
+            // Realign by explicit indices if provided by the model
+            if (Array.isArray(scanAResults) && scanAResults.some((x: any) => x && typeof x.index === 'number')) {
+              console.log('Realigning Scan A results by index field');
+              scanAResults = realignResultsByIndex(scanAResults, batch.length);
+            }
+            if (Array.isArray(scanBResults) && scanBResults.some((x: any) => x && typeof x.index === 'number')) {
+              console.log('Realigning Scan B results by index field');
+              scanBResults = realignResultsByIndex(scanBResults, batch.length);
+            }
+            
+            // Additional debugging: Check if the AI returned a string that needs parsing
+            if (typeof scanBResults === 'string') {
+              console.warn(`⚠️ Scan B returned string instead of parsed JSON:`, (scanBResults as string).substring(0, 200));
+              try {
+                const parsed = JSON.parse(scanBResults as string);
+                scanBResults = parsed;
+                console.log(`✅ Successfully parsed Scan B string response:`, typeof parsed, Array.isArray(parsed) ? parsed.length : 'not array');
+              } catch (parseError) {
+                console.error(`❌ Failed to parse Scan B string response:`, parseError);
+                // Fallback to individual processing
+                scanBResults = null;
+              }
+            }
+            
+            if (typeof scanAResults === 'string') {
+              console.warn(`⚠️ Scan A returned string instead of parsed JSON:`, (scanAResults as string).substring(0, 200));
+              try {
+                const parsed = JSON.parse(scanAResults as string);
+                scanAResults = parsed;
+                console.log(`✅ Successfully parsed Scan A string response:`, typeof parsed, Array.isArray(parsed) ? parsed.length : 'not array');
+              } catch (parseError) {
+                console.error(`❌ Failed to parse Scan A string response:`, parseError);
+                // Fallback to individual processing
+                scanAResults = null;
+              }
+            }
+        } catch (error) {
+          console.error(`Parallel batch scanning failed:`, error);
+          throw error;
         }
-
-        const [scanAResponse, scanBResponse] = await Promise.all([
-          callAI(scanA.provider, scanA.model, enforcedPromptA, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue).catch(e => {
-            console.error(`Scan A (${scanA.provider}/${scanA.model}) failed for batch:`, e);
-            throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
-          }),
-          callAI(scanB.provider, scanB.model, enforcedPromptB, batchInput, 'batch_analysis', 'scan_b', rateLimiters, sequentialQueue).catch(e => {
-            console.error(`Scan B (${scanB.provider}/${scanB.model}) failed for batch:`, e);
-            throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
-          })
-        ]);
-          
-          // Extract results and raw responses for debugging
-          scanAResults = scanAResponse?.results || scanAResponse;
-          scanBResults = scanBResponse?.results || scanBResponse;
-          scanARawResponse = scanAResponse?.rawResponse;
-          scanBRawResponse = scanBResponse?.rawResponse;
-          
-          if (isDebug) console.log(`🔍 RAW RESPONSES:`);
-          if (isDebug) console.log(`Scan A raw response preview: ${preview(scanARawResponse, 300)}`);
-          if (isDebug) console.log(`Scan B raw response preview: ${preview(scanBRawResponse, 300)}`);
-          if (isDebug) console.log(`Scan A results field type: ${typeof scanAResponse?.results}`);
-          if (isDebug) console.log(`Scan B results field type: ${typeof scanBResponse?.results}`);
-          
-          // If either scan did not return an array, perform one strict batch retry
-          if (scanAResults && !Array.isArray(scanAResults)) {
-            console.warn(`Scan A (${scanA.provider}/${scanA.model}) returned non-array for batch. Performing strict retry.`);
-            const retried = await strictBatchRetry(scanA.provider, scanA.model, enforcedPromptA, batchInput, batch.length, 'scan_a');
-            if (retried) scanAResults = retried;
-          }
-          if (scanBResults && !Array.isArray(scanBResults)) {
-            console.warn(`Scan B (${scanB.provider}/${scanB.model}) returned non-array for batch. Performing strict retry.`);
-            const retried = await strictBatchRetry(scanB.provider, scanB.model, enforcedPromptB, batchInput, batch.length, 'scan_b');
-            if (retried) scanBResults = retried;
-          }
-
-          // Realign by explicit indices if provided by the model
-          if (Array.isArray(scanAResults) && scanAResults.some((x: any) => x && typeof x.index === 'number')) {
-            console.log('Realigning Scan A results by index field');
-            scanAResults = realignResultsByIndex(scanAResults, batch.length);
-          }
-          if (Array.isArray(scanBResults) && scanBResults.some((x: any) => x && typeof x.index === 'number')) {
-            console.log('Realigning Scan B results by index field');
-            scanBResults = realignResultsByIndex(scanBResults, batch.length);
-          }
-          
-          // Additional debugging: Check if the AI returned a string that needs parsing
-          if (typeof scanBResults === 'string') {
-            console.warn(`⚠️ Scan B returned string instead of parsed JSON:`, scanBResults.substring(0, 200));
-            try {
-              const parsed = JSON.parse(scanBResults);
-              scanBResults = parsed;
-              console.log(`✅ Successfully parsed Scan B string response:`, typeof parsed, Array.isArray(parsed) ? parsed.length : 'not array');
-            } catch (parseError) {
-              console.error(`❌ Failed to parse Scan B string response:`, parseError);
-              // Fallback to individual processing
-              scanBResults = null;
-            }
-          }
-          
-          if (typeof scanAResults === 'string') {
-            console.warn(`⚠️ Scan A returned string instead of parsed JSON:`, scanAResults.substring(0, 200));
-            try {
-              const parsed = JSON.parse(scanAResults);
-              scanAResults = parsed;
-              console.log(`✅ Successfully parsed Scan A string response:`, typeof parsed, Array.isArray(parsed) ? parsed.length : 'not array');
-            } catch (parseError) {
-              console.error(`❌ Failed to parse Scan A string response:`, parseError);
-              // Fallback to individual processing
-              scanAResults = null;
-            }
-          }
-      } catch (error) {
-        console.error(`Parallel batch scanning failed:`, error);
-        throw error;
+      } else {
+        // Use cached analysis results from incoming comments
+        console.log(`Using cached analysis for ${batch.length} comments`);
+        scanAResults = batch.map((c: any) => c?.debugInfo?.scanAResult || null);
+        scanBResults = batch.map((c: any) => c?.debugInfo?.scanBResult || null);
+        scanARawResponse = null;
+        scanBRawResponse = null;
       }
 
         console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
