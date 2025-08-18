@@ -1244,6 +1244,21 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       .filter((s) => s.length > 0)
       .filter((s) => !/^here\s+(?:is|are)[\s\S]*?:\s*$/i.test(s));
 
+    // Repair: If the model returned a tokenized JSON array, e.g., [ "[", "\"text\"", "]" ],
+    // join the pieces and parse once to recover the true string array.
+    try {
+      const joined = cleaned.join('');
+      const bracketStart = joined.indexOf('[');
+      const bracketEnd = joined.lastIndexOf(']');
+      if (bracketStart !== -1 && bracketEnd !== -1 && bracketEnd > bracketStart) {
+        const maybeJson = joined.slice(bracketStart, bracketEnd + 1);
+        const parsedJoined = JSON.parse(maybeJson);
+        if (Array.isArray(parsedJoined)) {
+          return parsedJoined.map((v: any) => (typeof v === 'string' ? v : JSON.stringify(v)));
+        }
+      }
+    } catch {}
+
     // If single element that is itself a JSON array string, parse it
     if (cleaned.length === 1 && cleaned[0].startsWith('[')) {
       try {
