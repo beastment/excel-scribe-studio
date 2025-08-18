@@ -68,18 +68,30 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
           header && (header.toLowerCase().includes('author') || header.toLowerCase().includes('name'))
         );
         
-        // Find demographic columns (department, work area, etc.)
-        const demographicColumnIndex = headers.findIndex(header => 
-          header && (
-            header.toLowerCase().includes('department') ||
-            header.toLowerCase().includes('work area') ||
-            header.toLowerCase().includes('area') ||
-            header.toLowerCase().includes('division') ||
-            header.toLowerCase().includes('team') ||
-            header.toLowerCase().includes('location') ||
-            header.toLowerCase().includes('region')
-          )
-        );
+        // Find demographic columns (prefer specific names; avoid generic 'area' matches)
+        const normalizedHeaders = headers.map(h => (h || '').toString().trim().toLowerCase());
+        const priorityOrder = [
+          'demographics', 'demographic',
+          'department',
+          'work area', 'workarea',
+          'team',
+          'division',
+          'location',
+          'region'
+        ];
+        const demographicIndices: number[] = [];
+        for (const key of priorityOrder) {
+          const idx = normalizedHeaders.findIndex(h => h === key);
+          if (idx !== -1) demographicIndices.push(idx);
+        }
+        // Backward-compatible fallback: allow contains only for clearly scoped keys
+        if (demographicIndices.length === 0) {
+          const containsCandidates = ['work area', 'department', 'division', 'team', 'location', 'region'];
+          for (const key of containsCandidates) {
+            const idx = normalizedHeaders.findIndex(h => h.includes(key));
+            if (idx !== -1 && !demographicIndices.includes(idx)) demographicIndices.push(idx);
+          }
+        }
         
         if (commentColumnIndex === -1) {
           toast.error('No comment column found in the Excel file');
@@ -87,13 +99,23 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
         }
 
         // Extract comments starting from row 1 (skip header)
+        const importId = `${Date.now().toString(36)}_${Math.floor(Math.random()*1e6).toString(36)}`;
         for (let i = 1; i < jsonData.length; i++) {
           const row = jsonData[i] as any[];
           const commentText = row[commentColumnIndex];
           
           if (commentText && typeof commentText === 'string' && commentText.trim()) {
+            // Compose demographics from all detected columns (in priority order)
+            let demographics: string | undefined = undefined;
+            if (demographicIndices.length > 0) {
+              const parts = demographicIndices
+                .map(idx => row[idx])
+                .map(v => (v == null ? '' : String(v).trim()))
+                .filter(v => v.length > 0);
+              if (parts.length > 0) demographics = parts.join(' / ');
+            }
             comments.push({
-              id: `comment_${i}`,
+              id: `${importId}_row_${i}`,
               originalText: commentText.trim(),
               text: commentText.trim(),
               author: authorColumnIndex >= 0 ? row[authorColumnIndex] : undefined,
@@ -102,7 +124,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
               checked: false,
               concerning: false,
               identifiable: false,
-              demographics: demographicColumnIndex >= 0 ? row[demographicColumnIndex] : undefined
+              demographics
             });
           }
         }
