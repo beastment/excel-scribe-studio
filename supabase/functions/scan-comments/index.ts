@@ -251,8 +251,13 @@ serve(async (req) => {
       };
       if (!useCachedAnalysis) {
         try {
-          const enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
+          let enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
           let enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
+          const piiPolicy = `\nPII POLICY:\n- Organization/employer names are allowed and DO NOT make a comment identifiable.\n- Treat job level/grade (e.g., \"Level 5\", \"L5\"), specific internal level numbers, and tenure/time-in-role (e.g., \"3 years in role\") as personally identifiable.\n- If such attributes are present for a specific person, set \"identifiable\"=true.`;
+          // Apply policy to both prompts
+          enforcedPromptA += piiPolicy;
+          enforcedPromptB += piiPolicy;
+          
           // Strengthen Scan B (Mistral) guidance
           if (scanB.model.startsWith('mistral.')) {
             const piiMusts = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information, including: personal names (e.g., John Smith), \"X from <department>\" referring to a specific person, emails, phone numbers, employee IDs/badge numbers, SSNs, or direct contact details.\n- Examples that MUST be identifiable=true: \"John from accounting\", \"phone: 555-1234\", \"(employee ID 12345)\", \"jane.doe@email.com\".\n- The array MAY contain a mix of true/false values; do not default to all false.\n- Keep results strictly aligned with the input order (1..${batch.length}).`;
@@ -262,8 +267,13 @@ serve(async (req) => {
           }
 
           const [scanAResponse, scanBResponse] = await (async () => {
-            const enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
+            let enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
             let enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
+            const piiPolicy2 = `\nPII POLICY:\n- Organization/employer names are allowed and DO NOT make a comment identifiable.\n- Treat job level/grade (e.g., \"Level 5\", \"L5\"), specific internal level numbers, and tenure/time-in-role (e.g., \"3 years in role\") as personally identifiable.\n- If such attributes are present for a specific person, set \"identifiable\"=true.`;
+            // Apply the policy text to both prompts
+            enforcedPromptA += piiPolicy2;
+            enforcedPromptB += piiPolicy2;
+            
             if (scanB.model.startsWith('mistral.')) {
               const piiMusts = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Treat EACH <<<ITEM k>>> block as ONE single comment; NEVER output more than ${batch.length} objects.\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information.`;
               enforcedPromptB += piiMusts;
@@ -1133,12 +1143,14 @@ function heuristicAnalyze(text: string): { concerning: boolean; identifiable: bo
     /harass|inappropriate|threat|violence|unsafe|violation|illegal|discriminat|bully|steal|theft|drug/i,
   ];
 
-  // PII indicators
+  // PII indicators (explicit)
   const piiPatterns = [
     /\b\d{3}-\d{2}-\d{4}\b/i, // SSN
     /(?:\+?\d{1,2}\s*)?(?:\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/i, // Phone
     /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i, // Email
     /(employee\s*id|badge\s*#?\s*\d+)/i, // Employee ID / Badge
+    /\bL(?:evel)?\s*\d+\b/i, // Level/L5, Level 5
+    /\b(?:years?|yrs?)\s+(?:in\s+role|experience|tenure)\b/i, // 3 years in role, years of tenure
   ];
 
   let concerning = concerningIndicators.some(rx => rx.test(t));
