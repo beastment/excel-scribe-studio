@@ -16,14 +16,8 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Parsing request body...');
     const requestBody = await req.json();
-    console.log('Request body parsed:', { 
-      commentsCount: requestBody.comments?.length, 
-      defaultMode: requestBody.defaultMode,
-      batchStart: requestBody.batchStart,
-      batchSize: requestBody.batchSize
-    });
+    console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart} batchSize=${requestBody.batchSize}`);
     
     const { 
       comments, 
@@ -90,7 +84,7 @@ serve(async (req) => {
     const scannedComments = [];
     let summary = { total: batch.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
 
-    console.log(`Processing batch: comments ${batchStart + 1}-${Math.min(batchStart + batchSize, comments.length)} of ${comments.length}`);
+    console.log(`[PROCESS] Batch ${batchStart + 1}-${Math.min(batchStart + batchSize, comments.length)} of ${comments.length}`);
 
     if (batch.length === 0) {
       throw new Error('No comments in specified batch range');
@@ -170,7 +164,7 @@ serve(async (req) => {
         queuePromise: Promise.resolve(),
       });
       
-      console.log(`Provider limiter for ${key}: RPM=${minRpm}, TPM=${minTpm}`);
+      if (isDebug) console.log(`Provider limiter for ${key}: RPM=${minRpm}, TPM=${minTpm}`);
     });
     // Helpers to enforce stable batch alignment
     const buildBatchAnalysisPrompt = (basePrompt: string, expectedLen: number): string => {
@@ -200,10 +194,9 @@ serve(async (req) => {
       const batchTexts = batch.map(comment => comment.originalText || comment.text);
       const batchInput = `Comments to analyze:\n${batchTexts.map((text, idx) => `${idx + 1}. ${text}`).join('\n')}\n\nIMPORTANT: You must return exactly ${batch.length} JSON objects, one for each comment above. Do not return more or fewer results.`;
 
-      console.log(`Sending ${batch.length} comments to AI models for batch analysis`);
-      console.log(`Batch input preview:`, batchInput.substring(0, 500) + (batchInput.length > 500 ? '...' : ''));
-      console.log(`Batch texts count:`, batchTexts.length);
-      console.log(`Batch texts:`, batchTexts.map((text, idx) => `${idx + 1}. ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`));
+      if (isDebug) console.log(`Sending ${batch.length} comments to AI models for batch analysis`);
+      if (isDebug) console.log(`Batch input preview: ${preview(batchInput, 500)}`);
+      if (isDebug) console.log(`Batch texts count: ${batchTexts.length}`);
 
         // Run Scan A and Scan B in parallel on the entire batch
       let scanAResults, scanBResults, scanARawResponse, scanBRawResponse;
@@ -259,11 +252,11 @@ serve(async (req) => {
           scanARawResponse = scanAResponse?.rawResponse;
           scanBRawResponse = scanBResponse?.rawResponse;
           
-          console.log(`🔍 RAW RESPONSES:`);
-          console.log(`Scan A raw response:`, scanARawResponse);
-          console.log(`Scan B raw response:`, scanBRawResponse);
-          console.log(`Scan A results field:`, scanAResponse?.results);
-          console.log(`Scan B results field:`, scanBResponse?.results);
+          if (isDebug) console.log(`🔍 RAW RESPONSES:`);
+          if (isDebug) console.log(`Scan A raw response preview: ${preview(scanARawResponse, 300)}`);
+          if (isDebug) console.log(`Scan B raw response preview: ${preview(scanBRawResponse, 300)}`);
+          if (isDebug) console.log(`Scan A results field type: ${typeof scanAResponse?.results}`);
+          if (isDebug) console.log(`Scan B results field type: ${typeof scanBResponse?.results}`);
           
           // If either scan returned a single object or invalid shape, perform one strict batch retry instead of cloning the same object
           if (scanAResults && !Array.isArray(scanAResults)) {
@@ -318,10 +311,10 @@ serve(async (req) => {
         throw error;
       }
 
-        console.log(`Received Scan A (${scanA.provider}/${scanA.model}) results:`, typeof scanAResults, Array.isArray(scanAResults) ? scanAResults.length : 'not array');
-        console.log(`Received Scan B (${scanB.provider}/${scanB.model}) results:`, typeof scanBResults, Array.isArray(scanBResults) ? scanBResults.length : 'not array');
-        console.log(`Scan A results sample:`, scanAResults?.[0]);
-        console.log(`Scan B results sample:`, scanBResults?.[0]);
+        console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
+        console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
+        if (isDebug) console.log(`Scan A sample: ${preview(JSON.stringify(scanAResults?.[0] ?? ''), 200)}`);
+        if (isDebug) console.log(`Scan B sample: ${preview(JSON.stringify(scanBResults?.[0] ?? ''), 200)}`);
         
         // Additional debugging for Scan B results mismatch
         if (Array.isArray(scanBResults) && scanBResults.length !== batch.length) {
@@ -494,17 +487,14 @@ serve(async (req) => {
           const scanAResult = scanAResults[j];
           const scanBResult = scanBResults[j];
           
-          console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan A result:`, scanAResult);
-          console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan B result:`, scanBResult);
+          if (isDebug) console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan A: ${preview(JSON.stringify(scanAResult), 240)}`);
+          if (isDebug) console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan B: ${preview(JSON.stringify(scanBResult), 240)}`);
 
           // Heuristic safety net - only use when AI completely fails (use original text)
           const heur = heuristicAnalyze(comment.originalText || comment.text);
           const patchResult = (r: any) => {
             // Debug logging to see what's being passed in
-            console.log(`patchResult called with:`, JSON.stringify(r, null, 2));
-            console.log(`r.reasoning type: ${typeof r?.reasoning}, value: "${r?.reasoning}"`);
-            console.log(`r.reasoning truthy check: ${!!r?.reasoning}`);
-            console.log(`r.reasoning trim check: ${r?.reasoning?.trim() === ''}`);
+            if (isDebug) console.log(`patchResult called with: ${preview(JSON.stringify(r), 280)}`);
             
             // If no result at all, use heuristic
             if (!r) {
@@ -528,7 +518,7 @@ serve(async (req) => {
             
             // Only apply heuristic fallback if AI gave absolutely no reasoning
             if (!r.reasoning || r.reasoning.trim() === '') {
-              console.log(`AI reasoning check failed - reasoning: "${r.reasoning}", applying heuristic fallback`);
+              if (isDebug) console.log(`AI reasoning check failed, applying heuristic fallback`);
               // Only override if heuristic detects violations AND AI gave no reasoning
               if (heur.concerning || heur.identifiable) {
                 r.concerning = heur.concerning;
@@ -538,7 +528,7 @@ serve(async (req) => {
                 r.reasoning = 'No concerning content or identifiable information detected.';
               }
             } else {
-              console.log(`AI reasoning preserved: "${r.reasoning}"`);
+              if (isDebug) console.log(`AI reasoning preserved`);
             }
             // Always preserve AI reasoning when it exists - don't override it
             return r;
@@ -552,10 +542,10 @@ serve(async (req) => {
           const scanAResultToProcess = Array.isArray(scanAResultCopy) ? scanAResultCopy[0] : scanAResultCopy;
           const scanBResultToProcess = Array.isArray(scanBResultCopy) ? scanBResultCopy[0] : scanBResultCopy;
           
-          console.log(`Batch processing: Original scanAResult:`, scanAResult);
-          console.log(`Batch processing: Original scanBResult:`, scanBResult);
-          console.log(`Batch processing: Processed scanAResult:`, scanAResultToProcess);
-          console.log(`Batch processing: Processed scanBResult:`, scanBResultToProcess);
+          if (isDebug) console.log(`Batch processing: Original scanAResult: ${preview(JSON.stringify(scanAResult), 240)}`);
+          if (isDebug) console.log(`Batch processing: Original scanBResult: ${preview(JSON.stringify(scanBResult), 240)}`);
+          if (isDebug) console.log(`Batch processing: Processed scanAResult: ${preview(JSON.stringify(scanAResultToProcess), 240)}`);
+          if (isDebug) console.log(`Batch processing: Processed scanBResult: ${preview(JSON.stringify(scanBResultToProcess), 240)}`);
           
           patchResult(scanAResultToProcess);
           patchResult(scanBResultToProcess);
@@ -1200,6 +1190,36 @@ function normalizeBatchTextParsed(parsed: any): string[] {
   return parseBatchTextList(String(parsed ?? ''));
 }
 
+// Logging utilities
+const LOG_LEVEL = (Deno.env.get('LOG_LEVEL') || 'info').toLowerCase();
+const isDebug = LOG_LEVEL === 'debug';
+function preview(text: any, length: number = 200): string {
+  const t = typeof text === 'string' ? text : String(text ?? '');
+  return t.length > length ? t.slice(0, length) + '...' : t;
+}
+function logAIRequest(provider: string, model: string, responseType: string, prompt: string, input: string) {
+  console.log(`[AI REQUEST] ${provider}/${model} type=${responseType} promptPreview="${preview(prompt, 160)}" inputPreview="${preview(input, 160)}"`);
+}
+function logAIResponse(provider: string, model: string, responseType: string, result: any) {
+  let summary = '';
+  try {
+    const r = result?.results ?? result;
+    if (Array.isArray(r)) {
+      summary = `array len=${r.length}`;
+    } else if (r && typeof r === 'object') {
+      const keys = Object.keys(r).slice(0, 5).join(',');
+      summary = `object keys=[${keys}]`;
+    } else if (typeof r === 'string') {
+      summary = `string len=${r.length}`;
+    } else {
+      summary = typeof r;
+    }
+  } catch {
+    summary = 'unavailable';
+  }
+  console.log(`[AI RESPONSE] ${provider}/${model} type=${responseType} parsed=${summary}`);
+}
+
 // Helper function to call AI services with rate limiting
 async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>, sequentialQueue?: Map<string, any>) {
   // Estimate tokens for this request
@@ -1308,9 +1328,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     throw new Error(`Unsupported AI provider: ${provider}`);
   }
   
-  console.log(`performAICall: Provider ${provider}, Model ${model}, ResponseType ${responseType} returned:`, result);
-  console.log(`performAICall: Results field:`, result?.results);
-  console.log(`performAICall: Raw response:`, result?.rawResponse);
+  logAIResponse(provider, model, responseType, result);
   return result;
 }
 
@@ -1323,6 +1341,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
       { role: 'user', content: commentText }
     ];
 
+    logAIRequest('openai', model, responseType, prompt, commentText);
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -1429,7 +1448,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
           return JSON.parse(jsonContent);
         }
       } catch (parseError) {
-        console.error(`JSON parsing failed for ${responseType}:`, parseError, 'Content:', content);
+        console.error(`JSON parsing failed for ${responseType}: ${String(parseError)} preview=${preview(content, 300)}`);
         // Enhanced fallback parsing
         if (responseType === 'analysis') {
           // Look for explicit "no" statements in text-based responses
@@ -1470,7 +1489,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
       try {
         return JSON.parse(content);
       } catch (parseError) {
-        console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
+        console.warn(`JSON parsing failed for batch_text: ${String(parseError)} preview=${preview(content, 300)}`);
         return parseBatchTextList(content);
       }
     } else {
@@ -1499,6 +1518,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     // Azure OpenAI uses deployment name, which should match the model name
     const url = `${cleanEndpoint}/openai/deployments/${model}/chat/completions?api-version=${apiVersion}`;
 
+    logAIRequest('azure', model, responseType, prompt, commentText);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1794,8 +1814,9 @@ async function performAICall(provider: string, model: string, prompt: string, co
     const authorizationHeader = `${algorithm} Credential=${awsAccessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
     
     console.log(`Bedrock request to: ${endpoint}`);
-    console.log(`Authorization: ${authorizationHeader}`);
+    if (isDebug) console.log(`Authorization: ${authorizationHeader}`);
     
+    logAIRequest('bedrock', model, responseType, prompt, commentText);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -1836,9 +1857,9 @@ async function performAICall(provider: string, model: string, prompt: string, co
       // Mistral on Bedrock commonly returns { outputs: [{ text }] }
       content = data.outputs?.[0]?.text || data.output_text || data.completion || data.generation || data.result;
       
-      // Log the full Mistral response structure for debugging
-      console.log('Mistral response structure:', JSON.stringify(data, null, 2));
-      console.log('Extracted content:', content);
+      // Log the Mistral response structure only when debugging
+      if (isDebug) console.log('Mistral response structure:', preview(JSON.stringify(data, null, 2), 300));
+      if (isDebug) console.log('Extracted content preview:', preview(content, 300));
       
       // If we don't find content in expected places, use the whole response
       if (!content) {
@@ -1862,27 +1883,27 @@ async function performAICall(provider: string, model: string, prompt: string, co
         
         // For Mistral models, be more aggressive in JSON extraction
         if (model.startsWith('mistral.')) {
-          console.log(`Mistral: Extracting JSON from response with additional text`);
+          if (isDebug) console.log(`Mistral: Extracting JSON from response with additional text`);
           
           // Look for the first complete JSON array or object
           const jsonMatch = jsonContent.match(/(\[[\s\S]*?\]|\{[\s\S]*?\})/);
           if (jsonMatch) {
             const extractedJson = jsonMatch[0];
-            console.log(`Mistral: Extracted JSON: ${extractedJson.substring(0, 200)}...`);
+            if (isDebug) console.log(`Mistral: Extracted JSON: ${preview(extractedJson, 200)}`);
             
             // Validate that it's complete JSON
             try {
               JSON.parse(extractedJson);
               jsonContent = extractedJson;
-              console.log(`Mistral: Successfully extracted and validated JSON`);
+              if (isDebug) console.log(`Mistral: Successfully extracted and validated JSON`);
             } catch (e) {
-              console.log(`Mistral: Extracted JSON is invalid, trying alternative extraction`);
+              if (isDebug) console.log(`Mistral: Extracted JSON is invalid, trying alternative extraction`);
             }
           }
           
           // Additional fix: If the JSON is followed by explanatory text, try to extract just the JSON part
           if (jsonContent.includes('Comment:') || jsonContent.includes('Your analysis is correct')) {
-            console.log(`Mistral: Detected explanatory text after JSON, attempting to extract clean JSON`);
+            if (isDebug) console.log(`Mistral: Detected explanatory text after JSON, attempting to extract clean JSON`);
             
             // Try to find the JSON array/object before any explanatory text
             const cleanJsonMatch = jsonContent.match(/(\[[\s\S]*?\]|\{[\s\S]*?\})/);
@@ -1890,9 +1911,9 @@ async function performAICall(provider: string, model: string, prompt: string, co
               try {
                 const cleanJson = cleanJsonMatch[0];
                 const parsed = JSON.parse(cleanJson); // Validate it's valid JSON
-                console.log(`Mistral: Parsed JSON before cleanup:`, parsed);
+                if (isDebug) console.log(`Mistral: Parsed JSON before cleanup preview: ${preview(JSON.stringify(parsed), 200)}`);
                 jsonContent = cleanJson;
-                console.log(`Mistral: Successfully extracted clean JSON without explanatory text`);
+                if (isDebug) console.log(`Mistral: Successfully extracted clean JSON without explanatory text`);
               } catch (e) {
                 console.log(`Mistral: Clean JSON extraction failed: ${e.message}`);
               }
@@ -1922,7 +1943,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
         
         // For Mistral models, try additional cleanup
         if (model.startsWith('mistral.')) {
-          console.log(`Mistral raw content before cleanup: ${jsonContent.substring(0, 300)}`);
+          if (isDebug) console.log(`Mistral raw content before cleanup: ${preview(jsonContent, 300)}`);
           
           // Try to extract JSON from common Mistral response patterns
           const jsonPatterns = [
@@ -1939,7 +1960,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
             if (match) {
               jsonContent = match[1] || match[0];
               foundJson = true;
-              console.log(`Mistral: Found JSON using pattern, extracted: ${jsonContent.substring(0, 100)}`);
+              if (isDebug) console.log(`Mistral: Found JSON using pattern, extracted: ${preview(jsonContent, 100)}`);
               break;
             }
           }
