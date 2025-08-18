@@ -187,7 +187,7 @@ serve(async (req) => {
     };
 
     const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
-      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- No prose, no code fences, no headers or explanations before/after the JSON array.`;
+      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ID k>>> for its corresponding k (e.g., <<<ID 3>>>).\n- No prose, no code fences, no headers or explanations before/after the JSON array.`;
       return `${basePrompt}\n\n${sentinels}`;
     };
 
@@ -780,8 +780,32 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters)
               ]);
 
-              const redactedTexts = normalizeBatchTextParsed(rawRedacted).map(enforceRedactionPolicy);
-              const rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
+              let redactedTexts = normalizeBatchTextParsed(rawRedacted);
+              let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
+
+              // If model returned aligned ID-tagged strings, strip tags and re-align by ID
+              const idTag = /^\s*<<<ID\s+(\d+)>>>\s*/i;
+              const stripAndIndex = (arr: string[]) => arr.map(s => {
+                const m = idTag.exec(s || '');
+                return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
+              });
+              const redIdx = stripAndIndex(redactedTexts);
+              const rephIdx = stripAndIndex(rephrasedTexts);
+              const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
+              if (allHaveIds) {
+                const expected = flaggedTexts.length;
+                const byId = (list: { idx: number|null; text: string }[]) => {
+                  const out: string[] = Array(expected).fill('');
+                  for (const it of list) {
+                    if (it.idx && it.idx >= 1 && it.idx <= expected) out[it.idx - 1] = it.text;
+                  }
+                  return out;
+                };
+                redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
+                rephrasedTexts = byId(rephIdx);
+              } else {
+                redactedTexts = redactedTexts.map(enforceRedactionPolicy);
+              }
 
               // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
               const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
