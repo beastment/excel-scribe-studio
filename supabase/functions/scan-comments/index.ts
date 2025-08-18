@@ -182,7 +182,7 @@ serve(async (req) => {
     });
     // Helpers to enforce stable batch alignment
     const buildBatchAnalysisPrompt = (basePrompt: string, expectedLen: number): string => {
-      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array with exactly ${expectedLen} objects, aligned to ids (1..${expectedLen}).\n- Each object MUST include: {"index": number (1-based id), "concerning": boolean, "identifiable": boolean, "reasoning": string}.\n- No prose, no code fences, no extra keys, no preface or suffix.`;
+      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array with exactly ${expectedLen} objects, aligned to ids (1..${expectedLen}).\n- Each object MUST include: {\"index\": number (1-based id), \"concerning\": boolean, \"identifiable\": boolean, \"reasoning\": string}.\n- No prose, no code fences, no extra keys, no preface or suffix.`;
       return `${basePrompt}\n\n${sentinels}`;
     };
 
@@ -261,16 +261,28 @@ serve(async (req) => {
             enforcedPromptB += piiMusts + concerningClarifiers + brevity;
           }
 
-          const [scanAResponse, scanBResponse] = await Promise.all([
-            callAI(scanA.provider, scanA.model, enforcedPromptA, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue).catch(e => {
-              console.error(`Scan A (${scanA.provider}/${scanA.model}) failed for batch:`, e);
-              throw new Error(`Scan A (${scanA.provider}/${scanA.model}) failed: ${e.message}`);
-            }),
-            callAI(scanB.provider, scanB.model, enforcedPromptB, batchInput, 'batch_analysis', 'scan_b', rateLimiters, sequentialQueue).catch(e => {
-              console.error(`Scan B (${scanB.provider}/${scanB.model}) failed for batch:`, e);
-              throw new Error(`Scan B (${scanB.provider}/${scanB.model}) failed: ${e.message}`);
-            })
-          ]);
+          const [scanAResponse, scanBResponse] = await (async () => {
+            const enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
+            let enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
+            if (scanB.model.startsWith('mistral.')) {
+              const piiMusts = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Treat EACH <<<ITEM k>>> block as ONE single comment; NEVER output more than ${batch.length} objects.\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information.`;
+              enforcedPromptB += piiMusts;
+            }
+            if (scanB.model.startsWith('mistral.') && batch.length === 1) {
+              // Force single-analysis path to avoid over-splitting on Mistral when only one item
+              const [a, b] = await Promise.all([
+                callAI(scanA.provider, scanA.model, enforcedPromptA, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue),
+                callAI(scanB.provider, scanB.model, enforcedPromptB, batchInput, 'analysis', 'scan_b', rateLimiters, sequentialQueue)
+              ]);
+              // Wrap single result to array shape for downstream
+              const wrappedB = b && b.results && !Array.isArray(b.results) ? { results: [ { index: 1, ...(b.results as any) } ] } : b;
+              return [a, wrappedB];
+            }
+            return await Promise.all([
+              callAI(scanA.provider, scanA.model, enforcedPromptA, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue),
+              callAI(scanB.provider, scanB.model, enforcedPromptB, batchInput, 'batch_analysis', 'scan_b', rateLimiters, sequentialQueue)
+            ]);
+          })();
             
             // Extract results and raw responses
             scanAResults = scanAResponse?.results || scanAResponse;
