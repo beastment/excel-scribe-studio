@@ -1197,27 +1197,19 @@ function preview(text: any, length: number = 200): string {
   const t = typeof text === 'string' ? text : String(text ?? '');
   return t.length > length ? t.slice(0, length) + '...' : t;
 }
-function logAIRequest(provider: string, model: string, responseType: string, prompt: string, input: string) {
-  console.log(`[AI REQUEST] ${provider}/${model} type=${responseType} promptPreview="${preview(prompt, 160)}" inputPreview="${preview(input, 160)}"`);
+function logAIRequest(provider: string, model: string, responseType: string, prompt: string, input: string, payload?: string) {
+  console.log(`[AI REQUEST] ${provider}/${model} type=${responseType}\nprompt=${prompt}\ninput=${input}${payload ? `\npayload=${payload}` : ''}`);
 }
 function logAIResponse(provider: string, model: string, responseType: string, result: any) {
-  let summary = '';
   try {
-    const r = result?.results ?? result;
-    if (Array.isArray(r)) {
-      summary = `array len=${r.length}`;
-    } else if (r && typeof r === 'object') {
-      const keys = Object.keys(r).slice(0, 5).join(',');
-      summary = `object keys=[${keys}]`;
-    } else if (typeof r === 'string') {
-      summary = `string len=${r.length}`;
-    } else {
-      summary = typeof r;
-    }
-  } catch {
-    summary = 'unavailable';
+    const results = (result && typeof result === 'object' && 'results' in result) ? (result as any).results : result;
+    const raw = (result && typeof result === 'object' && 'rawResponse' in result) ? (result as any).rawResponse : undefined;
+    const resultsStr = typeof results === 'string' ? results : JSON.stringify(results, null, 2);
+    const rawStr = raw === undefined ? '' : (typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2));
+    console.log(`[AI RESPONSE] ${provider}/${model} type=${responseType}\nresults=${resultsStr}${raw !== undefined ? `\nraw=${rawStr}` : ''}`);
+  } catch (e) {
+    console.log(`[AI RESPONSE] ${provider}/${model} type=${responseType} (unserializable) error=${(e as Error).message}`);
   }
-  console.log(`[AI RESPONSE] ${provider}/${model} type=${responseType} parsed=${summary}`);
 }
 
 // Helper function to call AI services with rate limiting
@@ -1342,17 +1334,15 @@ async function performAICall(provider: string, model: string, prompt: string, co
     ];
 
     logAIRequest('openai', model, responseType, prompt, commentText);
+    const payload = JSON.stringify({ model, messages, temperature: 0.1 });
+    logAIRequest('openai', model, responseType, prompt, commentText, payload);
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${openAIApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: model,
-        messages: messages,
-        temperature: 0.1,
-      }),
+      body: payload,
     });
 
     if (!response.ok) {
@@ -1519,16 +1509,15 @@ async function performAICall(provider: string, model: string, prompt: string, co
     const url = `${cleanEndpoint}/openai/deployments/${model}/chat/completions?api-version=${apiVersion}`;
 
     logAIRequest('azure', model, responseType, prompt, commentText);
+    const azPayload = JSON.stringify({ messages, temperature: 0.1 });
+    logAIRequest('azure', model, responseType, prompt, commentText, azPayload);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'api-key': azureApiKey,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        messages: messages,
-        temperature: 0.1,
-      }),
+      body: azPayload,
     });
 
     if (!response.ok) {
@@ -1816,7 +1805,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     console.log(`Bedrock request to: ${endpoint}`);
     if (isDebug) console.log(`Authorization: ${authorizationHeader}`);
     
-    logAIRequest('bedrock', model, responseType, prompt, commentText);
+    logAIRequest('bedrock', model, responseType, prompt, commentText, requestBody);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
