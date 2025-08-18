@@ -182,8 +182,19 @@ serve(async (req) => {
     });
     // Helpers to enforce stable batch alignment
     const buildBatchAnalysisPrompt = (basePrompt: string, expectedLen: number): string => {
-      return `${basePrompt}\n\nCRITICAL REQUIREMENTS:\n- Output ONLY a JSON array with exactly ${expectedLen} objects, in the SAME ORDER as the inputs (1..${expectedLen}).\n- Each object MUST include: {\"index\": number (1-based), \"concerning\": boolean, \"identifiable\": boolean, \"reasoning\": string}.\n- No prose, no code fences, no extra keys, no preface or suffix.`;
+      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array with exactly ${expectedLen} objects, aligned to ids (1..${expectedLen}).\n- Each object MUST include: {"index": number (1-based id), "concerning": boolean, "identifiable": boolean, "reasoning": string}.\n- No prose, no code fences, no extra keys, no preface or suffix.`;
+      return `${basePrompt}\n\n${sentinels}`;
     };
+
+    const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
+      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- No prose, no code fences, no headers or explanations before/after the JSON array.`;
+      return `${basePrompt}\n\n${sentinels}`;
+    };
+
+    const buildSentinelInput = (texts: string[]): string => {
+      return `Comments to analyze (each bounded by sentinels):\n\n${texts.map((t, i) => `<<<ITEM ${i + 1}>>>\n${t}\n<<<END ${i + 1}>>>`).join('\n\n')}`;
+    };
+
     const realignResultsByIndex = (arr: any[], expectedLen: number) => {
       const defaults = { concerning: false, identifiable: false, reasoning: 'Auto-aligned: missing result' };
       const out = Array(expectedLen).fill(null);
@@ -206,7 +217,7 @@ serve(async (req) => {
       const timeBudgetMs = 55000; // aim to return within ~55s to avoid client timeouts
       // Prepare batch input for AI models (use original text, not redacted)
       const batchTexts = batch.map(comment => comment.originalText || comment.text);
-      const batchInput = `Comments to analyze:\n${batchTexts.map((text, idx) => `${idx + 1}. ${text}`).join('\n')}\n\nIMPORTANT: You must return exactly ${batch.length} JSON objects, one for each comment above. Do not return more or fewer results.`;
+      const batchInput = buildSentinelInput(batchTexts);
 
       if (isDebug) console.log(`Sending ${batch.length} comments to AI models for batch analysis`);
       if (isDebug) console.log(`Batch input preview: ${preview(batchInput, 500)}`);
@@ -735,9 +746,12 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 }
               }
             } else if (!outOfTime) {
+              const redPrompt = buildBatchTextPrompt(activeConfig.redact_prompt, flaggedTexts.length);
+              const rephPrompt = buildBatchTextPrompt(activeConfig.rephrase_prompt, flaggedTexts.length);
+              const sentinelInput = buildSentinelInput(flaggedTexts);
               const [rawRedacted, rawRephrased] = await Promise.all([
-                callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters),
-                callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt, JSON.stringify(flaggedTexts), 'batch_text', 'scan_a', rateLimiters)
+                callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters),
+                callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters)
               ]);
 
               const redactedTexts = normalizeBatchTextParsed(rawRedacted);
@@ -1516,7 +1530,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
       try {
         return JSON.parse(content);
       } catch (parseError) {
-        console.warn(`JSON parsing failed for batch_text: ${String(parseError)} preview=${preview(content, 300)}`);
+        if (isDebug) console.log(`JSON parsing failed for batch_text: ${String(parseError)} preview=${preview(content, 300)}`);
         return parseBatchTextList(content);
       }
     } else {
