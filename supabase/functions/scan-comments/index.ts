@@ -343,43 +343,57 @@ serve(async (req) => {
           const piiPolicy = `\nPII POLICY:\n- Organization/employer names are allowed and DO NOT make a comment identifiable.\n- Treat job level/grade (e.g., \"Level 5\", \"L5\"), specific internal level numbers, and tenure/time-in-role (e.g., \"3 years in role\") as personally identifiable.\n- If such attributes are present for a specific person, set \"identifiable\"=true.`;
 
           async function runModelBatch(config: any, texts: string[], scannerKey: 'scan_a'|'scan_b'): Promise<{ results: any[]; raw: any[] }> {
-            // Do not re-chunk here; the outer batch size is already the min of model prefs and remaining
-            const chunks = [texts];
-            const allResults: any[] = [];
-            const raws: any[] = [];
-            for (const chunk of chunks) {
-              let enforcedPrompt = buildBatchAnalysisPrompt(config.analysis_prompt, chunk.length) + piiPolicy;
-              // Strengthen Mistral guidance
-              if (config.model.startsWith('mistral.')) {
-                const extra = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Treat EACH <<<ITEM k>>> block as ONE single comment; NEVER output more than ${chunk.length} objects.\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information.`;
-                enforcedPrompt += extra;
-              }
-              const input = buildSentinelInput(chunk);
-              let resp: any;
-              if (config.model.startsWith('mistral.') && chunk.length === 1) {
-                // Avoid Mistral oddities on single-item batch
-                resp = await callAI(config.provider, config.model, config.analysis_prompt + piiPolicy, chunk[0], 'analysis', scannerKey, rateLimiters, sequentialQueue, getEffectiveMaxTokens(config));
-                resp = { results: [resp?.results || resp] };
-              } else {
-                resp = await callAI(config.provider, config.model, enforcedPrompt, input, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue, getEffectiveMaxTokens(config));
-              }
-              let results = resp?.results || resp;
-              if (!Array.isArray(results) || results.length !== chunk.length) {
-                const retried = await strictBatchRetry(config.provider, config.model, config.analysis_prompt, input, chunk.length, scannerKey);
-                if (retried) results = retried;
-              }
-              if (!Array.isArray(results)) {
-                // Final guard: pad/truncate
-                const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
-                results = Array(chunk.length).fill(null).map(() => ({ ...defaultResult }));
-              } else if (results.length !== chunk.length) {
-                results = results.slice(0, chunk.length);
-                while (results.length < chunk.length) results.push({ concerning: false, identifiable: false, reasoning: 'Padded default due to missing analysis' });
-              }
-              allResults.push(...results);
-              raws.push(resp?.rawResponse ?? null);
+            // Single-shot batch call: never re-chunk here
+            const expectedLen = texts.length;
+            let enforcedPrompt = buildBatchAnalysisPrompt(config.analysis_prompt, expectedLen) + piiPolicy;
+            // Strengthen Mistral guidance
+            if (config.model.startsWith('mistral.')) {
+              const extra = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Treat EACH <<<ITEM k>>> block as ONE single comment; NEVER output more than ${expectedLen} objects.\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information.`;
+              enforcedPrompt += extra;
             }
-            return { results: allResults, raw: raws };
+            const input = buildSentinelInput(texts);
+            let resp: any;
+            if (config.model.startsWith('mistral.') && expectedLen === 1) {
+              // Avoid Mistral oddities on single-item batch
+              resp = await callAI(
+                config.provider,
+                config.model,
+                config.analysis_prompt + piiPolicy,
+                texts[0],
+                'analysis',
+                scannerKey,
+                rateLimiters,
+                sequentialQueue,
+                getEffectiveMaxTokens(config)
+              );
+              resp = { results: [resp?.results || resp] };
+            } else {
+              resp = await callAI(
+                config.provider,
+                config.model,
+                enforcedPrompt,
+                input,
+                'batch_analysis',
+                scannerKey,
+                rateLimiters,
+                sequentialQueue,
+                getEffectiveMaxTokens(config)
+              );
+            }
+            let results = resp?.results || resp;
+            if (!Array.isArray(results) || results.length !== expectedLen) {
+              const retried = await strictBatchRetry(config.provider, config.model, config.analysis_prompt, input, expectedLen, scannerKey);
+              if (retried) results = retried;
+            }
+            if (!Array.isArray(results)) {
+              // Final guard: pad/truncate
+              const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
+              results = Array(expectedLen).fill(null).map(() => ({ ...defaultResult }));
+            } else if (results.length !== expectedLen) {
+              results = results.slice(0, expectedLen);
+              while (results.length < expectedLen) results.push({ concerning: false, identifiable: false, reasoning: 'Padded default due to missing analysis' });
+            }
+            return { results, raw: [resp?.rawResponse ?? null] };
           }
 
           const [aOut, bOut] = await Promise.all([
