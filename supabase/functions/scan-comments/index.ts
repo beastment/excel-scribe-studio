@@ -2277,10 +2277,11 @@ async function performAICall(provider: string, model: string, prompt: string, co
           anthropic_version: "bedrock-2023-05-31",
           max_tokens: Number.isFinite(maxTokens) && (maxTokens as number) > 0 ? Math.floor(maxTokens as number) : 1000,
           temperature: 0.1,
+          system: prompt,
           messages: [
             {
               role: "user",
-              content: `${prompt}\n\n${commentText}`
+              content: `${commentText}`
             }
           ]
         });
