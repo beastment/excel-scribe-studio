@@ -30,7 +30,7 @@ serve(async (req) => {
     console.log = (...args: any[]) => __origLog(`[RUN ${scanRunId}]`, ...args);
     console.warn = (...args: any[]) => __origWarn(`[RUN ${scanRunId}]`, ...args);
     console.error = (...args: any[]) => __origError(`[RUN ${scanRunId}]`, ...args);
-    console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart} batchSize=${requestBody.batchSize}`);
+    console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
     
     const { 
       comments, 
