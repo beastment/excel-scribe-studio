@@ -913,7 +913,7 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
         }
       } // <-- Close the previous block (if block or try block)
 
-    } catch (error: any) {
+    } catch (error) {
       console.error(`Error processing batch:`, error);
       // Include the original comments with error info
       for (const comment of batch) {
