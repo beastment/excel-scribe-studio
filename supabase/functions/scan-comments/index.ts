@@ -808,13 +808,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
               }
 
               // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
-              const isInvalid = (s: string | null | undefined) => {
-                const t = String(s ?? '').trim();
-                if (!t) return true;
-                if (/^(\[|here\s+(is|are))/i.test(t)) return true; // headers or raw array tokens
-                if (/^<<<(?:ID|END|ITEM)\s+\d+>>>\s*$/i.test(t)) return true; // bare sentinel only
-                return false;
-              };
+              const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
               const expected = flaggedTexts.length;
               let needsFallback = redactedTexts.length !== expected || rephrasedTexts.length !== expected || redactedTexts.some(isInvalid) || rephrasedTexts.some(isInvalid);
               if (needsFallback) {
@@ -843,24 +837,22 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 }
               }
 
-              // Apply outputs to flagged comments only, keeping positions aligned to original list
+              // Apply redacted and rephrased texts
               let flaggedIndex = 0;
-              for (let j = 0; j < scannedComments.length; j++) {
-                const c = scannedComments[j];
-                if (!c.concerning && !c.identifiable) {
-                  // Ensure non-flagged rows remain untouched
-                  continue;
+              for (let k = 0; k < scannedComments.length; k++) {
+                if (scannedComments[k].concerning || scannedComments[k].identifiable) {
+                  scannedComments[k].redactedText = redactedTexts[flaggedIndex] ?? null;
+                  scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex] ?? null;
+                  
+                  // Set final text based on mode
+                  if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
+                    scannedComments[k].text = enforceRedactionPolicy(redactedTexts[flaggedIndex]);
+                  } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
+                    scannedComments[k].text = rephrasedTexts[flaggedIndex];
+                  }
+                  
+                  flaggedIndex++;
                 }
-                const red = redactedTexts[flaggedIndex] ?? '';
-                const reph = rephrasedTexts[flaggedIndex] ?? '';
-                c.redactedText = red || null;
-                c.rephrasedText = reph || null;
-                if (c.mode === 'redact' && red) {
-                  c.text = enforceRedactionPolicy(red) as string;
-                } else if (c.mode === 'rephrase' && reph) {
-                  c.text = reph;
-                }
-                flaggedIndex++;
               }
             }
           } catch (error) {

@@ -203,6 +203,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         
         const t0 = performance.now();
         // Phase 1: fast analysis only — skip adjudicator and postprocess
+        const isSingleRun = comments.length === 1;
         const { data, error } = await supabase.functions.invoke('scan-comments', {
           body: { 
             comments, 
@@ -210,7 +211,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             batchStart,
             batchSize: currentSize,
             skipAdjudicator: true,
-            skipPostprocess: true,
+            // For single-row runs, perform postprocess in phase 1 to avoid a second pass
+            skipPostprocess: !isSingleRun,
             scanRunId
           }
         });
@@ -267,7 +269,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
       
       // Phase 2: follow-up adjudication and postprocess on subset
-      const needsFollowup = processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || c.concerning || c.identifiable);
+      // For single-row runs, if no adjudication is needed, skip phase 2 entirely.
+      const isSingleRun = comments.length === 1;
+      const needsFollowup = processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || (!isSingleRun && (c.concerning || c.identifiable)));
       if (needsFollowup.length > 0) {
         toast.info(`Running follow-up on ${needsFollowup.length} flagged comments...`);
         // Phase 2 chunk size follows the adapted batch size, but smaller to avoid timeouts
