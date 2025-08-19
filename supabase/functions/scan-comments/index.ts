@@ -2090,7 +2090,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     }
 
     return await retryWithBackoff(async () => {
-      return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion);
+      return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, false, scannerType);
     }, 4, 2000, model); // Increased retries and base delay for Bedrock
   }
 
@@ -2136,7 +2136,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
   }
 
 // Separate function for making the actual Bedrock request
-  async function makeBedrockRequest(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', awsAccessKey: string, awsSecretKey: string, awsRegion: string, titanStrictRetry: boolean = false) {
+  async function makeBedrockRequest(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', awsAccessKey: string, awsSecretKey: string, awsRegion: string, titanStrictRetry: boolean = false, scannerType?: string) {
 
     // Use AWS SDK v3 style endpoint for Bedrock
     const endpoint = `https://bedrock-runtime.${awsRegion}.amazonaws.com/model/${model}/invoke`;
@@ -2619,7 +2619,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
           // Titan-only: one strict retry if parsing failed
           if (model.startsWith('amazon.titan') && !titanStrictRetry) {
             console.log('Titan parse failed — performing single strict retry');
-            return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, true);
+            return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, true, scannerType);
           }
           
           // Strategy 4: Enhanced text analysis for better detection - FIXED VERSION
@@ -2662,7 +2662,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
         // Titan-only: one strict retry in outer catch as a last attempt
         if (model.startsWith('amazon.titan') && !titanStrictRetry) {
           console.log('Titan parse failed in outer catch — performing single strict retry');
-          return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, true);
+          return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, true, scannerType);
         }
         // Enhanced fallback parsing
         if (responseType === 'analysis') {
