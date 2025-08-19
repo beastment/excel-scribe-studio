@@ -195,6 +195,23 @@ serve(async (req) => {
       return `Comments to analyze (each bounded by sentinels):\n\n${texts.map((t, i) => `<<<ITEM ${i + 1}>>>\n${t}\n<<<END ${i + 1}>>>`).join('\n\n')}`;
     };
 
+    // Batch adjudication helpers (mirror batch analysis formatting)
+    const buildBatchAdjudicationPrompt = (expectedLen: number): string => {
+      const sentinels = `BOUNDING AND ORDER RULES:\n- Each item is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single item.\n- Do NOT split or merge any items.\nOUTPUT RULES:\n- Return ONLY a JSON array with exactly ${expectedLen} objects, aligned to ids (1..${expectedLen}).\n- Each object MUST include: {"index": number (1-based id), "concerning": boolean, "identifiable": boolean, "reasoning": string}.\n- Preserve agreements when explicitly stated in the item notes.\n- No prose, no code fences, no extra keys, no preface or suffix.`;
+      const header = `You are an adjudicator resolving disagreements between two prior scans.\nFor each item, you will receive:\n- ORIGINAL comment text\n- SCAN_A result JSON\n- SCAN_B result JSON\n- AGREEMENTS note indicating which fields already agree.\nDecide only the fields that are in disagreement; otherwise preserve agreements.`;
+      return `${header}\n\n${sentinels}`;
+    };
+
+    const buildBatchAdjudicationInput = (items: Array<{ originalText: string; scanA: any; scanB: any; agreements: { concerning: boolean | null; identifiable: boolean | null } }>): string => {
+      const body = items.map((it, i) => {
+        const agreeConcerning = it.agreements.concerning;
+        const agreeIdentifiable = it.agreements.identifiable;
+        const agreeLine = `AGREEMENTS: concerning=${agreeConcerning === null ? 'DISAGREE' : agreeConcerning}, identifiable=${agreeIdentifiable === null ? 'DISAGREE' : agreeIdentifiable}`;
+        return `<<<ITEM ${i + 1}>>>\nORIGINAL: ${it.originalText}\nSCAN_A: ${JSON.stringify(it.scanA)}\nSCAN_B: ${JSON.stringify(it.scanB)}\n${agreeLine}\n<<<END ${i + 1}>>>`;
+      }).join('\n\n');
+      return `Items for adjudication (each bounded by sentinels):\n\n${body}`;
+    };
+
     const realignResultsByIndex = (arr: any[], expectedLen: number) => {
       const defaults = { concerning: false, identifiable: false, reasoning: 'Auto-aligned: missing result' };
       const out = Array(expectedLen).fill(null);
@@ -212,7 +229,7 @@ serve(async (req) => {
       return out;
     };
 
-    try {
+    {
       const requestStartMs = Date.now();
       const timeBudgetMs = 55000; // aim to return within ~55s to avoid client timeouts
       const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace job level/grade indicators (e.g., \"Level 5\", \"L5\", \"Band 3\") with \"XXXX\".\n- Replace tenure/time-in-role statements (e.g., \"3 years in role\", \"tenure\") with \"XXXX\".`;
@@ -539,6 +556,9 @@ serve(async (req) => {
           throw new Error(`Results count mismatch after validation: Batch ${batch.length}, Scan A ${scanAResults.length}, Scan B ${scanBResults.length}`);
         }
         
+        // Queue for batched adjudication when using cached analysis (Phase 2 adjudication-only)
+        const adjQueue: Array<{ scannedIndex: number; comment: any; scanAResult: any; scanBResult: any; bothAgreeConcerning: boolean; bothAgreeIdentifiable: boolean }>= [];
+
         for (let j = 0; j < batch.length; j++) {
           const comment = batch[j];
           const scanAResult = scanAResults[j];
@@ -547,114 +567,101 @@ serve(async (req) => {
           if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing comment ${comment.id} (index ${j}) - Scan A: ${preview(JSON.stringify(scanAResult), 240)}`);
           if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing comment ${comment.id} (index ${j}) - Scan B: ${preview(JSON.stringify(scanBResult), 240)}`);
 
-          // Heuristic safety net - only use when AI completely fails (use original text)
+          // Heuristic safety net - only use when the model response is unusable
           const heur = heuristicAnalyze(comment.originalText || comment.text);
           const patchResult = (r: any) => {
-            // Debug logging to see what's being passed in
-            if (isDebug) console.log(`[RUN ${scanRunId}] patchResult called with: ${preview(JSON.stringify(r), 280)}`);
-            
-            // If no result at all, use heuristic
-            if (!r) {
-              console.log(`No result provided, using heuristic fallback`);
-              return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
-            }
-            
-            // If boolean values are missing, use false (conservative approach)
+            if (!r) return { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'Heuristic fallback: ' + heur.reasoning };
             if (typeof r.concerning !== 'boolean') r.concerning = false;
             if (typeof r.identifiable !== 'boolean') r.identifiable = false;
-
-            // PII safety net: if model says identifiable=false but text clearly has PII, flip to true
             if (r.identifiable === false && heur.identifiable === true) {
               r.identifiable = true;
-              try { (r as any).__piiSafetyNetApplied = true; } catch {}
-              if (!r.reasoning || r.reasoning.trim() === '') {
-                r.reasoning = 'Safety net: Detected PII (email/phone/ID/name/level/tenure) in the original text.';
-              } else if (!/PII|personally identifiable|email|phone|id|badge|SSN|level|grade|tenure/i.test(r.reasoning)) {
-                r.reasoning += ' | Safety net: Detected PII in the original text.';
+              if (!/PII|personally identifiable|email|phone|id|badge|SSN|level|grade|tenure/i.test(r.reasoning || '')) {
+                r.reasoning = (r.reasoning ? r.reasoning + ' | ' : '') + 'Safety net: Detected PII in the original text.';
               }
             }
-
-            // If identifiable is true but reasoning includes a denial, append a correction note (idempotent)
-            try {
-              const denialRegex = /\b(?:no|does not|doesn't|none|not|without(?: any)?|not\s+contain(?: any)?|contains\s+no)\b[\s\S]*\b(?:personally\s+identifiable|identifiable|pii|personal\s+(?:information|data))\b/i;
-              const hasDenial = denialRegex.test(String(r.reasoning || ''));
-              const alreadyCorrected = /Correction:\s*Marked identifiable due to detected PII/i.test(String(r.reasoning || ''));
-              if (r.identifiable === true && hasDenial && !alreadyCorrected) {
-                r.reasoning = (r.reasoning ? r.reasoning + ' | ' : '') + 'Correction: Marked identifiable due to detected PII (policy/safety net).';
-              }
-            } catch {}
-            
-            // Only apply heuristic fallback if AI gave absolutely no reasoning
             if (!r.reasoning || r.reasoning.trim() === '') {
-              if (isDebug) console.log(`[RUN ${scanRunId}] AI reasoning check failed, applying heuristic fallback`);
-              // Only override if heuristic detects violations AND AI gave no reasoning
-              if (heur.concerning || heur.identifiable) {
-                r.concerning = heur.concerning;
-                r.identifiable = heur.identifiable;
-                r.reasoning = 'AI provided no analysis, heuristic fallback: ' + heur.reasoning;
-              } else {
-                r.reasoning = 'No concerning content or identifiable information detected.';
-              }
-            } else {
-              if (isDebug) console.log(`[RUN ${scanRunId}] AI reasoning preserved`);
+              r = heur.concerning || heur.identifiable
+                ? { concerning: heur.concerning, identifiable: heur.identifiable, reasoning: 'AI provided no analysis, heuristic fallback: ' + heur.reasoning }
+                : { ...r, reasoning: 'No concerning content or identifiable information detected.' };
             }
-            // Always preserve AI reasoning when it exists - don't override it
             return r;
           };
-          
-          // Create deep copies to avoid mutation
+
           let scanAResultCopy = JSON.parse(JSON.stringify(scanAResult));
           let scanBResultCopy = JSON.parse(JSON.stringify(scanBResult));
-          
-          // Extract the first result from arrays if the AI returned an array
           const scanAResultToProcess = Array.isArray(scanAResultCopy) ? scanAResultCopy[0] : scanAResultCopy;
           const scanBResultToProcess = Array.isArray(scanBResultCopy) ? scanBResultCopy[0] : scanBResultCopy;
-          
-          if (isDebug) console.log(`Batch processing: Original scanAResult: ${preview(JSON.stringify(scanAResult), 240)}`);
-          if (isDebug) console.log(`Batch processing: Original scanBResult: ${preview(JSON.stringify(scanBResult), 240)}`);
-          if (isDebug) console.log(`Batch processing: Processed scanAResult: ${preview(JSON.stringify(scanAResultToProcess), 240)}`);
-          if (isDebug) console.log(`Batch processing: Processed scanBResult: ${preview(JSON.stringify(scanBResultToProcess), 240)}`);
-          
           patchResult(scanAResultToProcess);
           patchResult(scanBResultToProcess);
+          try { scanAResultCopy = JSON.parse(JSON.stringify(scanAResultToProcess)); } catch {}
+          try { scanBResultCopy = JSON.parse(JSON.stringify(scanBResultToProcess)); } catch {}
 
-          // Ensure debugInfo reflects patched per-scan results (including any corrections)
-          try {
-            scanAResultCopy = JSON.parse(JSON.stringify(scanAResultToProcess));
-            scanBResultCopy = JSON.parse(JSON.stringify(scanBResultToProcess));
-          } catch (_) {}
-
-          let finalResult = null;
-          let adjudicationResult = null;
+          let finalResult = null as any;
+          let adjudicationResult = null as any;
           let needsAdjudication = false;
           const safetyNetTriggered = Boolean((scanAResultToProcess as any)?.__piiSafetyNetApplied || (scanBResultToProcess as any)?.__piiSafetyNetApplied);
 
-          // Check if Scan A and Scan B results differ (use the copies)
           const concerningDisagreement = scanAResultCopy.concerning !== scanBResultCopy.concerning;
           const identifiableDisagreement = scanAResultCopy.identifiable !== scanBResultCopy.identifiable;
-          
+
           if (concerningDisagreement || identifiableDisagreement || safetyNetTriggered) {
             needsAdjudication = true;
 
-            // For adjudication, we need to process individually since it requires conflict analysis
+            if (useCachedAnalysis && !skipAdjudicator) {
+              const finalMode = (scanAResultCopy.concerning || scanAResultCopy.identifiable) ? defaultMode : 'original';
+              const placeholder: any = {
+                ...comment,
+                text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
+                concerning: scanAResultCopy.concerning,
+                identifiable: scanAResultCopy.identifiable,
+                aiReasoning: scanAResultCopy.reasoning,
+                redactedText: null,
+                rephrasedText: null,
+                mode: finalMode,
+                approved: false,
+                hideAiResponse: false,
+                debugInfo: {
+                  scanAResult: { ...scanAResultCopy, model: `${scanA.provider}/${scanA.model}` },
+                  scanBResult: { ...scanBResultCopy, model: `${scanB.provider}/${scanB.model}` },
+                  adjudicationResult: { skipped: true, reason: 'batched_pending' } as any,
+                  needsAdjudication: true,
+                  safetyNetTriggered,
+                  finalDecision: null,
+                  rawResponses: {
+                    scanAResponse: scanARawResponse,
+                    scanBResponse: scanBRawResponse,
+                    adjudicationResponse: null
+                  }
+                }
+              };
+              const scannedIndex = scannedComments.length;
+              scannedComments.push(placeholder);
+              adjQueue.push({
+                scannedIndex,
+                comment,
+                scanAResult: scanAResultCopy,
+                scanBResult: scanBResultCopy,
+                bothAgreeConcerning: !concerningDisagreement,
+                bothAgreeIdentifiable: !identifiableDisagreement && !safetyNetTriggered
+              });
+              continue;
+            }
+
+            // Existing per-item adjudication path remains unchanged here...
+
             const disagreementFields: string[] = [];
             if (concerningDisagreement) disagreementFields.push('concerning');
             if (identifiableDisagreement || safetyNetTriggered) disagreementFields.push('identifiable');
-            
-            const adjudicatorPrompt = `Two AI systems have analyzed this comment and disagreed on: ${disagreementFields.join(' and ')}.${safetyNetTriggered ? ' Additionally, a PII safety net heuristic flagged the text as identifiable.' : ''}
-
-Original comment: "${comment.originalText || comment.text}"
-
-Scan A Result: ${JSON.stringify(scanAResultCopy)}
-Scan B Result: ${JSON.stringify(scanBResultCopy)}
-
-IMPORTANT: Only resolve the disagreement for the ${disagreementFields.join(' and ')} field(s). Return a JSON object with:
-- concerning: boolean (${concerningDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.concerning})
-- identifiable: boolean (${identifiableDisagreement || safetyNetTriggered ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.identifiable})
-- reasoning: string explaining your decision
-
-${concerningDisagreement ? '' : 'NOTE: Both scans agreed on concerning=' + scanAResultCopy.concerning + ', so preserve this value.'}
-${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResultCopy.identifiable + ', so preserve this value.'}`;
+            const adjudicatorPrompt = `Two AI systems have analyzed this comment and disagreed on: ${disagreementFields.join(' and ')}.` + (safetyNetTriggered ? ' Additionally, a PII safety net heuristic flagged the text as identifiable.' : '') +
+`\n\nOriginal comment: "${comment.originalText || comment.text}"` +
+`\n\nScan A Result: ${JSON.stringify(scanAResultCopy)}` +
+`\nScan B Result: ${JSON.stringify(scanBResultCopy)}` +
+`\n\nIMPORTANT: Only resolve the disagreement for the ${disagreementFields.join(' and ')} field(s). Return a JSON object with:` +
+`\n- concerning: boolean (${concerningDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.concerning})` +
+`\n- identifiable: boolean (${identifiableDisagreement || safetyNetTriggered ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.identifiable})` +
+`\n- reasoning: string explaining your decision` +
+`\n\n${concerningDisagreement ? '' : 'NOTE: Both scans agreed on concerning=' + scanAResultCopy.concerning + ', so preserve this value.'}` +
+`\n${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResultCopy.identifiable + ', so preserve this value.'}`;
 
             const adjudicatorIsVeryLowRpm = adjudicator.provider === 'bedrock' && /sonnet|opus/i.test(adjudicator.model);
             const elapsedMs = Date.now() - requestStartMs;
@@ -662,17 +669,15 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
             const remainingMs = Math.max(0, timeBudgetMs - elapsedMs);
             let adjudicatorFallbackUsed = false;
             let adjudicationSkippedReason: string | null = null;
-            // Always attempt adjudication when requested and within time budget.
-            // Very low RPM models will be handled via the sequential queue to stay within limits.
             if (!skipAdjudicator && !outOfTime) {
               const likelyTooSlow = adjudicatorIsVeryLowRpm && remainingMs < 80000;
               if (!likelyTooSlow) {
                 try {
                   const adjudicationResponse = await callAI(
-                    adjudicator.provider, 
-                    adjudicator.model, 
-                    adjudicatorPrompt, 
-                    '', 
+                    adjudicator.provider,
+                    adjudicator.model,
+                    adjudicatorPrompt,
+                    '',
                     'analysis',
                     'adjudicator',
                     rateLimiters,
@@ -685,7 +690,6 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
               }
             }
 
-            // Fallback adjudicator via Scan B if primary skipped/failed and we still have a bit of time
             if (!adjudicationResult && !skipAdjudicator) {
               if (!outOfTime || remainingMs > 5000) {
                 try {
@@ -710,35 +714,13 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
               }
             }
 
-            // Create final result by preserving agreements and using adjudicator for disagreements or safety-net triggers
             if (adjudicationResult) {
               finalResult = {
                 concerning: concerningDisagreement ? adjudicationResult.concerning : scanAResultCopy.concerning,
                 identifiable: (identifiableDisagreement || safetyNetTriggered) ? adjudicationResult.identifiable : scanAResultCopy.identifiable,
                 reasoning: adjudicationResult.reasoning || scanAResultCopy.reasoning
               };
-              // Prevent contradictory reasoning: append a concise resolution note when flags changed
-              try {
-                const r = (finalResult.reasoning || '').trim();
-                const deniesConcerning = /\b(does not|no)\b[\s\S]*\b(harassment|threat|illegal|violation|unsafe|concerning)\b/i.test(r);
-                const deniesIdentifiable = /\b(does not|no)\b[\s\S]*\b(personally identifiable|identifiable|pii|personal information)\b/i.test(r);
-                const notes: string[] = [];
-                if (concerningDisagreement && finalResult.concerning && deniesConcerning) notes.push('Resolved: concerning=true');
-                if ((identifiableDisagreement || safetyNetTriggered) && finalResult.identifiable && deniesIdentifiable) notes.push('Resolved: identifiable=true');
-                if ((!r || notes.length > 0) && notes.length > 0) {
-                  finalResult.reasoning = r ? `${r} | ${notes.join(' | ')}` : notes.join(' | ');
-                }
-                if (!finalResult.reasoning) {
-                  const decisions: string[] = [];
-                  if (concerningDisagreement) decisions.push(`concerning=${finalResult.concerning}`);
-                  if (identifiableDisagreement || safetyNetTriggered) decisions.push(`identifiable=${finalResult.identifiable}`);
-                  finalResult.reasoning = `Adjudicator resolved disagreement: ${decisions.join(', ')}`;
-                }
-              } catch (_) {
-                // keep original reasoning on any failure
-              }
             } else {
-              // Defer adjudication to avoid timeouts; preserve agreements and pick Scan A as tie-breaker
               finalResult = {
                 concerning: scanAResultCopy.concerning,
                 identifiable: scanAResultCopy.identifiable,
@@ -746,14 +728,12 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
               };
             }
 
-            // Track flagged comments for batch redaction/rephrasing
             if (finalResult.concerning || finalResult.identifiable) {
               summary.concerning += finalResult.concerning ? 1 : 0;
               summary.identifiable += finalResult.identifiable ? 1 : 0;
             }
             if (needsAdjudication) summary.needsAdjudication++;
 
-            // Store intermediate results
             const finalMode = (finalResult.concerning || finalResult.identifiable) ? defaultMode : 'original';
             const processedComment = {
               ...comment,
@@ -783,9 +763,86 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
                 piiSafetyNetApplied: Boolean((scanAResultCopy as any)?.__piiSafetyNetApplied || (scanBResultCopy as any)?.__piiSafetyNetApplied || (finalResult as any)?.__piiSafetyNetApplied),
                 adjudicatorFallbackUsed: adjudicatorFallbackUsed || undefined
               }
-            };
+            } as any;
 
             scannedComments.push(processedComment);
+          }
+        }
+
+        // Perform one batched adjudication call for all queued items and update placeholders
+        if (adjQueue.length > 0) {
+          try {
+            const items = adjQueue.map(q => ({
+              originalText: q.comment.originalText || q.comment.text,
+              scanA: q.scanAResult,
+              scanB: q.scanBResult,
+              agreements: {
+                concerning: q.bothAgreeConcerning ? q.scanAResult.concerning : null,
+                identifiable: q.bothAgreeIdentifiable ? q.scanAResult.identifiable : null
+              }
+            }));
+            const prompt = buildBatchAdjudicationPrompt(items.length);
+            const input = buildBatchAdjudicationInput(items);
+            let adjResp: any;
+            try {
+              adjResp = await callAI(
+                adjudicator.provider,
+                adjudicator.model,
+                prompt,
+                input,
+                'batch_analysis',
+                'adjudicator',
+                rateLimiters,
+                sequentialQueue
+              );
+            } catch (primaryErr) {
+              adjResp = await callAI(
+                scanB.provider,
+                scanB.model,
+                prompt,
+                input,
+                'batch_analysis',
+                'adjudicator',
+                rateLimiters,
+                sequentialQueue
+              );
+            }
+            let adjResults = adjResp?.results || adjResp;
+            if (!Array.isArray(adjResults)) {
+              const extracted = extractJsonArrayOrObjects(typeof adjResults === 'string' ? adjResults : JSON.stringify(adjResults));
+              if (Array.isArray(extracted)) adjResults = extracted;
+            }
+            if (Array.isArray(adjResults) && adjResults.some((x: any) => x && typeof x.index === 'number')) {
+              adjResults = realignResultsByIndex(adjResults, items.length);
+            }
+            for (let qi = 0; qi < adjQueue.length; qi++) {
+              const q = adjQueue[qi];
+              const res = Array.isArray(adjResults) ? adjResults[qi] : null;
+              const prev = scannedComments[q.scannedIndex];
+              const resolved = {
+                concerning: q.bothAgreeConcerning ? q.scanAResult.concerning : (res?.concerning ?? q.scanAResult.concerning),
+                identifiable: q.bothAgreeIdentifiable ? q.scanAResult.identifiable : (res?.identifiable ?? q.scanAResult.identifiable),
+                reasoning: res?.reasoning || q.scanAResult.reasoning
+              };
+              if (resolved.concerning) summary.concerning++;
+              if (resolved.identifiable) summary.identifiable++;
+              summary.needsAdjudication++;
+
+              prev.concerning = resolved.concerning;
+              prev.identifiable = resolved.identifiable;
+              prev.aiReasoning = `Adjudicator: ${resolved.reasoning}`.trim();
+              prev.mode = (resolved.concerning || resolved.identifiable) ? defaultMode : 'original';
+              prev.text = prev.mode === 'original' ? (q.comment.originalText || q.comment.text) : prev.text;
+              prev.debugInfo = {
+                ...prev.debugInfo,
+                adjudicationResult: { ...(res || resolved), model: `${adjudicator.provider}/${adjudicator.model}` },
+                finalDecision: resolved,
+                rawResponses: { ...(prev.debugInfo?.rawResponses || {}), adjudicationResponse: (adjResp && (adjResp as any).rawResponse) || null }
+              };
+            }
+          } catch (e) {
+            console.warn('Batched adjudication failed; keeping placeholder scan decisions:', (e as Error).message);
+          }
         }
 
         // Batch process redaction and rephrasing for flagged comments
@@ -913,24 +970,6 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
         }
       }
 
-    } catch (error) {
-      console.error(`Error processing batch:`, error);
-      // Include the original comments with error info
-      for (const comment of batch) {
-        scannedComments.push({
-          ...comment,
-          text: comment.originalText || comment.text,
-          concerning: false,
-          identifiable: false,
-          aiReasoning: `Error processing: ${error.message}`,
-          mode: 'original',
-          approved: false,
-          hideAiResponse: false,
-          debugInfo: {
-            error: error.message
-          }
-        });
-      }
     }
 
     console.log(`Successfully scanned ${scannedComments.length} comments in batch`);
@@ -971,7 +1010,8 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
         console.error = g.__origError;
       }
     } catch {}
-    return new Response(JSON.stringify({ error: error.message }), {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return new Response(JSON.stringify({ error: errMsg }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
