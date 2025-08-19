@@ -766,6 +766,38 @@ serve(async (req) => {
             } as any;
 
             scannedComments.push(processedComment);
+          } else {
+            // No adjudication needed; use Scan A result (already patched) as final
+            const finalMode = (scanAResultCopy.concerning || scanAResultCopy.identifiable) ? defaultMode : 'original';
+            const processedComment = {
+              ...comment,
+              text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
+              concerning: scanAResultCopy.concerning,
+              identifiable: scanAResultCopy.identifiable,
+              aiReasoning: scanAResultCopy.reasoning,
+              redactedText: null,
+              rephrasedText: null,
+              mode: finalMode,
+              approved: false,
+              hideAiResponse: false,
+              debugInfo: {
+                scanAResult: { ...scanAResultCopy, model: `${scanA.provider}/${scanA.model}` },
+                scanBResult: { ...scanBResultCopy, model: `${scanB.provider}/${scanB.model}` },
+                adjudicationResult: null,
+                needsAdjudication: false,
+                safetyNetTriggered,
+                finalDecision: scanAResultCopy,
+                rawResponses: {
+                  scanAResponse: scanARawResponse,
+                  scanBResponse: scanBRawResponse,
+                  adjudicationResponse: null
+                },
+                piiSafetyNetApplied: Boolean((scanAResultCopy as any)?.__piiSafetyNetApplied || (scanBResultCopy as any)?.__piiSafetyNetApplied)
+              }
+            } as any;
+            if (processedComment.concerning) summary.concerning++;
+            if (processedComment.identifiable) summary.identifiable++;
+            scannedComments.push(processedComment);
           }
         }
 
