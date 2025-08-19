@@ -657,7 +657,9 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
 
             const adjudicatorIsVeryLowRpm = adjudicator.provider === 'bedrock' && /sonnet|opus/i.test(adjudicator.model);
             const outOfTime = Date.now() - requestStartMs > timeBudgetMs;
-            if (!skipAdjudicator && !adjudicatorIsVeryLowRpm && !outOfTime) {
+            // Always attempt adjudication when requested and within time budget.
+            // Very low RPM models will be handled via the sequential queue to stay within limits.
+            if (!skipAdjudicator && !outOfTime) {
               try {
                 const adjudicationResponse = await callAI(
                   adjudicator.provider, 
@@ -672,6 +674,9 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
               } catch (error) {
                 console.error(`Adjudicator failed for comment ${comment.id}:`, error);
+                if (adjudicatorIsVeryLowRpm) {
+                  console.warn('Adjudicator call skipped due to low RPM constraints; using tie-breaker instead.');
+                }
               }
             }
 
