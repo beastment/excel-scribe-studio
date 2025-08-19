@@ -36,7 +36,6 @@ serve(async (req) => {
       comments, 
       defaultMode = 'redact',
       batchStart = 0,
-      batchSize = 100,
       // Optional orchestration flags to ensure fast responses under edge timeouts
       skipAdjudicator = false,
       skipPostprocess = false,
@@ -93,12 +92,17 @@ serve(async (req) => {
       }
     }
 
-    // Process only the specified batch
-    const batch = comments.slice(batchStart, batchStart + batchSize);
+    // Process only the specified batch using configured preferred batch sizes
+    const remaining = Math.max(0, comments.length - batchStart);
+    // Use the smallest preferred batch size across Scan A and Scan B to keep them aligned
+    const preferredAForAnalysis = getPreferredBatchSize(scanA, remaining);
+    const preferredBForAnalysis = getPreferredBatchSize(scanB, remaining);
+    const effectiveBatchSize = Math.min(remaining, Math.min(preferredAForAnalysis, preferredBForAnalysis));
+    const batch = comments.slice(batchStart, batchStart + effectiveBatchSize);
     const scannedComments = [];
     let summary = { total: batch.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
 
-    console.log(`[RUN ${scanRunId}] [PROCESS] Batch ${batchStart + 1}-${Math.min(batchStart + batchSize, comments.length)} of ${comments.length}`);
+    console.log(`[RUN ${scanRunId}] [PROCESS] Batch ${batchStart + 1}-${Math.min(batchStart + batch.length, comments.length)} of ${comments.length} (preferredA=${preferredAForAnalysis}, preferredB=${preferredBForAnalysis}, chosen=${effectiveBatchSize})`);
 
     if (batch.length === 0) {
       throw new Error('No comments in specified batch range');
