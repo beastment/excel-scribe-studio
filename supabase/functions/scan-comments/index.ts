@@ -230,6 +230,18 @@ serve(async (req) => {
       }
       return fallback;
     }
+    // Output token limit utility (reads multiple possible field names)
+    function getOutputTokenLimit(config: any, fallback: number = 0): number {
+      const candidates = [
+        config && (config.output_token_limit ?? config.outputTokenLimit),
+        config && (config.max_tokens ?? config.maxTokens)
+      ];
+      for (const c of candidates) {
+        const n = Number(c);
+        if (Number.isFinite(n) && n > 0) return Math.floor(n);
+      }
+      return fallback;
+    }
     function chunkArray<T>(arr: T[], size: number): T[][] {
       const out: T[][] = [];
       for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -296,7 +308,8 @@ serve(async (req) => {
         const strictHeader = `STRICT MODE: Output ONLY a JSON array of exactly ${expectedLen} objects, in the same order as the inputs. Each object MUST have: {"index": number (1-based), "concerning": boolean, "identifiable": boolean, "reasoning": string}. No prose, no code fences, no extra text.`;
         const strictPrompt = `${strictHeader}\n\n${basePrompt}`;
         try {
-          const resp = await callAI(provider, model, strictPrompt, inputText, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue);
+          const maxTokens = scannerKey === 'scan_a' ? getOutputTokenLimit(scanA, 0) : getOutputTokenLimit(scanB, 0);
+          const resp = await callAI(provider, model, strictPrompt, inputText, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue, maxTokens);
           const results = resp?.results ?? resp;
           if (Array.isArray(results) && results.length === expectedLen) {
             console.log(`[STRICT RETRY] Succeeded for ${provider}/${model} with ${expectedLen} results.`);
@@ -328,10 +341,10 @@ serve(async (req) => {
               let resp: any;
               if (config.model.startsWith('mistral.') && chunk.length === 1) {
                 // Avoid Mistral oddities on single-item batch
-                resp = await callAI(config.provider, config.model, config.analysis_prompt + piiPolicy, chunk[0], 'analysis', scannerKey, rateLimiters, sequentialQueue);
+                resp = await callAI(config.provider, config.model, config.analysis_prompt + piiPolicy, chunk[0], 'analysis', scannerKey, rateLimiters, sequentialQueue, getOutputTokenLimit(config, 0));
                 resp = { results: [resp?.results || resp] };
               } else {
-                resp = await callAI(config.provider, config.model, enforcedPrompt, input, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue);
+                resp = await callAI(config.provider, config.model, enforcedPrompt, input, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue, getOutputTokenLimit(config, 0));
               }
               let results = resp?.results || resp;
               if (!Array.isArray(results) || results.length !== chunk.length) {
@@ -525,8 +538,8 @@ serve(async (req) => {
 
           try {
             // Process one at a time to maintain strict order and avoid sync issues (use original text)
-            const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_a', rateLimiters, sequentialQueue);
-            const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_b', rateLimiters, sequentialQueue);
+            const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_a', rateLimiters, sequentialQueue, getOutputTokenLimit(scanA, 0));
+            const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_b', rateLimiters, sequentialQueue, getOutputTokenLimit(scanB, 0));
 
             // Deep clone the results to avoid mutation issues
             const scanAResult = JSON.parse(JSON.stringify(scanAResponse?.results || scanAResponse));
@@ -712,7 +725,8 @@ serve(async (req) => {
                     'analysis',
                     'adjudicator',
                     rateLimiters,
-                    sequentialQueue
+                    sequentialQueue,
+                    getOutputTokenLimit(adjudicator, 0)
                   );
                   adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
                 } catch (error) {
@@ -732,7 +746,8 @@ serve(async (req) => {
                     'analysis',
                     'adjudicator',
                     rateLimiters,
-                    sequentialQueue
+                    sequentialQueue,
+                    getOutputTokenLimit(scanB, 0)
                   );
                   adjudicationResult = fallbackResponse?.results || fallbackResponse;
                   adjudicatorFallbackUsed = true;
@@ -860,7 +875,8 @@ serve(async (req) => {
                   'batch_analysis',
                   'adjudicator',
                   rateLimiters,
-                  sequentialQueue
+                  sequentialQueue,
+                  getOutputTokenLimit(adjudicator, 0)
                 );
               } catch (primaryErr) {
                 adjResp = await callAI(
@@ -871,7 +887,8 @@ serve(async (req) => {
                   'batch_analysis',
                   'adjudicator',
                   rateLimiters,
-                  sequentialQueue
+                  sequentialQueue,
+                  getOutputTokenLimit(scanB, 0)
                 );
               }
               let adjResults = adjResp?.results || adjResp;
@@ -965,12 +982,12 @@ serve(async (req) => {
                 let rawRedacted: any = [];
                 let rawRephrased: any = [];
                 if (activeConfig.provider === 'bedrock') {
-                  rawRedacted = await callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters);
-                  rawRephrased = await callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters);
+                  rawRedacted = await callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getOutputTokenLimit(activeConfig, 0));
+                  rawRephrased = await callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getOutputTokenLimit(activeConfig, 0));
                 } else {
                   [rawRedacted, rawRephrased] = await Promise.all([
-                    callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters),
-                    callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters)
+                    callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getOutputTokenLimit(activeConfig, 0)),
+                    callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getOutputTokenLimit(activeConfig, 0))
                   ]);
                 }
 
@@ -1693,7 +1710,7 @@ function logAIResponse(provider: string, model: string, responseType: string, re
 }
 
 // Helper function to call AI services with rate limiting
-async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>, sequentialQueue?: Map<string, any>) {
+async function callAI(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>, sequentialQueue?: Map<string, any>, maxTokens?: number) {
   // Estimate tokens for this request
   const estimatedTokens = estimateTokens(prompt + commentText);
   
@@ -1706,7 +1723,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
     // Use sequential queue for very low RPM models - this prevents ALL concurrent calls
     console.log(`Forcing sequential processing for ${modelKey} due to 1 RPM limit`);
     return await processSequentially(modelKey, async () => {
-      return await performAICall(provider, model, prompt, commentText, responseType, scannerType, rateLimiters, estimatedTokens);
+      return await performAICall(provider, model, prompt, commentText, responseType, scannerType, rateLimiters, estimatedTokens, maxTokens);
     }, sequentialQueue);
   }
   
@@ -1718,7 +1735,7 @@ async function callAI(provider: string, model: string, prompt: string, commentTe
     }
   }
   
-  return await performAICall(provider, model, prompt, commentText, responseType, scannerType, rateLimiters, estimatedTokens);
+  return await performAICall(provider, model, prompt, commentText, responseType, scannerType, rateLimiters, estimatedTokens, maxTokens);
 }
 
 // Helper function to process requests sequentially for very low RPM models
@@ -1782,7 +1799,7 @@ async function processQueue(queueData: any) {
 }
 
 // Helper function to perform the actual AI call
-async function performAICall(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>, estimatedTokens?: number) {
+async function performAICall(provider: string, model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, rateLimiters?: Map<string, any>, estimatedTokens?: number, maxTokens?: number) {
   // Enforce per-scanner limits if available
   if (scannerType && rateLimiters && rateLimiters.has(scannerType)) {
     await enforceRateLimit(scannerType, estimatedTokens || 0, rateLimiters);
@@ -1791,11 +1808,11 @@ async function performAICall(provider: string, model: string, prompt: string, co
   // Call the appropriate AI provider
   let result;
   if (provider === 'openai') {
-    result = await callOpenAI(model, prompt, commentText, responseType, scannerType);
+    result = await callOpenAI(model, prompt, commentText, responseType, scannerType, maxTokens);
   } else if (provider === 'azure') {
-    result = await callAzureOpenAI(model, prompt, commentText, responseType, scannerType);
+    result = await callAzureOpenAI(model, prompt, commentText, responseType, scannerType, maxTokens);
   } else if (provider === 'bedrock') {
-    result = await callBedrock(model, prompt, commentText, responseType, scannerType);
+    result = await callBedrock(model, prompt, commentText, responseType, scannerType, maxTokens);
   } else {
     throw new Error(`Unsupported AI provider: ${provider}`);
   }
@@ -1805,7 +1822,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
 }
 
   // OpenAI API call
-  async function callOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string) {
+  async function callOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, maxTokens?: number) {
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
     
     const messages = [
@@ -1813,7 +1830,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
       { role: 'user', content: commentText }
     ];
 
-    const payload = JSON.stringify({ model, messages, temperature: 0.1 });
+    const payload = JSON.stringify({ model, messages, temperature: 0.1, max_tokens: Number.isFinite(maxTokens) && (maxTokens as number) > 0 ? Math.floor(maxTokens as number) : undefined });
     logAIRequest('openai', model, responseType, prompt, commentText, payload, responseType.startsWith('batch') ? 'batch' : 'single', scannerType === 'adjudicator' ? 'adjudication' : (responseType.includes('text') ? 'postprocess' : 'analysis'));
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1967,7 +1984,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
   }
 
   // Azure OpenAI API call
-  async function callAzureOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string) {
+  async function callAzureOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, maxTokens?: number) {
     const azureApiKey = Deno.env.get('AZURE_OPENAI_API_KEY');
     const azureEndpoint = Deno.env.get('AZURE_OPENAI_ENDPOINT');
     const apiVersion = Deno.env.get('AZURE_OPENAI_API_VERSION') || '2024-02-01';
@@ -1987,7 +2004,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     // Azure OpenAI uses deployment name, which should match the model name
     const url = `${cleanEndpoint}/openai/deployments/${model}/chat/completions?api-version=${apiVersion}`;
 
-    const azPayload = JSON.stringify({ messages, temperature: 0.1 });
+    const azPayload = JSON.stringify({ messages, temperature: 0.1, max_tokens: Number.isFinite(maxTokens) && (maxTokens as number) > 0 ? Math.floor(maxTokens as number) : undefined });
     logAIRequest('azure', model, responseType, prompt, commentText, azPayload, responseType.startsWith('batch') ? 'batch' : 'single', scannerType === 'adjudicator' ? 'adjudication' : (responseType.includes('text') ? 'postprocess' : 'analysis'));
     const response = await fetch(url, {
       method: 'POST',
@@ -2118,7 +2135,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
   }
 
   // AWS Bedrock API call with retry logic
-  async function callBedrock(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string) {
+  async function callBedrock(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string, maxTokens?: number) {
     const awsAccessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
     const awsSecretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
     const awsRegion = Deno.env.get('AWS_REGION') || 'us-west-2';
@@ -2130,7 +2147,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     }
 
     return await retryWithBackoff(async () => {
-      return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, false, scannerType);
+      return await makeBedrockRequest(model, prompt, commentText, responseType, awsAccessKey, awsSecretKey, awsRegion, false, scannerType, maxTokens);
     }, 4, 2000, model); // Increased retries and base delay for Bedrock
   }
 
@@ -2176,7 +2193,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
   }
 
 // Separate function for making the actual Bedrock request
-  async function makeBedrockRequest(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', awsAccessKey: string, awsSecretKey: string, awsRegion: string, titanStrictRetry: boolean = false, scannerType?: string) {
+  async function makeBedrockRequest(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', awsAccessKey: string, awsSecretKey: string, awsRegion: string, titanStrictRetry: boolean = false, scannerType?: string, maxTokens?: number) {
 
     // Use AWS SDK v3 style endpoint for Bedrock
     const endpoint = `https://bedrock-runtime.${awsRegion}.amazonaws.com/model/${model}/invoke`;
@@ -2200,7 +2217,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
       if (model.includes('claude-3') || model.includes('sonnet-4') || model.includes('haiku-3') || model.includes('opus-3')) {
         requestBody = JSON.stringify({
           anthropic_version: "bedrock-2023-05-31",
-          max_tokens: 1000,
+          max_tokens: Number.isFinite(maxTokens) && (maxTokens as number) > 0 ? Math.floor(maxTokens as number) : 1000,
           temperature: 0.1,
           messages: [
             {
@@ -2213,7 +2230,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
         // Legacy Claude models
         requestBody = JSON.stringify({
           prompt: `\n\nHuman: ${prompt}\n\n${commentText}\n\nAssistant:`,
-          max_tokens_to_sample: 1000,
+          max_tokens_to_sample: Number.isFinite(maxTokens) && (maxTokens as number) > 0 ? Math.floor(maxTokens as number) : 1000,
           temperature: 0.1,
         });
       }
@@ -2221,7 +2238,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
       requestBody = JSON.stringify({
         inputText: `${effectivePrompt}\n\n${commentText}`,
         textGenerationConfig: {
-          maxTokenCount: 1000,
+          maxTokenCount: Number.isFinite(maxTokens) && (maxTokens as number) > 0 ? Math.floor(maxTokens as number) : 1000,
           temperature: 0.1,
           topP: 0.1
         }
@@ -2231,7 +2248,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
       // Use deterministic settings and higher token budget to avoid truncation and uniform outputs
       requestBody = JSON.stringify({
         prompt: `${prompt}\n\n${commentText}`,
-        max_tokens: 2000,
+        max_tokens: Number.isFinite(maxTokens) && (maxTokens as number) > 0 ? Math.floor(maxTokens as number) : 2000,
         temperature: 0,
         top_p: 1
       });
