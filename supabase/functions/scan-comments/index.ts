@@ -343,8 +343,8 @@ serve(async (req) => {
           const piiPolicy = `\nPII POLICY:\n- Organization/employer names are allowed and DO NOT make a comment identifiable.\n- Treat job level/grade (e.g., \"Level 5\", \"L5\"), specific internal level numbers, and tenure/time-in-role (e.g., \"3 years in role\") as personally identifiable.\n- If such attributes are present for a specific person, set \"identifiable\"=true.`;
 
           async function runModelBatch(config: any, texts: string[], scannerKey: 'scan_a'|'scan_b'): Promise<{ results: any[]; raw: any[] }> {
-            const preferred = getPreferredBatchSize(config, texts.length);
-            const chunks = chunkArray(texts, preferred);
+            // Do not re-chunk here; the outer batch size is already the min of model prefs and remaining
+            const chunks = [texts];
             const allResults: any[] = [];
             const raws: any[] = [];
             for (const chunk of chunks) {
