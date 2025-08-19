@@ -1753,7 +1753,12 @@ function logAIRequest(
 ) {
   const tag = mode === 'batch' ? '[AI BATCH REQUEST]' : '[AI SINGLE REQUEST]';
   const phaseTag = phase ? ` phase=${phase}` : '';
-  console.log(`${tag} ${provider}/${model} type=${responseType}${phaseTag}\nprompt=${prompt}\ninput=${input}${payload ? `\npayload=${payload}` : ''}`);
+  // Avoid duplicating inputs when payload already contains the full request
+  if (payload) {
+    console.log(`${tag} ${provider}/${model} type=${responseType}${phaseTag}\nprompt=${prompt}\npayload=${payload}`);
+    return;
+  }
+  console.log(`${tag} ${provider}/${model} type=${responseType}${phaseTag}\nprompt=${prompt}\ninput=${input}`);
 }
 function logAIResponse(provider: string, model: string, responseType: string, result: any) {
   try {
