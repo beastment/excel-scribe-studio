@@ -106,6 +106,8 @@ serve(async (req) => {
 
     // Rate limiting setup
     const rateLimiters = new Map<string, any>();
+    // Per-request AI call de-duplication to avoid duplicate batch postprocess submissions
+    const aiDedupe = new Set<string>();
 
     // Per-scanner limiters (as configured in admin dashboard)
     configs.forEach(config => {
@@ -915,83 +917,93 @@ serve(async (req) => {
               const redPrompt = buildBatchTextPrompt(activeConfig.redact_prompt + REDACTION_POLICY, flaggedTexts.length);
               const rephPrompt = buildBatchTextPrompt(activeConfig.rephrase_prompt, flaggedTexts.length);
               const sentinelInput = buildSentinelInput(flaggedTexts);
-              const [rawRedacted, rawRephrased] = await Promise.all([
-                callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters),
-                callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters)
-              ]);
-
-              let redactedTexts = normalizeBatchTextParsed(rawRedacted);
-              let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
-
-              // If model returned aligned ID-tagged strings, strip tags and re-align by ID
-              const idTag = /^\s*<<<ID\s+(\d+)>>>\s*/i;
-              const stripAndIndex = (arr: string[]) => arr.map(s => {
-                const m = idTag.exec(s || '');
-                return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
-              });
-              const redIdx = stripAndIndex(redactedTexts);
-              const rephIdx = stripAndIndex(rephrasedTexts);
-              const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
-              if (allHaveIds) {
-                const expected = flaggedTexts.length;
-                const byId = (list: { idx: number|null; text: string }[]) => {
-                  const out: string[] = Array(expected).fill('');
-                  for (const it of list) {
-                    if (it.idx && it.idx >= 1 && it.idx <= expected) out[it.idx - 1] = it.text;
-                  }
-                  return out;
-                };
-                redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
-                rephrasedTexts = byId(rephIdx);
+              // De-duplicate identical batch postprocess requests within a single RUN to prevent repeated calls
+              const postKey = `${activeConfig.provider}:${activeConfig.model}:post_batch:${flaggedTexts.length}:${sentinelInput.length}`;
+              if (aiDedupe.has(postKey)) {
+                console.log(`Skipping duplicate batch postprocess for key ${postKey}`);
+                // Skip entire postprocess step on duplicates; first invocation already applied outputs
               } else {
-                redactedTexts = redactedTexts.map(enforceRedactionPolicy);
-              }
+                aiDedupe.add(postKey);
+                let rawRedacted: any = [];
+                let rawRephrased: any = [];
+                [rawRedacted, rawRephrased] = await Promise.all([
+                  callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters),
+                  callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters)
+                ]);
 
-              // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
-              const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
-              const expected = flaggedTexts.length;
-              let needsFallback = redactedTexts.length !== expected || rephrasedTexts.length !== expected || redactedTexts.some(isInvalid) || rephrasedTexts.some(isInvalid);
-              if (needsFallback) {
-                console.warn(`Batch text outputs invalid or mismatched (expected=${expected}, red=${redactedTexts.length}, reph=${rephrasedTexts.length}). Running per-item fallback for failed entries.`);
-                // Build index list of flagged comments to process individually for the failed ones
+                let redactedTexts = normalizeBatchTextParsed(rawRedacted);
+                let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
+
+                // If model returned aligned ID-tagged strings, strip tags and re-align by ID
+                const idTag = /^\s*<<<ID\s+(\d+)>>>\s*/i;
+                const stripAndIndex = (arr: string[]) => arr.map(s => {
+                  const m = idTag.exec(s || '');
+                  return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
+                });
+                const redIdx = stripAndIndex(redactedTexts);
+                const rephIdx = stripAndIndex(rephrasedTexts);
+                const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
+                if (allHaveIds) {
+                  const expected = flaggedTexts.length;
+                  const byId = (list: { idx: number|null; text: string }[]) => {
+                    const out: string[] = Array(expected).fill('');
+                    for (const it of list) {
+                      if (it.idx && it.idx >= 1 && it.idx <= expected) out[it.idx - 1] = it.text;
+                    }
+                    return out;
+                  };
+                  redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
+                  rephrasedTexts = byId(rephIdx);
+                } else {
+                  redactedTexts = redactedTexts.map(enforceRedactionPolicy);
+                }
+
+                // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
+                const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
+                const expected = flaggedTexts.length;
+                let needsFallback = redactedTexts.length !== expected || rephrasedTexts.length !== expected || redactedTexts.some(isInvalid) || rephrasedTexts.some(isInvalid);
+                if (needsFallback) {
+                  console.warn(`Batch text outputs invalid or mismatched (expected=${expected}, red=${redactedTexts.length}, reph=${rephrasedTexts.length}). Running per-item fallback for failed entries.`);
+                  // Build index list of flagged comments to process individually for the failed ones
+                  let flaggedIndex = 0;
+                  for (let k = 0; k < scannedComments.length; k++) {
+                    if (!(scannedComments[k].concerning || scannedComments[k].identifiable)) continue;
+                    const red = redactedTexts[flaggedIndex];
+                    const reph = rephrasedTexts[flaggedIndex];
+                    const redBad = flaggedIndex >= redactedTexts.length || isInvalid(red);
+                    const rephBad = flaggedIndex >= rephrasedTexts.length || isInvalid(reph);
+                    if (redBad || rephBad) {
+                      try {
+                        const [red1, reph1] = await Promise.all([
+                          redBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters) : Promise.resolve(red),
+                          rephBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters) : Promise.resolve(reph)
+                        ]);
+                        if (redBad) redactedTexts[flaggedIndex] = enforceRedactionPolicy(red1 as string);
+                        if (rephBad) rephrasedTexts[flaggedIndex] = reph1 as string;
+                      } catch (perItemErr) {
+                        console.warn(`Per-item fallback failed for flagged index ${flaggedIndex}:`, perItemErr);
+                      }
+                    }
+                    flaggedIndex++;
+                  }
+                }
+
+                // Apply redacted and rephrased texts
                 let flaggedIndex = 0;
                 for (let k = 0; k < scannedComments.length; k++) {
-                  if (!(scannedComments[k].concerning || scannedComments[k].identifiable)) continue;
-                  const red = redactedTexts[flaggedIndex];
-                  const reph = rephrasedTexts[flaggedIndex];
-                  const redBad = flaggedIndex >= redactedTexts.length || isInvalid(red);
-                  const rephBad = flaggedIndex >= rephrasedTexts.length || isInvalid(reph);
-                  if (redBad || rephBad) {
-                    try {
-                      const [red1, reph1] = await Promise.all([
-                        redBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters) : Promise.resolve(red),
-                        rephBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters) : Promise.resolve(reph)
-                      ]);
-                      if (redBad) redactedTexts[flaggedIndex] = enforceRedactionPolicy(red1 as string);
-                      if (rephBad) rephrasedTexts[flaggedIndex] = reph1 as string;
-                    } catch (perItemErr) {
-                      console.warn(`Per-item fallback failed for flagged index ${flaggedIndex}:`, perItemErr);
+                  if (scannedComments[k].concerning || scannedComments[k].identifiable) {
+                    scannedComments[k].redactedText = redactedTexts[flaggedIndex] ?? null;
+                    scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex] ?? null;
+                    
+                    // Set final text based on mode
+                    if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
+                      scannedComments[k].text = enforceRedactionPolicy(redactedTexts[flaggedIndex]);
+                    } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
+                      scannedComments[k].text = rephrasedTexts[flaggedIndex];
                     }
+                    
+                    flaggedIndex++;
                   }
-                  flaggedIndex++;
-                }
-              }
-
-              // Apply redacted and rephrased texts
-              let flaggedIndex = 0;
-              for (let k = 0; k < scannedComments.length; k++) {
-                if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                  scannedComments[k].redactedText = redactedTexts[flaggedIndex] ?? null;
-                  scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex] ?? null;
-                  
-                  // Set final text based on mode
-                  if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
-                    scannedComments[k].text = enforceRedactionPolicy(redactedTexts[flaggedIndex]);
-                  } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
-                    scannedComments[k].text = rephrasedTexts[flaggedIndex];
-                  }
-                  
-                  flaggedIndex++;
                 }
               }
             }
@@ -1614,8 +1626,19 @@ function preview(text: any, length: number = 200): string {
   const t = typeof text === 'string' ? text : String(text ?? '');
   return t.length > length ? t.slice(0, length) + '...' : t;
 }
-function logAIRequest(provider: string, model: string, responseType: string, prompt: string, input: string, payload?: string) {
-  console.log(`[AI REQUEST] ${provider}/${model} type=${responseType}\nprompt=${prompt}\ninput=${input}${payload ? `\npayload=${payload}` : ''}`);
+function logAIRequest(
+  provider: string,
+  model: string,
+  responseType: string,
+  prompt: string,
+  input: string,
+  payload?: string,
+  mode: 'batch' | 'single' = 'single',
+  phase: 'analysis' | 'postprocess' | 'adjudication' = 'analysis'
+) {
+  const tag = mode === 'batch' ? '[AI BATCH REQUEST]' : '[AI SINGLE REQUEST]';
+  const phaseTag = phase ? ` phase=${phase}` : '';
+  console.log(`${tag} ${provider}/${model} type=${responseType}${phaseTag}\nprompt=${prompt}\ninput=${input}${payload ? `\npayload=${payload}` : ''}`);
 }
 function logAIResponse(provider: string, model: string, responseType: string, result: any) {
   try {
@@ -1728,11 +1751,11 @@ async function performAICall(provider: string, model: string, prompt: string, co
   // Call the appropriate AI provider
   let result;
   if (provider === 'openai') {
-    result = await callOpenAI(model, prompt, commentText, responseType);
+    result = await callOpenAI(model, prompt, commentText, responseType, scannerType);
   } else if (provider === 'azure') {
-    result = await callAzureOpenAI(model, prompt, commentText, responseType);
+    result = await callAzureOpenAI(model, prompt, commentText, responseType, scannerType);
   } else if (provider === 'bedrock') {
-    result = await callBedrock(model, prompt, commentText, responseType);
+    result = await callBedrock(model, prompt, commentText, responseType, scannerType);
   } else {
     throw new Error(`Unsupported AI provider: ${provider}`);
   }
@@ -1742,7 +1765,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
 }
 
   // OpenAI API call
-  async function callOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text') {
+  async function callOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string) {
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
     
     const messages = [
@@ -1751,7 +1774,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     ];
 
     const payload = JSON.stringify({ model, messages, temperature: 0.1 });
-    logAIRequest('openai', model, responseType, prompt, commentText, payload);
+    logAIRequest('openai', model, responseType, prompt, commentText, payload, responseType.startsWith('batch') ? 'batch' : 'single', scannerType === 'adjudicator' ? 'adjudication' : (responseType.includes('text') ? 'postprocess' : 'analysis'));
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -1904,7 +1927,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
   }
 
   // Azure OpenAI API call
-  async function callAzureOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text') {
+  async function callAzureOpenAI(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string) {
     const azureApiKey = Deno.env.get('AZURE_OPENAI_API_KEY');
     const azureEndpoint = Deno.env.get('AZURE_OPENAI_ENDPOINT');
     const apiVersion = Deno.env.get('AZURE_OPENAI_API_VERSION') || '2024-02-01';
@@ -1925,7 +1948,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     const url = `${cleanEndpoint}/openai/deployments/${model}/chat/completions?api-version=${apiVersion}`;
 
     const azPayload = JSON.stringify({ messages, temperature: 0.1 });
-    logAIRequest('azure', model, responseType, prompt, commentText, azPayload);
+    logAIRequest('azure', model, responseType, prompt, commentText, azPayload, responseType.startsWith('batch') ? 'batch' : 'single', scannerType === 'adjudicator' ? 'adjudication' : (responseType.includes('text') ? 'postprocess' : 'analysis'));
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -2055,7 +2078,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
   }
 
   // AWS Bedrock API call with retry logic
-  async function callBedrock(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text') {
+  async function callBedrock(model: string, prompt: string, commentText: string, responseType: 'analysis' | 'text' | 'batch_analysis' | 'batch_text', scannerType?: string) {
     const awsAccessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
     const awsSecretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
     const awsRegion = Deno.env.get('AWS_REGION') || 'us-west-2';
@@ -2220,7 +2243,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     console.log(`Bedrock request to: ${endpoint}`);
     if (isDebug) console.log(`Authorization: ${authorizationHeader}`);
     
-    logAIRequest('bedrock', model, responseType, prompt, commentText, requestBody);
+    logAIRequest('bedrock', model, responseType, prompt, commentText, requestBody, responseType.startsWith('batch') ? 'batch' : 'single', scannerType === 'adjudicator' ? 'adjudication' : (responseType.includes('text') ? 'postprocess' : 'analysis'));
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
