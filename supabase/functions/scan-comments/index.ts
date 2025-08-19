@@ -36,7 +36,7 @@ serve(async (req) => {
       comments, 
       defaultMode = 'redact',
       batchStart = 0,
-      batchSize = 20,
+      batchSize = 100,
       // Optional orchestration flags to ensure fast responses under edge timeouts
       skipAdjudicator = false,
       skipPostprocess = false,
