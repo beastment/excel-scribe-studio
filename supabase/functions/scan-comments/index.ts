@@ -911,7 +911,7 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
             // Continue without redaction/rephrasing
           }
         }
-      } // <-- Close the previous block (if block or try block)
+      }
 
     } catch (error) {
       console.error(`Error processing batch:`, error);
