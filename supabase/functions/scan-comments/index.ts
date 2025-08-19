@@ -234,6 +234,9 @@ serve(async (req) => {
     function getOutputTokenLimit(config: any, fallback: number = 0): number {
       const candidates = [
         config && (config.output_token_limit ?? config.outputTokenLimit),
+        config && (config.output_tokens_limit ?? config.outputTokensLimit),
+        config && (config.output_tokens ?? config.outputTokens),
+        config && (config.max_output_tokens ?? config.maxOutputTokens),
         config && (config.max_tokens ?? config.maxTokens)
       ];
       for (const c of candidates) {
@@ -1033,8 +1036,28 @@ serve(async (req) => {
                     if (redBad || rephBad) {
                       try {
                         const [red1, reph1] = await Promise.all([
-                          redBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), chunk[flaggedIndex], 'text', 'scan_a', rateLimiters) : Promise.resolve(red),
-                          rephBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), chunk[flaggedIndex], 'text', 'scan_a', rateLimiters) : Promise.resolve(reph)
+                          redBad ? callAI(
+                            activeConfig.provider,
+                            activeConfig.model,
+                            activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'),
+                            chunk[flaggedIndex],
+                            'text',
+                            'scan_a',
+                            rateLimiters,
+                            undefined,
+                            getOutputTokenLimit(activeConfig, 0)
+                          ) : Promise.resolve(red),
+                          rephBad ? callAI(
+                            activeConfig.provider,
+                            activeConfig.model,
+                            activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'),
+                            chunk[flaggedIndex],
+                            'text',
+                            'scan_a',
+                            rateLimiters,
+                            undefined,
+                            getOutputTokenLimit(activeConfig, 0)
+                          ) : Promise.resolve(reph)
                         ]);
                         if (redBad) redactedTexts[flaggedIndex] = enforceRedactionPolicy(red1 as string);
                         if (rephBad) rephrasedTexts[flaggedIndex] = reph1 as string;
@@ -1257,7 +1280,8 @@ JSON with EXACT values for agreements:
           'analysis',
           'adjudicator',
           rateLimiters,
-          sequentialQueue
+          sequentialQueue,
+          getOutputTokenLimit(adjudicator, 0)
         );
         let rawResult = adjudicationResponse?.results || adjudicationResponse;
         console.log(`Raw adjudicator response for comment ${comment.id}:`, rawResult);
@@ -1296,8 +1320,28 @@ JSON with EXACT values for agreements:
     
     try {
       [redactedText, rephrasedText] = await Promise.all([
-        callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text', needsAdjudication ? 'adjudicator' : 'scan_a', rateLimiters),
-        callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), comment.text, 'text', needsAdjudication ? 'adjudicator' : 'scan_a', rateLimiters)
+        callAI(
+          activeConfig.provider,
+          activeConfig.model,
+          activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'),
+          comment.text,
+          'text',
+          needsAdjudication ? 'adjudicator' : 'scan_a',
+          rateLimiters,
+          undefined,
+          getOutputTokenLimit(activeConfig, 0)
+        ),
+        callAI(
+          activeConfig.provider,
+          activeConfig.model,
+          activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'),
+          comment.text,
+          'text',
+          needsAdjudication ? 'adjudicator' : 'scan_a',
+          rateLimiters,
+          undefined,
+          getOutputTokenLimit(activeConfig, 0)
+        )
       ]);
     } catch (error) {
       console.warn(`Redaction/rephrasing failed for comment ${comment.id}:`, error);
