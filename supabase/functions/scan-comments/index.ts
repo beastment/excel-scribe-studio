@@ -187,7 +187,7 @@ serve(async (req) => {
     };
 
     const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
-      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ID k>>> for its corresponding k (e.g., <<<ID 3>>>).\n- No prose, no code fences, no headers or explanations before/after the JSON array.`;
+      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ID k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.`;
       return `${basePrompt}\n\n${sentinels}`;
     };
 
@@ -1271,6 +1271,39 @@ function parseBatchTextList(content: string): string[] {
     } catch {}
   }
 
+  // Fallback: Haiku tokenization repair by ID markers
+  {
+    const tokens = c
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .filter(Boolean)
+      .filter(line => !/^here\s+(?:is|are)/i.test(line));
+    const results: string[] = [];
+    let currentId: number | null = null;
+    let buffer: string[] = [];
+    const idStart = /^<<<ID\s+(\d+)>>>\s*/i;
+    const endMarker = /^<<<END\s+\d+>>>\s*$/i;
+    for (const t of tokens) {
+      const m = idStart.exec(t);
+      if (m) {
+        // flush previous
+        if (currentId != null) {
+          results.push(buffer.join(' ').trim());
+        }
+        currentId = parseInt(m[1], 10);
+        buffer = [t.replace(idStart, '').trim()];
+        continue;
+      }
+      if (endMarker.test(t) || t === '[' || t === ']') {
+        // ignore stray markers/brackets
+        continue;
+      }
+      if (currentId != null) buffer.push(t);
+    }
+    if (currentId != null) results.push(buffer.join(' ').trim());
+    if (results.length > 0) return results;
+  }
+
   // Fallback: split by lines, drop obvious headers, and if a single JSON-like line remains, parse it
   const lines = c
     .split(/\r?\n/)
@@ -1299,6 +1332,29 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       .map((v) => (typeof v === 'string' ? v.trim() : JSON.stringify(v)))
       .filter((s) => s.length > 0)
       .filter((s) => !/^here\s+(?:is|are)[\s\S]*?:\s*$/i.test(s));
+
+    // Haiku repair: merge tokenized segments into per-ID strings
+    const idStart = /^\s*<<<ID\s+(\d+)>>>\s*/i;
+    const endMarker = /^<<<END\s+\d+>>>\s*$/i;
+    const hasIds = cleaned.some(s => idStart.test(s) || endMarker.test(s) || s === '[' || s === ']');
+    if (hasIds) {
+      const merged: string[] = [];
+      let currentId: number | null = null;
+      let buffer: string[] = [];
+      for (const s of cleaned) {
+        const m = idStart.exec(s);
+        if (m) {
+          if (currentId != null) merged.push(buffer.join(' ').trim());
+          currentId = parseInt(m[1], 10);
+          buffer = [s.replace(idStart, '').trim()];
+          continue;
+        }
+        if (endMarker.test(s) || s === '[' || s === ']') continue;
+        if (currentId != null) buffer.push(s);
+      }
+      if (currentId != null) merged.push(buffer.join(' ').trim());
+      if (merged.length > 0) return merged;
+    }
 
     // Repair: If the model returned a tokenized JSON array, e.g., [ "[", "\"text\"", "]" ],
     // join the pieces and parse once to recover the true string array.
