@@ -306,7 +306,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 redactedText: undefined,
                 rephrasedText: undefined,
               } : { ...u, concerning, identifiable };
-              map.set(u.id, { ...(map.get(u.id) || {}), ...merged });
+              const prev = map.get(u.id) || {} as any;
+              const next = { ...prev, ...merged } as any;
+              if (merged.redactedText == null && prev.redactedText != null) next.redactedText = prev.redactedText;
+              if (merged.rephrasedText == null && prev.rephrasedText != null) next.rephrasedText = prev.rephrasedText;
+              map.set(u.id, next);
             }
             processedComments = Array.from(map.values());
             onCommentsUpdate(processedComments);
@@ -340,7 +344,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 redactedText: undefined,
                 rephrasedText: undefined,
               } : { ...u, concerning, identifiable };
-              map.set(u.id, { ...(map.get(u.id) || {}), ...merged });
+              const prev = map.get(u.id) || {} as any;
+              const next = { ...prev, ...merged } as any;
+              // Preserve any previously computed redaction/rephrase from Phase 2A
+              if (merged.redactedText == null && prev.redactedText != null) next.redactedText = prev.redactedText;
+              if (merged.rephrasedText == null && prev.rephrasedText != null) next.rephrasedText = prev.rephrasedText;
+              // Preserve final text if adjudication-only update did not include postprocess content
+              if ((merged.redactedText == null && merged.rephrasedText == null) && prev.text && !prev.mode?.includes('original')) {
+                next.text = prev.text;
+              }
+              map.set(u.id, next);
             }
             processedComments = Array.from(map.values());
             setScanProgress(90 + Math.round(((i + chunk.length) / needsFollowup.length) * 10));
