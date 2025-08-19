@@ -214,6 +214,18 @@ serve(async (req) => {
       return `Comments to analyze (each bounded by sentinels):\n\n${texts.map((t, i) => `<<<ITEM ${i + 1}>>>\n${t}\n<<<END ${i + 1}>>>`).join('\n\n')}`;
     };
 
+    // Preferred batch size utilities
+    function getPreferredBatchSize(config: any, fallback: number): number {
+      const val = Number(config?.preferred_batch_size);
+      if (!Number.isFinite(val) || val <= 0) return fallback;
+      return Math.max(1, Math.floor(val));
+    }
+    function chunkArray<T>(arr: T[], size: number): T[][] {
+      const out: T[][] = [];
+      for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+      return out;
+    }
+
     // Batch adjudication helpers (mirror batch analysis formatting)
     const buildBatchAdjudicationPrompt = (expectedLen: number): string => {
       const sentinels = `BOUNDING AND ORDER RULES:\n- Each item is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single item.\n- Do NOT split or merge any items.\nOUTPUT RULES:\n- Return ONLY a JSON array with exactly ${expectedLen} objects, aligned to ids (1..${expectedLen}).\n- Each object MUST include: {"index": number (1-based id), "concerning": boolean, "identifiable": boolean, "reasoning": string}.\n- Preserve agreements when explicitly stated in the item notes.\n- No prose, no code fences, no extra keys, no preface or suffix.`;
@@ -288,54 +300,57 @@ serve(async (req) => {
       };
       if (!useCachedAnalysis) {
         try {
-          let enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
-          let enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
           const piiPolicy = `\nPII POLICY:\n- Organization/employer names are allowed and DO NOT make a comment identifiable.\n- Treat job level/grade (e.g., \"Level 5\", \"L5\"), specific internal level numbers, and tenure/time-in-role (e.g., \"3 years in role\") as personally identifiable.\n- If such attributes are present for a specific person, set \"identifiable\"=true.`;
-          // Apply policy to both prompts
-          enforcedPromptA += piiPolicy;
-          enforcedPromptB += piiPolicy;
-          
-          // Strengthen Scan B (Mistral) guidance
-          if (scanB.model.startsWith('mistral.')) {
-            const piiMusts = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information, including: personal names (e.g., John Smith), \"X from <department>\" referring to a specific person, emails, phone numbers, employee IDs/badge numbers, SSNs, or direct contact details.\n- Examples that MUST be identifiable=true: \"John from accounting\", \"phone: 555-1234\", \"(employee ID 12345)\", \"jane.doe@email.com\".\n- The array MAY contain a mix of true/false values; do not default to all false.\n- Keep results strictly aligned with the input order (1..${batch.length}).`;
-            const concerningClarifiers = `\n- CONCERNING=true not only for explicit harassment/threats/illegal/safety violations, but also for serious workplace risk indicators such as: severe morale collapse, unsafe processes/equipment, retaliation or coercion, policy changes that materially harm staff wellbeing, discrimination, or credible allegations of misconduct.\n- If the comment plausibly signals a risk requiring leadership attention (even without PII), set concerning=true.`;
-            const brevity = `\n- Keep reasoning to a single short sentence (<= 15 words) to avoid truncation.`;
-            enforcedPromptB += piiMusts + concerningClarifiers + brevity;
+
+          async function runModelBatch(config: any, texts: string[], scannerKey: 'scan_a'|'scan_b'): Promise<{ results: any[]; raw: any[] }> {
+            const preferred = getPreferredBatchSize(config, texts.length);
+            const chunks = chunkArray(texts, preferred);
+            const allResults: any[] = [];
+            const raws: any[] = [];
+            for (const chunk of chunks) {
+              let enforcedPrompt = buildBatchAnalysisPrompt(config.analysis_prompt, chunk.length) + piiPolicy;
+              // Strengthen Mistral guidance
+              if (config.model.startsWith('mistral.')) {
+                const extra = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Treat EACH <<<ITEM k>>> block as ONE single comment; NEVER output more than ${chunk.length} objects.\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information.`;
+                enforcedPrompt += extra;
+              }
+              const input = buildSentinelInput(chunk);
+              let resp: any;
+              if (config.model.startsWith('mistral.') && chunk.length === 1) {
+                // Avoid Mistral oddities on single-item batch
+                resp = await callAI(config.provider, config.model, config.analysis_prompt + piiPolicy, chunk[0], 'analysis', scannerKey, rateLimiters, sequentialQueue);
+                resp = { results: [resp?.results || resp] };
+              } else {
+                resp = await callAI(config.provider, config.model, enforcedPrompt, input, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue);
+              }
+              let results = resp?.results || resp;
+              if (!Array.isArray(results) || results.length !== chunk.length) {
+                const retried = await strictBatchRetry(config.provider, config.model, config.analysis_prompt, input, chunk.length, scannerKey);
+                if (retried) results = retried;
+              }
+              if (!Array.isArray(results)) {
+                // Final guard: pad/truncate
+                const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
+                results = Array(chunk.length).fill(null).map(() => ({ ...defaultResult }));
+              } else if (results.length !== chunk.length) {
+                results = results.slice(0, chunk.length);
+                while (results.length < chunk.length) results.push({ concerning: false, identifiable: false, reasoning: 'Padded default due to missing analysis' });
+              }
+              allResults.push(...results);
+              raws.push(resp?.rawResponse ?? null);
+            }
+            return { results: allResults, raw: raws };
           }
 
-          const [scanAResponse, scanBResponse] = await (async () => {
-            let enforcedPromptA = buildBatchAnalysisPrompt(scanA.analysis_prompt, batch.length);
-            let enforcedPromptB = buildBatchAnalysisPrompt(scanB.analysis_prompt, batch.length);
-            const piiPolicy2 = `\nPII POLICY:\n- Organization/employer names are allowed and DO NOT make a comment identifiable.\n- Treat job level/grade (e.g., \"Level 5\", \"L5\"), specific internal level numbers, and tenure/time-in-role (e.g., \"3 years in role\") as personally identifiable.\n- If such attributes are present for a specific person, set \"identifiable\"=true.`;
-            // Apply the policy text to both prompts
-            enforcedPromptA += piiPolicy2;
-            enforcedPromptB += piiPolicy2;
-            
-            if (scanB.model.startsWith('mistral.')) {
-              const piiMusts = `\n\nADDITIONAL MANDATES (DO NOT IGNORE):\n- Treat EACH <<<ITEM k>>> block as ONE single comment; NEVER output more than ${batch.length} objects.\n- Independently assess EACH comment. Do not copy the same result across items.\n- Set \"identifiable\" to true if the comment contains ANY personally identifiable information.`;
-              enforcedPromptB += piiMusts;
-            }
-            if (scanB.model.startsWith('mistral.') && batch.length === 1) {
-              // Force single-analysis path to avoid over-splitting on Mistral when only one item
-              const [a, b] = await Promise.all([
-                callAI(scanA.provider, scanA.model, enforcedPromptA, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue),
-                callAI(scanB.provider, scanB.model, enforcedPromptB, batchInput, 'analysis', 'scan_b', rateLimiters, sequentialQueue)
-              ]);
-              // Wrap single result to array shape for downstream
-              const wrappedB = b && b.results && !Array.isArray(b.results) ? { results: [ { index: 1, ...(b.results as any) } ] } : b;
-              return [a, wrappedB];
-            }
-            return await Promise.all([
-              callAI(scanA.provider, scanA.model, enforcedPromptA, batchInput, 'batch_analysis', 'scan_a', rateLimiters, sequentialQueue),
-              callAI(scanB.provider, scanB.model, enforcedPromptB, batchInput, 'batch_analysis', 'scan_b', rateLimiters, sequentialQueue)
-            ]);
-          })();
-            
-            // Extract results and raw responses
-            scanAResults = scanAResponse?.results || scanAResponse;
-            scanBResults = scanBResponse?.results || scanBResponse;
-            scanARawResponse = scanAResponse?.rawResponse;
-            scanBRawResponse = scanBResponse?.rawResponse;
+          const [aOut, bOut] = await Promise.all([
+            runModelBatch(scanA, batchTexts, 'scan_a'),
+            runModelBatch(scanB, batchTexts, 'scan_b')
+          ]);
+
+          scanAResults = aOut.results;
+          scanBResults = bOut.results;
+          scanARawResponse = null;
+          scanBRawResponse = null;
             
             if (isDebug) console.log(`🔍 RAW RESPONSES:`);
             if (isDebug) console.log(`Scan A raw response preview: ${preview(scanARawResponse, 300)}`);
@@ -823,73 +838,78 @@ serve(async (req) => {
         // Perform one batched adjudication call for all queued items and update placeholders
         if (adjQueue.length > 0) {
           try {
-            const items = adjQueue.map(q => ({
-              originalText: q.comment.originalText || q.comment.text,
-              scanA: q.scanAResult,
-              scanB: q.scanBResult,
-              agreements: {
-                concerning: q.bothAgreeConcerning ? q.scanAResult.concerning : null,
-                identifiable: q.bothAgreeIdentifiable ? q.scanAResult.identifiable : null
+            // Respect preferred batch size for adjudicator as well
+            const preferredAdj = getPreferredBatchSize(adjudicator, adjQueue.length);
+            const adjChunks = chunkArray(adjQueue, preferredAdj);
+            for (const chunk of adjChunks) {
+              const items = chunk.map(q => ({
+                originalText: q.comment.originalText || q.comment.text,
+                scanA: q.scanAResult,
+                scanB: q.scanBResult,
+                agreements: {
+                  concerning: q.bothAgreeConcerning ? q.scanAResult.concerning : null,
+                  identifiable: q.bothAgreeIdentifiable ? q.scanAResult.identifiable : null
+                }
+              }));
+              const prompt = buildBatchAdjudicationPrompt(items.length);
+              const input = buildBatchAdjudicationInput(items);
+              let adjResp: any;
+              try {
+                adjResp = await callAI(
+                  adjudicator.provider,
+                  adjudicator.model,
+                  prompt,
+                  input,
+                  'batch_analysis',
+                  'adjudicator',
+                  rateLimiters,
+                  sequentialQueue
+                );
+              } catch (primaryErr) {
+                adjResp = await callAI(
+                  scanB.provider,
+                  scanB.model,
+                  prompt,
+                  input,
+                  'batch_analysis',
+                  'adjudicator',
+                  rateLimiters,
+                  sequentialQueue
+                );
               }
-            }));
-            const prompt = buildBatchAdjudicationPrompt(items.length);
-            const input = buildBatchAdjudicationInput(items);
-            let adjResp: any;
-            try {
-              adjResp = await callAI(
-                adjudicator.provider,
-                adjudicator.model,
-                prompt,
-                input,
-                'batch_analysis',
-                'adjudicator',
-                rateLimiters,
-                sequentialQueue
-              );
-            } catch (primaryErr) {
-              adjResp = await callAI(
-                scanB.provider,
-                scanB.model,
-                prompt,
-                input,
-                'batch_analysis',
-                'adjudicator',
-                rateLimiters,
-                sequentialQueue
-              );
-            }
-            let adjResults = adjResp?.results || adjResp;
-            if (!Array.isArray(adjResults)) {
-              const extracted = extractJsonArrayOrObjects(typeof adjResults === 'string' ? adjResults : JSON.stringify(adjResults));
-              if (Array.isArray(extracted)) adjResults = extracted;
-            }
-            if (Array.isArray(adjResults) && adjResults.some((x: any) => x && typeof x.index === 'number')) {
-              adjResults = realignResultsByIndex(adjResults, items.length);
-            }
-            for (let qi = 0; qi < adjQueue.length; qi++) {
-              const q = adjQueue[qi];
-              const res = Array.isArray(adjResults) ? adjResults[qi] : null;
-              const prev = scannedComments[q.scannedIndex];
-              const resolved = {
-                concerning: q.bothAgreeConcerning ? q.scanAResult.concerning : (res?.concerning ?? q.scanAResult.concerning),
-                identifiable: q.bothAgreeIdentifiable ? q.scanAResult.identifiable : (res?.identifiable ?? q.scanAResult.identifiable),
-                reasoning: res?.reasoning || q.scanAResult.reasoning
-              };
-              if (resolved.concerning) summary.concerning++;
-              if (resolved.identifiable) summary.identifiable++;
-              summary.needsAdjudication++;
+              let adjResults = adjResp?.results || adjResp;
+              if (!Array.isArray(adjResults)) {
+                const extracted = extractJsonArrayOrObjects(typeof adjResults === 'string' ? adjResults : JSON.stringify(adjResults));
+                if (Array.isArray(extracted)) adjResults = extracted;
+              }
+              if (Array.isArray(adjResults) && adjResults.some((x: any) => x && typeof x.index === 'number')) {
+                adjResults = realignResultsByIndex(adjResults, items.length);
+              }
+              for (let qi = 0; qi < chunk.length; qi++) {
+                const q = chunk[qi];
+                const res = Array.isArray(adjResults) ? adjResults[qi] : null;
+                const prev = scannedComments[q.scannedIndex];
+                const resolved = {
+                  concerning: q.bothAgreeConcerning ? q.scanAResult.concerning : (res?.concerning ?? q.scanAResult.concerning),
+                  identifiable: q.bothAgreeIdentifiable ? q.scanAResult.identifiable : (res?.identifiable ?? q.scanAResult.identifiable),
+                  reasoning: res?.reasoning || q.scanAResult.reasoning
+                };
+                if (resolved.concerning) summary.concerning++;
+                if (resolved.identifiable) summary.identifiable++;
+                summary.needsAdjudication++;
 
-              prev.concerning = resolved.concerning;
-              prev.identifiable = resolved.identifiable;
-              prev.aiReasoning = `Adjudicator: ${resolved.reasoning}`.trim();
-              prev.mode = (resolved.concerning || resolved.identifiable) ? defaultMode : 'original';
-              prev.text = prev.mode === 'original' ? (q.comment.originalText || q.comment.text) : prev.text;
-              prev.debugInfo = {
-                ...prev.debugInfo,
-                adjudicationResult: { ...(res || resolved), model: `${adjudicator.provider}/${adjudicator.model}` },
-                finalDecision: resolved,
-                rawResponses: { ...(prev.debugInfo?.rawResponses || {}), adjudicationResponse: (adjResp && (adjResp as any).rawResponse) || null }
-              };
+                prev.concerning = resolved.concerning;
+                prev.identifiable = resolved.identifiable;
+                prev.aiReasoning = `Adjudicator: ${resolved.reasoning}`.trim();
+                prev.mode = (resolved.concerning || resolved.identifiable) ? defaultMode : 'original';
+                prev.text = prev.mode === 'original' ? (q.comment.originalText || q.comment.text) : prev.text;
+                prev.debugInfo = {
+                  ...prev.debugInfo,
+                  adjudicationResult: { ...(res || resolved), model: `${adjudicator.provider}/${adjudicator.model}` },
+                  finalDecision: resolved,
+                  rawResponses: { ...(prev.debugInfo?.rawResponses || {}), adjudicationResponse: (adjResp && (adjResp as any).rawResponse) || null }
+                };
+              }
             }
           } catch (e) {
             console.warn('Batched adjudication failed; keeping placeholder scan decisions:', (e as Error).message);
@@ -930,20 +950,23 @@ serve(async (req) => {
                 }
               }
             } else if (!outOfTime) {
-              // Inject redaction policy to improve correctness
-              const redPrompt = buildBatchTextPrompt(activeConfig.redact_prompt + REDACTION_POLICY, flaggedTexts.length);
-              const rephPrompt = buildBatchTextPrompt(activeConfig.rephrase_prompt, flaggedTexts.length);
-              const sentinelInput = buildSentinelInput(flaggedTexts);
-              // De-duplicate identical batch postprocess requests within a single RUN to prevent repeated calls
-              const postKey = `${activeConfig.provider}:${activeConfig.model}:post_batch:${flaggedTexts.length}:${sentinelInput.length}`;
-              if (aiDedupe.has(postKey)) {
-                console.log(`Skipping duplicate batch postprocess for key ${postKey}`);
-                // Skip entire postprocess step on duplicates; first invocation already applied outputs
-              } else {
+              // Respect preferred batch size for post-processing
+              const preferredPost = getPreferredBatchSize(activeConfig, flaggedTexts.length);
+              const chunks = chunkArray(flaggedTexts, preferredPost);
+              const redactedTextsAll: string[] = [];
+              const rephrasedTextsAll: string[] = [];
+              for (const chunk of chunks) {
+                const redPrompt = buildBatchTextPrompt(activeConfig.redact_prompt + REDACTION_POLICY, chunk.length);
+                const rephPrompt = buildBatchTextPrompt(activeConfig.rephrase_prompt, chunk.length);
+                const sentinelInput = buildSentinelInput(chunk);
+                const postKey = `${activeConfig.provider}:${activeConfig.model}:post_batch:${chunk.length}:${sentinelInput.length}`;
+                if (aiDedupe.has(postKey)) {
+                  console.log(`Skipping duplicate batch postprocess for key ${postKey}`);
+                  continue;
+                }
                 aiDedupe.add(postKey);
                 let rawRedacted: any = [];
                 let rawRephrased: any = [];
-                // Run sequentially for Bedrock to reduce 429s; otherwise keep parallel
                 if (activeConfig.provider === 'bedrock') {
                   rawRedacted = await callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters);
                   rawRephrased = await callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters);
@@ -983,14 +1006,12 @@ serve(async (req) => {
 
                 // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
                 const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
-                const expected = flaggedTexts.length;
+                const expected = chunk.length;
                 let needsFallback = redactedTexts.length !== expected || rephrasedTexts.length !== expected || redactedTexts.some(isInvalid) || rephrasedTexts.some(isInvalid);
                 if (needsFallback) {
                   console.warn(`Batch text outputs invalid or mismatched (expected=${expected}, red=${redactedTexts.length}, reph=${rephrasedTexts.length}). Running per-item fallback for failed entries.`);
                   // Build index list of flagged comments to process individually for the failed ones
-                  let flaggedIndex = 0;
-                  for (let k = 0; k < scannedComments.length; k++) {
-                    if (!(scannedComments[k].concerning || scannedComments[k].identifiable)) continue;
+                  for (let flaggedIndex = 0; flaggedIndex < chunk.length; flaggedIndex++) {
                     const red = redactedTexts[flaggedIndex];
                     const reph = rephrasedTexts[flaggedIndex];
                     const redBad = flaggedIndex >= redactedTexts.length || isInvalid(red);
@@ -998,8 +1019,8 @@ serve(async (req) => {
                     if (redBad || rephBad) {
                       try {
                         const [red1, reph1] = await Promise.all([
-                          redBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters) : Promise.resolve(red),
-                          rephBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters) : Promise.resolve(reph)
+                          redBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), chunk[flaggedIndex], 'text', 'scan_a', rateLimiters) : Promise.resolve(red),
+                          rephBad ? callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), chunk[flaggedIndex], 'text', 'scan_a', rateLimiters) : Promise.resolve(reph)
                         ]);
                         if (redBad) redactedTexts[flaggedIndex] = enforceRedactionPolicy(red1 as string);
                         if (rephBad) rephrasedTexts[flaggedIndex] = reph1 as string;
@@ -1007,29 +1028,28 @@ serve(async (req) => {
                         console.warn(`Per-item fallback failed for flagged index ${flaggedIndex}:`, perItemErr);
                       }
                     }
-                    flaggedIndex++;
                   }
                 }
 
-                // Apply redacted and rephrased texts
-                let flaggedIndex = 0;
-                for (let k = 0; k < scannedComments.length; k++) {
-                  if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                    scannedComments[k].redactedText = redactedTexts[flaggedIndex] ?? null;
-                    scannedComments[k].rephrasedText = rephrasedTexts[flaggedIndex] ?? null;
-                    
-                    // Set final text based on mode
-                    if (scannedComments[k].mode === 'redact' && redactedTexts[flaggedIndex]) {
-                      scannedComments[k].text = enforceRedactionPolicy(redactedTexts[flaggedIndex]);
-                    } else if (scannedComments[k].mode === 'rephrase' && rephrasedTexts[flaggedIndex]) {
-                      scannedComments[k].text = rephrasedTexts[flaggedIndex];
-                    }
-                    
-                    flaggedIndex++;
+                redactedTextsAll.push(...redactedTexts.map(enforceRedactionPolicy) as string[]);
+                rephrasedTextsAll.push(...rephrasedTexts);
+              }
+
+              // Apply accumulated redacted and rephrased texts across all flagged comments
+              let flaggedIndex = 0;
+              for (let k = 0; k < scannedComments.length; k++) {
+                if (scannedComments[k].concerning || scannedComments[k].identifiable) {
+                  scannedComments[k].redactedText = redactedTextsAll[flaggedIndex] ?? null;
+                  scannedComments[k].rephrasedText = rephrasedTextsAll[flaggedIndex] ?? null;
+                  if (scannedComments[k].mode === 'redact' && redactedTextsAll[flaggedIndex]) {
+                    scannedComments[k].text = enforceRedactionPolicy(redactedTextsAll[flaggedIndex]);
+                  } else if (scannedComments[k].mode === 'rephrase' && rephrasedTextsAll[flaggedIndex]) {
+                    scannedComments[k].text = rephrasedTextsAll[flaggedIndex];
                   }
+                  flaggedIndex++;
                 }
               }
-            }
+              }
           } catch (error) {
             console.warn(`Batch redaction/rephrasing failed:`, error);
             // Continue without redaction/rephrasing
@@ -2793,3 +2813,4 @@ async function performAICall(provider: string, model: string, prompt: string, co
     const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
     return new Uint8Array(signature);
   }
+
