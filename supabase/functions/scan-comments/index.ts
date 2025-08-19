@@ -216,9 +216,15 @@ serve(async (req) => {
 
     // Preferred batch size utilities
     function getPreferredBatchSize(config: any, fallback: number): number {
-      const val = Number(config?.preferred_batch_size);
-      if (!Number.isFinite(val) || val <= 0) return fallback;
-      return Math.max(1, Math.floor(val));
+      const candidates = [
+        (config && (config.preferred_batch_size ?? config.preferredBatchSize)),
+        (config && (config.batch_size ?? config.batchSize)),
+      ];
+      for (const c of candidates) {
+        const n = Number(c);
+        if (Number.isFinite(n) && n > 0) return Math.max(1, Math.floor(n));
+      }
+      return fallback;
     }
     function chunkArray<T>(arr: T[], size: number): T[][] {
       const out: T[][] = [];
@@ -352,22 +358,9 @@ serve(async (req) => {
           scanARawResponse = null;
           scanBRawResponse = null;
             
-            if (isDebug) console.log(`🔍 RAW RESPONSES:`);
-            if (isDebug) console.log(`Scan A raw response preview: ${preview(scanARawResponse, 300)}`);
-            if (isDebug) console.log(`Scan B raw response preview: ${preview(scanBRawResponse, 300)}`);
-            if (isDebug) console.log(`Scan A results field type: ${typeof scanAResponse?.results}`);
-            if (isDebug) console.log(`Scan B results field type: ${typeof scanBResponse?.results}`);
-            
-            // Retry only if non-array
-            if (scanAResults && !Array.isArray(scanAResults)) {
-              console.warn(`Scan A (${scanA.provider}/${scanA.model}) returned non-array for batch. Performing strict retry.`);
-              const retried = await strictBatchRetry(scanA.provider, scanA.model, enforcedPromptA, batchInput, batch.length, 'scan_a');
-              if (retried) scanAResults = retried;
-            }
-            if (scanBResults && !Array.isArray(scanBResults)) {
-              console.warn(`Scan B (${scanB.provider}/${scanB.model}) returned non-array for batch. Performing strict retry.`);
-              const retried = await strictBatchRetry(scanB.provider, scanB.model, enforcedPromptB, batchInput, batch.length, 'scan_b');
-              if (retried) scanBResults = retried;
+            if (isDebug) {
+              console.log(`Scan A results count: ${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
+              console.log(`Scan B results count: ${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
             }
 
             // Realign by explicit indices if provided by the model
