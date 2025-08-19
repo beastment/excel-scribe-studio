@@ -246,7 +246,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           // Merge normalized results into the full comment list by id, preserving original order and length
           const baseList = processedComments.length > 0 ? processedComments : comments;
           const updatesById = new Map(normalizedComments.map((u: any) => [u.id, u]));
-          processedComments = baseList.map((c: any) => updatesById.get(c.id) ? { ...c, ...updatesById.get(c.id) } : c);
+          processedComments = baseList.map((c: any) => {
+            const update = updatesById.get(c.id);
+            return update && typeof update === 'object' ? { ...c, ...update } : c;
+          });
 
           // Push partial results to UI immediately so it populates even if follow-ups are slow
           onCommentsUpdate(processedComments);
@@ -797,9 +800,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                                    {comment.debugInfo.scanAResult.reasoning}
                                  </p>
                                )}
-                               {comment.debugInfo.piiSafetyNetApplied && (
-                                 <p className="text-[10px] text-blue-600 dark:text-blue-300 mt-1">PII safety net applied</p>
-                               )}
                              </div>
                            )}
                            
@@ -817,9 +817,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                                    {comment.debugInfo.scanBResult.reasoning}
                                  </p>
                                )}
-                               {comment.debugInfo.piiSafetyNetApplied && (
-                                 <p className="text-[10px] text-green-700 dark:text-green-300 mt-1">PII safety net applied</p>
-                               )}
                              </div>
                            )}
                            
@@ -836,9 +833,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                                  <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
                                    {comment.debugInfo.adjudicationResult.reasoning}
                                  </p>
-                               )}
-                               {comment.debugInfo.piiSafetyNetApplied && (
-                                 <p className="text-[10px] text-purple-700 dark:text-purple-300 mt-1">PII safety net applied</p>
                                )}
                              </div>
                            )}
