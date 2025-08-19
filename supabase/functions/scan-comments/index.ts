@@ -1472,7 +1472,15 @@ function enforceRedactionPolicy(text: string | null | undefined): string | null 
   out = out.replace(/\bL(?:evel)?\s*\d+\b/gi, 'XXXX');
   // Tenure/time-in-role
   out = out.replace(/\b\d+\s*(?:years?|yrs?)\s+(?:in\s+role|experience|tenure)\b/gi, 'XXXX');
+  // Additional tenure/experience phrasings
+  out = out.replace(/\b\d+\s*(?:years?|yrs?)\s+(?:of\s+)?(?:work\s+)?experience\b/gi, 'XXXX');
+  out = out.replace(/\b\d+\s*(?:months?)\s+(?:in\s+role|experience)\b/gi, 'XXXX');
   out = out.replace(/\btenure\b/gi, 'XXXX');
+  // Role/position indicators that can make an individual identifiable in context
+  out = out.replace(/\bHDR\b/gi, 'XXXX');
+  out = out.replace(/\bHigher\s+Degree\s+Research(?:er)?\b/gi, 'XXXX');
+  out = out.replace(/\bacademic\s+staff\b/gi, 'XXXX');
+  out = out.replace(/\bstaff\s+member(?:s)?\b/gi, 'XXXX');
   return out;
 }
 
