@@ -250,6 +250,20 @@ serve(async (req) => {
       for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
       return out;
     }
+    // Resolve effective output token limit: prefer explicit config, else provider/model defaults
+    function getEffectiveMaxTokens(config: any): number {
+      const explicit = getOutputTokenLimit(config, 0);
+      if (explicit && explicit > 0) return Math.floor(explicit);
+      const provider = String(config?.provider || '').toLowerCase();
+      const model = String(config?.model || '').toLowerCase();
+      if (provider === 'bedrock') {
+        if (model.includes('anthropic.claude')) return 4096;
+        if (model.startsWith('mistral.')) return 2000;
+        if (model.startsWith('amazon.titan')) return 1000;
+      }
+      if (provider === 'openai' || provider === 'azure') return 4096;
+      return 1000;
+    }
 
     // Batch adjudication helpers (mirror batch analysis formatting)
     const buildBatchAdjudicationPrompt = (expectedLen: number): string => {
@@ -311,7 +325,7 @@ serve(async (req) => {
         const strictHeader = `STRICT MODE: Output ONLY a JSON array of exactly ${expectedLen} objects, in the same order as the inputs. Each object MUST have: {"index": number (1-based), "concerning": boolean, "identifiable": boolean, "reasoning": string}. No prose, no code fences, no extra text.`;
         const strictPrompt = `${strictHeader}\n\n${basePrompt}`;
         try {
-          const maxTokens = scannerKey === 'scan_a' ? getOutputTokenLimit(scanA, 0) : getOutputTokenLimit(scanB, 0);
+          const maxTokens = scannerKey === 'scan_a' ? getEffectiveMaxTokens(scanA) : getEffectiveMaxTokens(scanB);
           const resp = await callAI(provider, model, strictPrompt, inputText, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue, maxTokens);
           const results = resp?.results ?? resp;
           if (Array.isArray(results) && results.length === expectedLen) {
@@ -344,10 +358,10 @@ serve(async (req) => {
               let resp: any;
               if (config.model.startsWith('mistral.') && chunk.length === 1) {
                 // Avoid Mistral oddities on single-item batch
-                resp = await callAI(config.provider, config.model, config.analysis_prompt + piiPolicy, chunk[0], 'analysis', scannerKey, rateLimiters, sequentialQueue, getOutputTokenLimit(config, 0));
+                resp = await callAI(config.provider, config.model, config.analysis_prompt + piiPolicy, chunk[0], 'analysis', scannerKey, rateLimiters, sequentialQueue, getEffectiveMaxTokens(config));
                 resp = { results: [resp?.results || resp] };
               } else {
-                resp = await callAI(config.provider, config.model, enforcedPrompt, input, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue, getOutputTokenLimit(config, 0));
+                resp = await callAI(config.provider, config.model, enforcedPrompt, input, 'batch_analysis', scannerKey, rateLimiters, sequentialQueue, getEffectiveMaxTokens(config));
               }
               let results = resp?.results || resp;
               if (!Array.isArray(results) || results.length !== chunk.length) {
@@ -541,8 +555,8 @@ serve(async (req) => {
 
           try {
             // Process one at a time to maintain strict order and avoid sync issues (use original text)
-            const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_a', rateLimiters, sequentialQueue, getOutputTokenLimit(scanA, 0));
-            const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_b', rateLimiters, sequentialQueue, getOutputTokenLimit(scanB, 0));
+            const scanAResponse = await callAI(scanA.provider, scanA.model, scanA.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_a', rateLimiters, sequentialQueue, getEffectiveMaxTokens(scanA));
+            const scanBResponse = await callAI(scanB.provider, scanB.model, scanB.analysis_prompt.replace('list of comments', 'comment').replace('parallel list of JSON objects', 'single JSON object'), comment.originalText || comment.text, 'analysis', 'scan_b', rateLimiters, sequentialQueue, getEffectiveMaxTokens(scanB));
 
             // Deep clone the results to avoid mutation issues
             const scanAResult = JSON.parse(JSON.stringify(scanAResponse?.results || scanAResponse));
@@ -729,7 +743,7 @@ serve(async (req) => {
                     'adjudicator',
                     rateLimiters,
                     sequentialQueue,
-                    getOutputTokenLimit(adjudicator, 0)
+                    getEffectiveMaxTokens(adjudicator)
                   );
                   adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
                 } catch (error) {
@@ -750,7 +764,7 @@ serve(async (req) => {
                     'adjudicator',
                     rateLimiters,
                     sequentialQueue,
-                    getOutputTokenLimit(scanB, 0)
+                    getEffectiveMaxTokens(scanB)
                   );
                   adjudicationResult = fallbackResponse?.results || fallbackResponse;
                   adjudicatorFallbackUsed = true;
@@ -879,7 +893,7 @@ serve(async (req) => {
                   'adjudicator',
                   rateLimiters,
                   sequentialQueue,
-                  getOutputTokenLimit(adjudicator, 0)
+                  getEffectiveMaxTokens(adjudicator)
                 );
               } catch (primaryErr) {
                 adjResp = await callAI(
@@ -891,7 +905,7 @@ serve(async (req) => {
                   'adjudicator',
                   rateLimiters,
                   sequentialQueue,
-                  getOutputTokenLimit(scanB, 0)
+                  getEffectiveMaxTokens(scanB)
                 );
               }
               let adjResults = adjResp?.results || adjResp;
@@ -985,12 +999,12 @@ serve(async (req) => {
                 let rawRedacted: any = [];
                 let rawRephrased: any = [];
                 if (activeConfig.provider === 'bedrock') {
-                  rawRedacted = await callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getOutputTokenLimit(activeConfig, 0));
-                  rawRephrased = await callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getOutputTokenLimit(activeConfig, 0));
+                  rawRedacted = await callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getEffectiveMaxTokens(activeConfig));
+                  rawRephrased = await callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getEffectiveMaxTokens(activeConfig));
                 } else {
                   [rawRedacted, rawRephrased] = await Promise.all([
-                    callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getOutputTokenLimit(activeConfig, 0)),
-                    callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getOutputTokenLimit(activeConfig, 0))
+                    callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getEffectiveMaxTokens(activeConfig)),
+                    callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getEffectiveMaxTokens(activeConfig))
                   ]);
                 }
 
@@ -1045,7 +1059,7 @@ serve(async (req) => {
                             'scan_a',
                             rateLimiters,
                             undefined,
-                            getOutputTokenLimit(activeConfig, 0)
+                            getEffectiveMaxTokens(activeConfig)
                           ) : Promise.resolve(red),
                           rephBad ? callAI(
                             activeConfig.provider,
@@ -1056,7 +1070,7 @@ serve(async (req) => {
                             'scan_a',
                             rateLimiters,
                             undefined,
-                            getOutputTokenLimit(activeConfig, 0)
+                            getEffectiveMaxTokens(activeConfig)
                           ) : Promise.resolve(reph)
                         ]);
                         if (redBad) redactedTexts[flaggedIndex] = enforceRedactionPolicy(red1 as string);
@@ -1329,7 +1343,7 @@ JSON with EXACT values for agreements:
           needsAdjudication ? 'adjudicator' : 'scan_a',
           rateLimiters,
           undefined,
-          getOutputTokenLimit(activeConfig, 0)
+          getEffectiveMaxTokens(activeConfig)
         ),
         callAI(
           activeConfig.provider,
@@ -1340,7 +1354,7 @@ JSON with EXACT values for agreements:
           needsAdjudication ? 'adjudicator' : 'scan_a',
           rateLimiters,
           undefined,
-          getOutputTokenLimit(activeConfig, 0)
+          getEffectiveMaxTokens(activeConfig)
         )
       ]);
     } catch (error) {
