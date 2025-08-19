@@ -574,10 +574,12 @@ serve(async (req) => {
               }
             }
 
-            // If identifiable is true but reasoning includes a denial, append a correction note
+            // If identifiable is true but reasoning includes a denial, append a correction note (idempotent)
             try {
-              const deniesIdent = /\b(no|does not|none|not)\b[\s\S]*\b(personally identifiable|identifiable|pii|personal information)\b/i.test(String(r.reasoning || ''));
-              if (r.identifiable === true && deniesIdent) {
+              const denialRegex = /\b(?:no|does not|doesn't|none|not|without(?: any)?|not\s+contain(?: any)?|contains\s+no)\b[\s\S]*\b(?:personally\s+identifiable|identifiable|pii|personal\s+(?:information|data))\b/i;
+              const hasDenial = denialRegex.test(String(r.reasoning || ''));
+              const alreadyCorrected = /Correction:\s*Marked identifiable due to detected PII/i.test(String(r.reasoning || ''));
+              if (r.identifiable === true && hasDenial && !alreadyCorrected) {
                 r.reasoning = (r.reasoning ? r.reasoning + ' | ' : '') + 'Correction: Marked identifiable due to detected PII (policy/safety net).';
               }
             } catch {}
