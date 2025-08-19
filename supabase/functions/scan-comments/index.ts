@@ -601,17 +601,17 @@ serve(async (req) => {
           };
           
           // Create deep copies to avoid mutation
-          const scanAResultCopy = JSON.parse(JSON.stringify(scanAResult));
-          const scanBResultCopy = JSON.parse(JSON.stringify(scanBResult));
+          let scanAResultCopy = JSON.parse(JSON.stringify(scanAResult));
+          let scanBResultCopy = JSON.parse(JSON.stringify(scanBResult));
           
           // Extract the first result from arrays if the AI returned an array
           const scanAResultToProcess = Array.isArray(scanAResultCopy) ? scanAResultCopy[0] : scanAResultCopy;
           const scanBResultToProcess = Array.isArray(scanBResultCopy) ? scanBResultCopy[0] : scanBResultCopy;
           
-          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing: Original scanAResult: ${preview(JSON.stringify(scanAResult), 240)}`);
-          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing: Original scanBResult: ${preview(JSON.stringify(scanBResult), 240)}`);
-          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing: Processed scanAResult: ${preview(JSON.stringify(scanAResultToProcess), 240)}`);
-          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing: Processed scanBResult: ${preview(JSON.stringify(scanBResultToProcess), 240)}`);
+          if (isDebug) console.log(`Batch processing: Original scanAResult: ${preview(JSON.stringify(scanAResult), 240)}`);
+          if (isDebug) console.log(`Batch processing: Original scanBResult: ${preview(JSON.stringify(scanBResult), 240)}`);
+          if (isDebug) console.log(`Batch processing: Processed scanAResult: ${preview(JSON.stringify(scanAResultToProcess), 240)}`);
+          if (isDebug) console.log(`Batch processing: Processed scanBResult: ${preview(JSON.stringify(scanBResultToProcess), 240)}`);
           
           patchResult(scanAResultToProcess);
           patchResult(scanBResultToProcess);
