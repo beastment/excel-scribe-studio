@@ -616,6 +616,12 @@ serve(async (req) => {
           patchResult(scanAResultToProcess);
           patchResult(scanBResultToProcess);
 
+          // Ensure debugInfo reflects patched per-scan results (including any corrections)
+          try {
+            scanAResultCopy = JSON.parse(JSON.stringify(scanAResultToProcess));
+            scanBResultCopy = JSON.parse(JSON.stringify(scanBResultToProcess));
+          } catch (_) {}
+
           let finalResult = null;
           let adjudicationResult = null;
           let needsAdjudication = false;
