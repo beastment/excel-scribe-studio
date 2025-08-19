@@ -869,20 +869,34 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                            
                             {comment.debugInfo.adjudicationResult && (
                               <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50">
-                                <p className="text-xs font-medium text-purple-900 dark:text-purple-100">
-                                  Adjudicator Result {comment.debugInfo.adjudicationResult.model ? `[${comment.debugInfo.adjudicationResult.model}]` : ''}:
-                                </p>
-                                <p className="text-xs text-purple-800 dark:text-purple-200">
-                                  Concerning: {comment.debugInfo.adjudicationResult.concerning ? 'Yes' : 'No'} | 
-                                  Identifiable: {comment.debugInfo.adjudicationResult.identifiable ? 'Yes' : 'No'}
-                                </p>
-                               {comment.debugInfo.adjudicationResult.reasoning && (
-                                 <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
-                                   {comment.debugInfo.adjudicationResult.reasoning}
-                                 </p>
-                               )}
-                             </div>
-                           )}
+                                {comment.debugInfo.adjudicationResult.skipped ? (
+                                  <>
+                                    <p className="text-xs font-medium text-purple-900 dark:text-purple-100">
+                                      Adjudication Skipped
+                                    </p>
+                                    <p className="text-xs text-purple-800 dark:text-purple-200">
+                                      Reason: {String(comment.debugInfo.adjudicationResult.reason || 'unknown')}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="text-xs font-medium text-purple-900 dark:text-purple-100">
+                                      Adjudicator Result {comment.debugInfo.adjudicationResult.model ? `[${comment.debugInfo.adjudicationResult.model}]` : ''}:
+                                      {comment.debugInfo.adjudicatorFallbackUsed ? ' (fallback used)' : ''}
+                                    </p>
+                                    <p className="text-xs text-purple-800 dark:text-purple-200">
+                                      Concerning: {comment.debugInfo.adjudicationResult.concerning ? 'Yes' : 'No'} | 
+                                      Identifiable: {comment.debugInfo.adjudicationResult.identifiable ? 'Yes' : 'No'}
+                                    </p>
+                                    {comment.debugInfo.adjudicationResult.reasoning && (
+                                      <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                                        {comment.debugInfo.adjudicationResult.reasoning}
+                                      </p>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
                            
                            {comment.debugInfo.needsAdjudication && (
                              <div className="p-2 rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800/50">
