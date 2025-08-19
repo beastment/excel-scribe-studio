@@ -657,56 +657,27 @@ ${concerningDisagreement ? '' : 'NOTE: Both scans agreed on concerning=' + scanA
 ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResultCopy.identifiable + ', so preserve this value.'}`;
 
             const adjudicatorIsVeryLowRpm = adjudicator.provider === 'bedrock' && /sonnet|opus/i.test(adjudicator.model);
-            const elapsedMs = Date.now() - requestStartMs;
-            const outOfTime = elapsedMs > timeBudgetMs;
-            const remainingMs = Math.max(0, timeBudgetMs - elapsedMs);
-            let adjudicatorFallbackUsed = false;
-            let adjudicationSkippedReason: string | null = null;
+            const outOfTime = Date.now() - requestStartMs > timeBudgetMs;
             // Always attempt adjudication when requested and within time budget.
             // Very low RPM models will be handled via the sequential queue to stay within limits.
             if (!skipAdjudicator && !outOfTime) {
-              const likelyTooSlow = adjudicatorIsVeryLowRpm && remainingMs < 80000;
-              if (!likelyTooSlow) {
-                try {
-                  const adjudicationResponse = await callAI(
-                    adjudicator.provider, 
-                    adjudicator.model, 
-                    adjudicatorPrompt, 
-                    '', 
-                    'analysis',
-                    'adjudicator',
-                    rateLimiters,
-                    sequentialQueue
-                  );
-                  adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
-                } catch (error) {
-                  console.error(`Adjudicator failed for comment ${comment.id}:`, error);
+              try {
+                const adjudicationResponse = await callAI(
+                  adjudicator.provider, 
+                  adjudicator.model, 
+                  adjudicatorPrompt, 
+                  '', 
+                  'analysis',
+                  'adjudicator',
+                  rateLimiters,
+                  sequentialQueue
+                );
+                adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
+              } catch (error) {
+                console.error(`Adjudicator failed for comment ${comment.id}:`, error);
+                if (adjudicatorIsVeryLowRpm) {
+                  console.warn('Adjudicator call skipped due to low RPM constraints; using tie-breaker instead.');
                 }
-              }
-            }
-
-            // Fallback adjudicator via Scan B if primary skipped/failed and we still have a bit of time
-            if (!adjudicationResult && !skipAdjudicator) {
-              if (!outOfTime || remainingMs > 5000) {
-                try {
-                  const fallbackResponse = await callAI(
-                    scanB.provider,
-                    scanB.model,
-                    adjudicatorPrompt,
-                    '',
-                    'analysis',
-                    'adjudicator',
-                    rateLimiters,
-                    sequentialQueue
-                  );
-                  adjudicationResult = fallbackResponse?.results || fallbackResponse;
-                  adjudicatorFallbackUsed = true;
-                } catch (fallbackErr) {
-                  console.warn(`Fallback adjudicator (${scanB.provider}/${scanB.model}) failed for comment ${comment.id}:`, (fallbackErr as Error).message);
-                  adjudicationSkippedReason = outOfTime ? 'time_budget_exceeded' : (adjudicatorIsVeryLowRpm ? 'rate_limit_wait_exceeded_budget' : 'adjudicator_error');
-                }
-              } else {
-                adjudicationSkippedReason = 'time_budget_exceeded';
               }
             }
 
@@ -745,47 +716,48 @@ ${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agre
                 reasoning: scanAResultCopy.reasoning
               };
             }
+          } else {
+            // Scan A and Scan B agree, use Scan A result
+            finalResult = scanAResultCopy;
+          }
 
-            // Track flagged comments for batch redaction/rephrasing
-            if (finalResult.concerning || finalResult.identifiable) {
-              summary.concerning += finalResult.concerning ? 1 : 0;
-              summary.identifiable += finalResult.identifiable ? 1 : 0;
+          // Track flagged comments for batch redaction/rephrasing
+          if (finalResult.concerning || finalResult.identifiable) {
+            summary.concerning += finalResult.concerning ? 1 : 0;
+            summary.identifiable += finalResult.identifiable ? 1 : 0;
+          }
+          if (needsAdjudication) summary.needsAdjudication++;
+
+          // Store intermediate results
+          const finalMode = (finalResult.concerning || finalResult.identifiable) ? defaultMode : 'original';
+          const processedComment = {
+            ...comment,
+            text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
+            concerning: finalResult.concerning,
+            identifiable: finalResult.identifiable,
+            aiReasoning: adjudicationResult ? (`Adjudicator: ${adjudicationResult.reasoning || finalResult.reasoning || ''}`.trim()) : finalResult.reasoning,
+            redactedText: null,
+            rephrasedText: null,
+            mode: finalMode,
+            approved: false,
+            hideAiResponse: false,
+            debugInfo: {
+              scanAResult: { ...scanAResultCopy, model: `${scanA.provider}/${scanA.model}` },
+              scanBResult: { ...scanBResultCopy, model: `${scanB.provider}/${scanB.model}` },
+              adjudicationResult: adjudicationResult ? { ...adjudicationResult, model: `${adjudicator.provider}/${adjudicator.model}` } : null,
+              needsAdjudication,
+              safetyNetTriggered,
+              finalDecision: finalResult,
+              rawResponses: {
+                scanAResponse: scanARawResponse,
+                scanBResponse: scanBRawResponse,
+                adjudicationResponse: adjudicationResult?.rawResponse
+              },
+              piiSafetyNetApplied: Boolean((scanAResultCopy as any)?.__piiSafetyNetApplied || (scanBResultCopy as any)?.__piiSafetyNetApplied || (finalResult as any)?.__piiSafetyNetApplied)
             }
-            if (needsAdjudication) summary.needsAdjudication++;
+          };
 
-            // Store intermediate results
-            const finalMode = (finalResult.concerning || finalResult.identifiable) ? defaultMode : 'original';
-            const processedComment = {
-              ...comment,
-              text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
-              concerning: finalResult.concerning,
-              identifiable: finalResult.identifiable,
-              aiReasoning: adjudicationResult ? ((adjudicatorFallbackUsed ? 'Adjudicator (fallback): ' : 'Adjudicator: ') + (adjudicationResult.reasoning || finalResult.reasoning || '')).trim() : finalResult.reasoning,
-              redactedText: null,
-              rephrasedText: null,
-              mode: finalMode,
-              approved: false,
-              hideAiResponse: false,
-              debugInfo: {
-                scanAResult: { ...scanAResultCopy, model: `${scanA.provider}/${scanA.model}` },
-                scanBResult: { ...scanBResultCopy, model: `${scanB.provider}/${scanB.model}` },
-                adjudicationResult: adjudicationResult
-                  ? { ...adjudicationResult, model: adjudicatorFallbackUsed ? `${scanB.provider}/${scanB.model}` : `${adjudicator.provider}/${adjudicator.model}` }
-                  : (adjudicationSkippedReason ? { skipped: true, reason: adjudicationSkippedReason } as any : null),
-                needsAdjudication,
-                safetyNetTriggered,
-                finalDecision: finalResult,
-                rawResponses: {
-                  scanAResponse: scanARawResponse,
-                  scanBResponse: scanBRawResponse,
-                  adjudicationResponse: adjudicationResult?.rawResponse
-                },
-                piiSafetyNetApplied: Boolean((scanAResultCopy as any)?.__piiSafetyNetApplied || (scanBResultCopy as any)?.__piiSafetyNetApplied || (finalResult as any)?.__piiSafetyNetApplied),
-                adjudicatorFallbackUsed: adjudicatorFallbackUsed || undefined
-              }
-            };
-
-            scannedComments.push(processedComment);
+          scannedComments.push(processedComment);
         }
 
         // Batch process redaction and rephrasing for flagged comments
