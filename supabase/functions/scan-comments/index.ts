@@ -627,20 +627,21 @@ serve(async (req) => {
           let finalResult = null;
           let adjudicationResult = null;
           let needsAdjudication = false;
+          const safetyNetTriggered = Boolean((scanAResultToProcess as any)?.__piiSafetyNetApplied || (scanBResultToProcess as any)?.__piiSafetyNetApplied);
 
           // Check if Scan A and Scan B results differ (use the copies)
           const concerningDisagreement = scanAResultCopy.concerning !== scanBResultCopy.concerning;
           const identifiableDisagreement = scanAResultCopy.identifiable !== scanBResultCopy.identifiable;
           
-          if (concerningDisagreement || identifiableDisagreement) {
+          if (concerningDisagreement || identifiableDisagreement || safetyNetTriggered) {
             needsAdjudication = true;
 
             // For adjudication, we need to process individually since it requires conflict analysis
-            const disagreementFields = [];
+            const disagreementFields: string[] = [];
             if (concerningDisagreement) disagreementFields.push('concerning');
-            if (identifiableDisagreement) disagreementFields.push('identifiable');
+            if (identifiableDisagreement || safetyNetTriggered) disagreementFields.push('identifiable');
             
-            const adjudicatorPrompt = `Two AI systems have analyzed this comment and disagreed on: ${disagreementFields.join(' and ')}.
+            const adjudicatorPrompt = `Two AI systems have analyzed this comment and disagreed on: ${disagreementFields.join(' and ')}.${safetyNetTriggered ? ' Additionally, a PII safety net heuristic flagged the text as identifiable.' : ''}
 
 Original comment: "${comment.originalText || comment.text}"
 
@@ -649,11 +650,11 @@ Scan B Result: ${JSON.stringify(scanBResultCopy)}
 
 IMPORTANT: Only resolve the disagreement for the ${disagreementFields.join(' and ')} field(s). Return a JSON object with:
 - concerning: boolean (${concerningDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.concerning})
-- identifiable: boolean (${identifiableDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.identifiable})
+- identifiable: boolean (${identifiableDisagreement || safetyNetTriggered ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.identifiable})
 - reasoning: string explaining your decision
 
 ${concerningDisagreement ? '' : 'NOTE: Both scans agreed on concerning=' + scanAResultCopy.concerning + ', so preserve this value.'}
-${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResultCopy.identifiable + ', so preserve this value.'}`;
+${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResultCopy.identifiable + ', so preserve this value.'}`;
 
             const adjudicatorIsVeryLowRpm = adjudicator.provider === 'bedrock' && /sonnet|opus/i.test(adjudicator.model);
             const outOfTime = Date.now() - requestStartMs > timeBudgetMs;
@@ -680,11 +681,11 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
               }
             }
 
-            // Create final result by preserving agreements and using adjudicator for disagreements
+            // Create final result by preserving agreements and using adjudicator for disagreements or safety-net triggers
             if (adjudicationResult) {
               finalResult = {
                 concerning: concerningDisagreement ? adjudicationResult.concerning : scanAResultCopy.concerning,
-                identifiable: identifiableDisagreement ? adjudicationResult.identifiable : scanAResultCopy.identifiable,
+                identifiable: (identifiableDisagreement || safetyNetTriggered) ? adjudicationResult.identifiable : scanAResultCopy.identifiable,
                 reasoning: adjudicationResult.reasoning || scanAResultCopy.reasoning
               };
               // Prevent contradictory reasoning: append a concise resolution note when flags changed
@@ -694,14 +695,14 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
                 const deniesIdentifiable = /\b(does not|no)\b[\s\S]*\b(personally identifiable|identifiable|pii|personal information)\b/i.test(r);
                 const notes: string[] = [];
                 if (concerningDisagreement && finalResult.concerning && deniesConcerning) notes.push('Resolved: concerning=true');
-                if (identifiableDisagreement && finalResult.identifiable && deniesIdentifiable) notes.push('Resolved: identifiable=true');
+                if ((identifiableDisagreement || safetyNetTriggered) && finalResult.identifiable && deniesIdentifiable) notes.push('Resolved: identifiable=true');
                 if ((!r || notes.length > 0) && notes.length > 0) {
                   finalResult.reasoning = r ? `${r} | ${notes.join(' | ')}` : notes.join(' | ');
                 }
                 if (!finalResult.reasoning) {
                   const decisions: string[] = [];
                   if (concerningDisagreement) decisions.push(`concerning=${finalResult.concerning}`);
-                  if (identifiableDisagreement) decisions.push(`identifiable=${finalResult.identifiable}`);
+                  if (identifiableDisagreement || safetyNetTriggered) decisions.push(`identifiable=${finalResult.identifiable}`);
                   finalResult.reasoning = `Adjudicator resolved disagreement: ${decisions.join(', ')}`;
                 }
               } catch (_) {
@@ -745,6 +746,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
               scanBResult: { ...scanBResultCopy, model: `${scanB.provider}/${scanB.model}` },
               adjudicationResult: adjudicationResult ? { ...adjudicationResult, model: `${adjudicator.provider}/${adjudicator.model}` } : null,
               needsAdjudication,
+              safetyNetTriggered,
               finalDecision: finalResult,
               rawResponses: {
                 scanAResponse: scanARawResponse,
