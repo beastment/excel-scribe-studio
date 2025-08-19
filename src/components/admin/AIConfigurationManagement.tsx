@@ -22,6 +22,7 @@ interface AIConfiguration {
   tpm_limit?: number;
   input_token_limit?: number;
   output_token_limit?: number;
+  preferred_batch_size?: number;
 }
 
 const PROVIDERS = [
@@ -109,7 +110,8 @@ export const AIConfigurationManagement = () => {
           rpm_limit: config.rpm_limit || undefined,
           tpm_limit: config.tpm_limit || undefined,
           input_token_limit: undefined,
-          output_token_limit: undefined
+          output_token_limit: undefined,
+          preferred_batch_size: config.preferred_batch_size || undefined
         };
       });
 
@@ -207,6 +209,7 @@ export const AIConfigurationManagement = () => {
           analysis_prompt: config.analysis_prompt,
           redact_prompt: config.redact_prompt,
           rephrase_prompt: config.rephrase_prompt,
+          preferred_batch_size: config.preferred_batch_size,
           updated_at: new Date().toISOString(),
         });
 
@@ -434,6 +437,18 @@ export const AIConfigurationManagement = () => {
               min="0"
             />
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`batch-size-${scannerConfig.type}`}>Preferred Batch Size</Label>
+          <Input
+            id={`batch-size-${scannerConfig.type}`}
+            type="number"
+            value={config.preferred_batch_size || ''}
+            onChange={(e) => updateConfig(scannerConfig.type, { preferred_batch_size: e.target.value ? parseInt(e.target.value) : undefined })}
+            placeholder="Number of comments to process in batch"
+            min="1"
+          />
         </div>
 
         <div className="space-y-2">

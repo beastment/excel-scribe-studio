@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           id: string
           model: string
+          preferred_batch_size: number | null
           provider: string
           redact_prompt: string
           rephrase_prompt: string
@@ -33,6 +34,7 @@ export type Database = {
           created_at?: string
           id?: string
           model: string
+          preferred_batch_size?: number | null
           provider: string
           redact_prompt: string
           rephrase_prompt: string
@@ -46,6 +48,7 @@ export type Database = {
           created_at?: string
           id?: string
           model?: string
+          preferred_batch_size?: number | null
           provider?: string
           redact_prompt?: string
           rephrase_prompt?: string
