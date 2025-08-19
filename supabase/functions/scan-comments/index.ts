@@ -162,8 +162,25 @@ serve(async (req) => {
       if (!providerModelAggregates.has(key)) {
         providerModelAggregates.set(key, { rpm: [], tpm: [] });
       }
-      providerModelAggregates.get(key)!.rpm.push(c.rpm_limit || 10);
-      providerModelAggregates.get(key)!.tpm.push(c.tpm_limit || 50000);
+      // Use same conservative defaults as per-scanner setup when limits are not configured
+      let aggDefaultRpm = 10;
+      let aggDefaultTpm = 50000;
+      if (c.provider === 'bedrock' && !c.rpm_limit && !c.tpm_limit) {
+        if (c.model.includes('haiku')) {
+          aggDefaultRpm = 3;
+          aggDefaultTpm = 10000;
+        } else if (c.model.includes('claude')) {
+          aggDefaultRpm = 5;
+          aggDefaultTpm = 20000;
+        } else {
+          aggDefaultRpm = 6;
+          aggDefaultTpm = 30000;
+        }
+      }
+      const effectiveRpm = c.rpm_limit || aggDefaultRpm;
+      const effectiveTpm = c.tpm_limit || aggDefaultTpm;
+      providerModelAggregates.get(key)!.rpm.push(effectiveRpm);
+      providerModelAggregates.get(key)!.tpm.push(effectiveTpm);
     });
     providerModelAggregates.forEach((agg, key) => {
       // Use the most conservative limits across scanners sharing the same provider+model
@@ -888,9 +905,9 @@ serve(async (req) => {
           try {
             const activeIsVeryLowRpm = activeConfig.provider === 'bedrock' && /sonnet|opus/i.test(activeConfig.model);
             const outOfTime = Date.now() - requestStartMs > timeBudgetMs;
-            // Skip post-processing if on very low RPM model or we're near time budget
-            if (activeIsVeryLowRpm || outOfTime) {
-              console.log('Skipping redaction/rephrasing to avoid timeouts (low RPM model or time budget exceeded)');
+            // Skip only if we're out of time; allow batching even on very low RPM models (handled by sequential queue and backoff)
+            if (outOfTime) {
+              console.log('Skipping redaction/rephrasing to avoid timeouts (time budget exceeded)');
             } else if (activeConfig.provider === 'bedrock' && activeConfig.model.startsWith('mistral.')) {
               for (let k = 0; k < scannedComments.length; k++) {
                 if (scannedComments[k].concerning || scannedComments[k].identifiable) {
@@ -926,10 +943,16 @@ serve(async (req) => {
                 aiDedupe.add(postKey);
                 let rawRedacted: any = [];
                 let rawRephrased: any = [];
-                [rawRedacted, rawRephrased] = await Promise.all([
-                  callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters),
-                  callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters)
-                ]);
+                // Run sequentially for Bedrock to reduce 429s; otherwise keep parallel
+                if (activeConfig.provider === 'bedrock') {
+                  rawRedacted = await callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters);
+                  rawRephrased = await callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters);
+                } else {
+                  [rawRedacted, rawRephrased] = await Promise.all([
+                    callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters),
+                    callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters)
+                  ]);
+                }
 
                 let redactedTexts = normalizeBatchTextParsed(rawRedacted);
                 let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
