@@ -168,104 +168,64 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     // Generate a short 4-digit scanRunId so backend logs can be filtered to this click
     const scanRunId = String(Math.floor(1000 + Math.random() * 9000));
 
-    // Adaptive batching for speed and stability at scale
-    let initialBatchSize = 20; // starting point; will auto-tune
-    let minBatchSize = 5;
-    let maxBatchSize = 100; // prevent overly large payloads
-    let batchSize = Math.max(minBatchSize, Math.min(maxBatchSize, initialBatchSize));
+    // Single-shot analysis request; backend handles effective batch sizing per model
     let processedComments: any[] = [];
-    let currentBatch = 0;
-    
-    const adjustBatchSize = (elapsedMs: number) => {
-      // Target ~10–30s per batch; back off on long runs, grow if very fast
-      if (elapsedMs > 50000) {
-        batchSize = Math.max(minBatchSize, Math.floor(batchSize * 0.6));
-      } else if (elapsedMs > 30000) {
-        batchSize = Math.max(minBatchSize, Math.floor(batchSize * 0.8));
-      } else if (elapsedMs < 10000) {
-        batchSize = Math.min(maxBatchSize, Math.ceil(batchSize * 1.3));
-      } else if (elapsedMs < 20000) {
-        batchSize = Math.min(maxBatchSize, Math.ceil(batchSize * 1.15));
-      }
-    };
 
     try {
-      let batchStart = 0;
-      while (batchStart < comments.length) {
-        currentBatch++;
-        const remaining = comments.length - batchStart;
-        const currentSize = Math.min(batchSize, remaining);
-        const totalBatches = Math.ceil((comments.length - batchStart) / Math.max(currentSize, 1));
-        console.log(`Processing batch ${currentBatch} (size=${currentSize})`);
-        
-        // Update progress
-        setScanProgress((batchStart / comments.length) * 90);
-        
-        const t0 = performance.now();
-        // Phase 1: fast analysis only — skip adjudicator and postprocess
-        const isSingleRun = comments.length === 1;
-        const { data, error } = await supabase.functions.invoke('scan-comments', {
-          body: { 
-            comments, 
-            defaultMode,
-            batchStart,
-            batchSize: currentSize,
-            skipAdjudicator: true,
-            // For single-row runs, perform postprocess in phase 1 to avoid a second pass
-            skipPostprocess: !isSingleRun,
-            scanRunId
+      // Phase 1: single-shot analysis — skip adjudicator and postprocess
+      const isSingleRun = comments.length === 1;
+      const { data, error } = await supabase.functions.invoke('scan-comments', {
+        body: {
+          comments,
+          defaultMode,
+          skipAdjudicator: true,
+          // For single-row runs, perform postprocess in phase 1 to avoid a second pass
+          skipPostprocess: !isSingleRun,
+          scanRunId
+        }
+      });
+
+      console.log(`Single analysis response:`, { data, error });
+
+      if (error) {
+        console.error(`Analysis error:`, error);
+        throw new Error(error.message || JSON.stringify(error));
+      }
+
+      if (data?.comments) {
+        // Normalize results to ensure UI flags match final decision
+        const normalizedComments = data.comments.map((c: any) => {
+          const fd = c?.debugInfo?.finalDecision;
+          const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!c.concerning;
+          const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!c.identifiable;
+          if (!concerning && !identifiable) {
+            return {
+              ...c,
+              concerning: false,
+              identifiable: false,
+              mode: 'original',
+              text: c.originalText || c.text,
+              redactedText: undefined,
+              rephrasedText: undefined,
+            };
           }
+          return { ...c, concerning, identifiable };
         });
-        
-        console.log(`Batch ${currentBatch} response:`, { data, error });
-        
-        if (error) {
-          console.error(`Batch ${currentBatch} error:`, error);
-          throw new Error(`Batch ${currentBatch} failed: ${error.message || JSON.stringify(error)}`);
-        }
-        
-        if (data?.comments) {
-          // Normalize results to ensure UI flags match final decision
-          const normalizedComments = data.comments.map((c: any) => {
-            const fd = c?.debugInfo?.finalDecision;
-            const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!c.concerning;
-            const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!c.identifiable;
-            // If not flagged, force original text and safe mode
-            if (!concerning && !identifiable) {
-              return {
-                ...c,
-                concerning: false,
-                identifiable: false,
-                mode: 'original',
-                text: c.originalText || c.text,
-                redactedText: undefined,
-                rephrasedText: undefined,
-              };
-            }
-            return { ...c, concerning, identifiable };
-          });
 
-          // Merge normalized results into the full comment list by id, preserving original order and length
-          const baseList = processedComments.length > 0 ? processedComments : comments;
-          const updatesById = new Map(normalizedComments.map((u: any) => [u.id, u]));
-          processedComments = baseList.map((c: any) => {
-            const update = updatesById.get(c.id);
-            return update && typeof update === 'object' ? { ...c, ...update } : c;
-          });
+        // Merge normalized results into the full comment list by id, preserving original order and length
+        const baseList = processedComments.length > 0 ? processedComments : comments;
+        const updatesById = new Map(normalizedComments.map((u: any) => [u.id, u]));
+        processedComments = baseList.map((c: any) => {
+          const update = updatesById.get(c.id);
+          return update && typeof update === 'object' ? { ...c, ...update } : c;
+        });
 
-          // Push partial results to UI immediately so it populates even if follow-ups are slow
-          onCommentsUpdate(processedComments);
-          setHasScanRun(true);
-
-          // Update progress with partial results
-          toast.info(`Processed ${processedComments.length}/${comments.length} comments`);
-        } else {
-          throw new Error(`Batch ${currentBatch}: No comment data received`);
-        }
-
-        const elapsed = performance.now() - t0;
-        adjustBatchSize(elapsed);
-        batchStart += currentSize;
+        onCommentsUpdate(processedComments);
+        setHasScanRun(true);
+        setScanProgress(90);
+        toast.info(`Processed ${processedComments.length}/${comments.length} comments`);
+      } else {
+        throw new Error(`No comment data received`);
       }
       
       // Phase 2: follow-up adjudication and postprocess on subset
@@ -274,8 +234,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       const needsFollowup = processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || (!isSingleRun && (c.concerning || c.identifiable)));
       if (needsFollowup.length > 0) {
         toast.info(`Running follow-up on ${needsFollowup.length} flagged comments...`);
-        // Phase 2 chunk size follows the adapted batch size, but smaller to avoid timeouts
-        const phase2Base = Math.max(5, Math.floor(batchSize / 2));
+        // Phase 2 chunk size: modest size to avoid timeouts
+        const phase2Base = 20;
         for (let i = 0; i < needsFollowup.length; i += phase2Base) {
           const chunk = needsFollowup.slice(i, i + phase2Base);
           // Phase 2A: postprocess-only to guarantee redaction/rephrase runs before adjudication

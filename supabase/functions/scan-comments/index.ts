@@ -20,6 +20,10 @@ serve(async (req) => {
     // Generate a per-request scanRunId for log correlation
     const scanRunId = requestBody.scanRunId || String(Math.floor(1000 + Math.random() * 9000));
     ;(globalThis as any).__scanRunId = scanRunId;
+    // Global run-guards to prevent duplicate analysis batches for the same run id
+    const gAny: any = globalThis as any;
+    gAny.__runInProgress = gAny.__runInProgress || new Set<string>();
+    gAny.__runCompleted = gAny.__runCompleted || new Set<string>();
     // Prefix all logs for this request with the run id
     const __origLog = console.log;
     const __origWarn = console.warn;
@@ -31,6 +35,34 @@ serve(async (req) => {
     console.warn = (...args: any[]) => __origWarn(`[RUN ${scanRunId}]`, ...args);
     console.error = (...args: any[]) => __origError(`[RUN ${scanRunId}]`, ...args);
     console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
+
+    // If this run id has already completed, short-circuit to avoid duplicate model calls
+    if (gAny.__runCompleted.has(scanRunId)) {
+      console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed. Skipping.`);
+      return new Response(JSON.stringify({
+        comments: [],
+        batchStart: requestBody.batchStart || 0,
+        batchSize: 0,
+        hasMore: false,
+        totalComments: requestBody.comments?.length || 0,
+        summary: { total: 0, concerning: 0, identifiable: 0 }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // If a run is already in progress, ignore any subsequent batch slices to prevent multi-batch analysis
+    if (gAny.__runInProgress.has(scanRunId) && (Number.isFinite(requestBody.batchStart) && (requestBody.batchStart as number) > 0)) {
+      console.log(`[RUN IN PROGRESS] scanRunId=${scanRunId} received batchStart=${requestBody.batchStart}. Ignoring to prevent duplicate analysis calls.`);
+      return new Response(JSON.stringify({
+        comments: [],
+        batchStart: requestBody.batchStart || 0,
+        batchSize: 0,
+        hasMore: false,
+        totalComments: requestBody.comments?.length || 0,
+        summary: { total: 0, concerning: 0, identifiable: 0 }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    // Mark run as in progress
+    gAny.__runInProgress.add(scanRunId);
     
     const { 
       comments, 
@@ -1147,12 +1179,25 @@ serve(async (req) => {
     console.warn = __origWarn;
     console.error = __origError;
 
+    // Mark completion state if no further batches are expected
+    try {
+      if (!response.hasMore) {
+        gAny.__runCompleted.add(scanRunId);
+      }
+    } catch {}
+    // Clear in-progress flag
+    try { gAny.__runInProgress.delete(scanRunId); } catch {}
+
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
     console.error('Error in scan-comments function:', error);
+    try {
+      const g: any = globalThis as any;
+      if (g.__scanRunId && g.__runInProgress) g.__runInProgress.delete(g.__scanRunId);
+    } catch {}
     // Attempt to restore console methods if they were overridden
     try {
       const g: any = globalThis as any;
