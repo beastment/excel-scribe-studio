@@ -573,6 +573,14 @@ serve(async (req) => {
                 r.reasoning += ' | Safety net: Detected PII in the original text.';
               }
             }
+
+            // If identifiable is true but reasoning includes a denial, append a correction note
+            try {
+              const deniesIdent = /\b(no|does not|none|not)\b[\s\S]*\b(personally identifiable|identifiable|pii|personal information)\b/i.test(String(r.reasoning || ''));
+              if (r.identifiable === true && deniesIdent) {
+                r.reasoning = (r.reasoning ? r.reasoning + ' | ' : '') + 'Correction: Marked identifiable due to detected PII (policy/safety net).';
+              }
+            } catch {}
             
             // Only apply heuristic fallback if AI gave absolutely no reasoning
             if (!r.reasoning || r.reasoning.trim() === '') {
@@ -713,7 +721,7 @@ ${identifiableDisagreement ? '' : 'NOTE: Both scans agreed on identifiable=' + s
             text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
             concerning: finalResult.concerning,
             identifiable: finalResult.identifiable,
-            aiReasoning: finalResult.reasoning,
+            aiReasoning: adjudicationResult ? (`Adjudicator: ${adjudicationResult.reasoning || finalResult.reasoning || ''}`.trim()) : finalResult.reasoning,
             redactedText: null,
             rephrasedText: null,
             mode: finalMode,
