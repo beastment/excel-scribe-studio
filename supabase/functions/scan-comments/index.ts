@@ -258,7 +258,7 @@ serve(async (req) => {
       const model = String(config?.model || '').toLowerCase();
       if (provider === 'bedrock') {
         if (model.includes('anthropic.claude')) return 4096;
-        if (model.startsWith('mistral.')) return 2000;
+        if (model.startsWith('mistral.')) return 4096; // honor higher default unless config overrides
         if (model.startsWith('amazon.titan')) return 1000;
       }
       if (provider === 'openai' || provider === 'azure') return 4096;
