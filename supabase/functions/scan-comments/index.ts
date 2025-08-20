@@ -261,7 +261,7 @@ serve(async (req) => {
     };
 
     const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
-      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ID k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.`;
+      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ITEM k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.`;
       return `${basePrompt}\n\n${sentinels}`;
     };
 
@@ -1091,7 +1091,7 @@ serve(async (req) => {
                 let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
 
                 // If model returned aligned ID-tagged strings, strip tags and re-align by ID
-                const idTag = /^\s*<<<ID\s+(\d+)>>>\s*/i;
+                const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
                 const stripAndIndex = (arr: string[]) => arr.map(s => {
                   const m = idTag.exec(s || '');
                   return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
@@ -1628,7 +1628,7 @@ function parseBatchTextList(content: string): string[] {
     const results: string[] = [];
     let currentId: number | null = null;
     let buffer: string[] = [];
-    const idStart = /^<<<ID\s+(\d+)>>>\s*/i;
+    const idStart = /^<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
     const endMarker = /^<<<END\s+\d+>>>\s*$/i;
     for (const t of tokens) {
       const m = idStart.exec(t);
@@ -1681,7 +1681,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       .filter((s) => !/^here\s+(?:is|are)[\s\S]*?:\s*$/i.test(s));
 
     // Haiku repair: merge tokenized segments into per-ID strings
-    const idStart = /^\s*<<<ID\s+(\d+)>>>\s*/i;
+    const idStart = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
     const endMarker = /^<<<END\s+\d+>>>\s*$/i;
     const hasIds = cleaned.some(s => idStart.test(s) || endMarker.test(s) || s === '[' || s === ']');
     if (hasIds) {
