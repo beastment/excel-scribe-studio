@@ -413,6 +413,10 @@ serve(async (req) => {
               );
             }
             let results = resp?.results || resp;
+            // If model returned indexed objects but count mismatches, realign before retrying
+            if (Array.isArray(results) && results.some((x: any) => x && typeof x.index === 'number')) {
+              results = realignResultsByIndex(results, expectedLen);
+            }
             if (!Array.isArray(results) || results.length !== expectedLen) {
               const retried = await strictBatchRetry(config.provider, config.model, config.analysis_prompt, input, expectedLen, scannerKey);
               if (retried) results = retried;
@@ -2337,17 +2341,20 @@ async function performAICall(provider: string, model: string, prompt: string, co
     if (model.startsWith('anthropic.claude')) {
       // For Claude 3.5+ models, use the messages API format
       if (model.includes('claude-3') || model.includes('sonnet-4') || model.includes('haiku-3') || model.includes('opus-3')) {
+        // Encourage JSON-only responses by asking for <json> wrapper and setting stop sequences
+        const systemPrompt = `Return ONLY JSON. Wrap the JSON in <json> and </json>. No prose, no code fences.\n\n${prompt}`;
         requestBody = JSON.stringify({
           anthropic_version: "bedrock-2023-05-31",
           max_tokens: Number.isFinite(maxTokens) && (maxTokens as number) > 0 ? Math.floor(maxTokens as number) : 1000,
           temperature: 0.1,
-          system: prompt,
+          system: systemPrompt,
           messages: [
             {
               role: "user",
               content: `${commentText}`
             }
-          ]
+          ],
+          stop_sequences: ["</json>"]
         });
       } else {
         // Legacy Claude models
@@ -2479,6 +2486,14 @@ async function performAICall(provider: string, model: string, prompt: string, co
       try {
         // Extract JSON from response if it contains explanatory text
         let jsonContent = content.trim();
+
+        // Prefer <json>...</json> extraction for Claude to avoid prose
+        if (model.startsWith('anthropic.claude')) {
+          const tag = /<json>([\s\S]*?)<\/json>/i.exec(jsonContent);
+          if (tag && tag[1]) {
+            jsonContent = tag[1].trim();
+          }
+        }
 
         // Titan: prefer sentinel-extracted JSON first
         if (model.startsWith('amazon.titan')) {
@@ -2612,9 +2627,18 @@ async function performAICall(provider: string, model: string, prompt: string, co
           // Try multiple extraction strategies
           let extractedJson: any = null;
 
-          // Anthropic/Claude fallback: attempt to extract an array or sequence of objects from noisy text
+          // Anthropic/Claude fallback: attempt to extract from <json> tags or array/object from noisy text
           if (model.startsWith('anthropic.claude')) {
             try {
+              const tagged = /<json>([\s\S]*?)<\/json>/i.exec(jsonContent) || /<json>([\s\S]*?)<\/json>/i.exec(content);
+              if (tagged && tagged[1]) {
+                const arrOrObj = JSON.parse(tagged[1].trim());
+                if (responseType === 'analysis') {
+                  const first = Array.isArray(arrOrObj) ? (arrOrObj.find((x: any) => x && typeof x === 'object') ?? arrOrObj[0]) : arrOrObj;
+                  return { results: first, rawResponse: null };
+                }
+                return { results: arrOrObj, rawResponse: null };
+              }
               const arr = extractJsonArrayOrObjects(jsonContent) || extractJsonArrayOrObjects(content);
               if (arr && Array.isArray(arr) && arr.length > 0) {
                 if (responseType === 'analysis') {
