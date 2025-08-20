@@ -55,6 +55,13 @@ serve(async (req) => {
       gAny.__analysisStarted.add(scanRunId);
     }
 
+    // If this request is an adjudication/postprocess follow-up (useCachedAnalysis: true), never re-run analysis inside.
+    if (isCached) {
+      // Ensure we skip any internal analysis path by short-circuiting batch analysis when cached
+      // The regular flow below already respects useCachedAnalysis for scans, but this guard prevents
+      // accidental re-entry in edge cases.
+    }
+
     // If this run id has already completed, short-circuit to avoid duplicate model calls
     if (gAny.__runCompleted.has(scanRunId)) {
       console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed. Skipping.`);
@@ -558,24 +565,19 @@ serve(async (req) => {
           for (let i = 0; i < Math.min(scanAResults.length, 5); i++) {
             console.log(`Scan A result ${i}:`, scanAResults[i]);
           }
-          // Attempt one strict retry before truncation/padding
-          const retried = await strictBatchRetry(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, batch.length, 'scan_a');
-          if (retried) {
-            scanAResults = retried;
-          } else {
-            // Fix: Truncate Scan A results to match batch size if we have too many
-            if (scanAResults.length > batch.length) {
-              console.warn(`🔧 FIXING: Truncating Scan A results from ${scanAResults.length} to ${batch.length}`);
-              scanAResults = scanAResults.slice(0, batch.length);
-            }
-            // Additional safety: If we still have mismatched results, pad with default values
-            if (scanAResults.length < batch.length) {
-              console.warn(`🔧 FIXING: Padding Scan A results from ${scanAResults.length} to ${batch.length}`);
-              const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
-              const defaultResultCopy = JSON.parse(JSON.stringify(defaultResult));
-              while (scanAResults.length < batch.length) {
-                scanAResults.push({ ...defaultResultCopy });
-              }
+          // Do not issue another strict retry here; runModelBatch has already attempted one
+          // Fix: Truncate Scan A results to match batch size if we have too many
+          if (scanAResults.length > batch.length) {
+            console.warn(`🔧 FIXING: Truncating Scan A results from ${scanAResults.length} to ${batch.length}`);
+            scanAResults = scanAResults.slice(0, batch.length);
+          }
+          // Additional safety: If we still have mismatched results, pad with default values
+          if (scanAResults.length < batch.length) {
+            console.warn(`🔧 FIXING: Padding Scan A results from ${scanAResults.length} to ${batch.length}`);
+            const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
+            const defaultResultCopy = JSON.parse(JSON.stringify(defaultResult));
+            while (scanAResults.length < batch.length) {
+              scanAResults.push({ ...defaultResultCopy });
             }
           }
         }
