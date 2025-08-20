@@ -400,6 +400,7 @@ serve(async (req) => {
               );
               resp = { results: [resp?.results || resp] };
             } else {
+              // Use only enforcedPrompt as system and the sentinel input as user; avoid duplicating basePrompt elsewhere
               resp = await callAI(
                 config.provider,
                 config.model,
@@ -1818,7 +1819,8 @@ function logAIRequest(
   const phaseTag = phase ? ` phase=${phase}` : '';
   // Avoid duplicating inputs when payload already contains the full request
   if (payload) {
-    console.log(`${tag} ${provider}/${model} type=${responseType}${phaseTag}\nprompt=${prompt}\npayload=${payload}`);
+    // To reduce duplication, only log the payload when present
+    console.log(`${tag} ${provider}/${model} type=${responseType}${phaseTag}\npayload=${payload}`);
     return;
   }
   console.log(`${tag} ${provider}/${model} type=${responseType}${phaseTag}\nprompt=${prompt}\ninput=${input}`);
