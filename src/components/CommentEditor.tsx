@@ -55,6 +55,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [hasScanRun, setHasScanRun] = useState(false);
   const [selectedDemographic, setSelectedDemographic] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
+  const scanInFlightRef = useRef(false);
 
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -157,8 +158,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     }
   };
   const scanComments = async () => {
+    if (scanInFlightRef.current) {
+      toast.info('A scan is already in progress. Please wait.');
+      return;
+    }
+    scanInFlightRef.current = true;
     if (comments.length === 0) {
       toast.error('No comments to scan');
+      scanInFlightRef.current = false;
       return;
     }
     setIsScanning(true);
@@ -337,6 +344,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     } finally {
       setIsScanning(false);
       setScanProgress(0);
+      scanInFlightRef.current = false;
     }
   };
   const handleSaveSession = async () => {
