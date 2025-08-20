@@ -2252,7 +2252,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
       try {
         return JSON.parse(content);
       } catch (parseError) {
-        console.warn(`JSON parsing failed for batch_text:`, parseError, 'Content:', content);
+        if (isDebug) console.log(`JSON parsing failed for batch_text: ${String(parseError)} preview=${preview(content, 300)}`);
         return parseBatchTextList(content);
       }
     } else {
@@ -2266,7 +2266,7 @@ async function performAICall(provider: string, model: string, prompt: string, co
     const awsSecretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
     const awsRegion = Deno.env.get('AWS_REGION') || 'us-west-2';
 
-    console.log(`Bedrock call - Model: ${model}, Region: ${awsRegion}, AccessKey: ${awsAccessKey ? 'present' : 'missing'}`);
+    if (isDebug) console.log(`Bedrock call - Model: ${model}, Region: ${awsRegion}, AccessKey: ${awsAccessKey ? 'present' : 'missing'}`);
 
     if (!awsAccessKey || !awsSecretKey) {
       throw new Error('AWS credentials not configured');
@@ -2414,21 +2414,25 @@ async function performAICall(provider: string, model: string, prompt: string, co
     const signature = await hmacSha256(signingKey, stringToSign);
     
     // Debug logging
-    console.log(`AWS Debug - Model: ${model}`);
-    console.log(`AWS Debug - Region: ${awsRegion}`);
-    console.log(`AWS Debug - Service: ${service}`);
-    console.log(`AWS Debug - Host: ${host}`);
-    console.log(`AWS Debug - CanonicalUri: ${canonicalUri}`);
-    console.log(`AWS Debug - PayloadHash: ${payloadHash}`);
-    console.log(`AWS Debug - StringToSign: ${stringToSign}`);
-    console.log(`AWS Debug - Signature: ${signature}`);
-    console.log(`AWS Debug - RequestBody: ${requestBody}`);
+    if (isDebug) {
+      console.log(`AWS Debug - Model: ${model}`);
+      console.log(`AWS Debug - Region: ${awsRegion}`);
+      console.log(`AWS Debug - Service: ${service}`);
+      console.log(`AWS Debug - Host: ${host}`);
+      console.log(`AWS Debug - CanonicalUri: ${canonicalUri}`);
+      console.log(`AWS Debug - PayloadHash: ${payloadHash}`);
+      console.log(`AWS Debug - StringToSign: ${stringToSign}`);
+      console.log(`AWS Debug - Signature: ${signature}`);
+      console.log(`AWS Debug - RequestBody: ${requestBody}`);
+    }
     
     // Create authorization header
     const authorizationHeader = `${algorithm} Credential=${awsAccessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
     
-    console.log(`Bedrock request to: ${endpoint}`);
-    if (isDebug) console.log(`Authorization: ${authorizationHeader}`);
+    if (isDebug) {
+      console.log(`Bedrock request to: ${endpoint}`);
+      console.log(`Authorization: ${authorizationHeader}`);
+    }
     
     logAIRequest('bedrock', model, responseType, prompt, commentText, requestBody, responseType.startsWith('batch') ? 'batch' : 'single', scannerType === 'adjudicator' ? 'adjudication' : (responseType.includes('text') ? 'postprocess' : 'analysis'));
     const response = await fetch(endpoint, {
