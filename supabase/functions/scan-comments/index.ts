@@ -743,7 +743,8 @@ serve(async (req) => {
           if (concerningDisagreement || identifiableDisagreement || safetyNetTriggered) {
             needsAdjudication = true;
 
-            if (useCachedAnalysis && !skipAdjudicator) {
+            // Always use batched adjudication when possible to avoid duplicate calls
+            if (!skipAdjudicator) {
               const finalMode = (scanAResultCopy.concerning || scanAResultCopy.identifiable) ? defaultMode : 'original';
               const placeholder: any = {
                 ...comment,
@@ -783,102 +784,25 @@ serve(async (req) => {
               continue;
             }
 
-            // Existing per-item adjudication path remains unchanged here...
+            // Individual adjudication is now handled by the batched approach above
+            // This ensures we don't make duplicate adjudicator calls
 
-            const disagreementFields: string[] = [];
-            if (concerningDisagreement) disagreementFields.push('concerning');
-            if (identifiableDisagreement || safetyNetTriggered) disagreementFields.push('identifiable');
-            const adjudicatorPrompt = `Two AI systems have analyzed this comment and disagreed on: ${disagreementFields.join(' and ')}.` + (safetyNetTriggered ? ' Additionally, a PII safety net heuristic flagged the text as identifiable.' : '') +
-`\n\nOriginal comment: "${comment.originalText || comment.text}"` +
-`\n\nScan A Result: ${JSON.stringify(scanAResultCopy)}` +
-`\nScan B Result: ${JSON.stringify(scanBResultCopy)}` +
-`\n\nIMPORTANT: Only resolve the disagreement for the ${disagreementFields.join(' and ')} field(s). Return a JSON object with:` +
-`\n- concerning: boolean (${concerningDisagreement ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.concerning})` +
-`\n- identifiable: boolean (${identifiableDisagreement || safetyNetTriggered ? 'resolve this disagreement' : 'preserve agreed value: ' + scanAResultCopy.identifiable})` +
-`\n- reasoning: string explaining your decision` +
-`\n\n${concerningDisagreement ? '' : 'NOTE: Both scans agreed on concerning=' + scanAResultCopy.concerning + ', so preserve this value.'}` +
-`\n${(identifiableDisagreement || safetyNetTriggered) ? '' : 'NOTE: Both scans agreed on identifiable=' + scanAResultCopy.identifiable + ', so preserve this value.'}`;
+            // Individual adjudication logic removed - now handled by batched approach
+            // Individual adjudication prompt removed - now handled by batched approach
 
-            const adjudicatorIsVeryLowRpm = adjudicator.provider === 'bedrock' && /sonnet|opus/i.test(adjudicator.model);
-            const elapsedMs = Date.now() - requestStartMs;
-            const outOfTime = elapsedMs > timeBudgetMs;
-            const remainingMs = Math.max(0, timeBudgetMs - elapsedMs);
-            let adjudicatorFallbackUsed = false;
-            let adjudicationSkippedReason: string | null = null;
-            if (!skipAdjudicator && !outOfTime) {
-              const likelyTooSlow = adjudicatorIsVeryLowRpm && remainingMs < 80000;
-              if (!likelyTooSlow) {
-                try {
-                  const adjudicationResponse = await callAI(
-                    adjudicator.provider, 
-                    adjudicator.model, 
-                    adjudicatorPrompt, 
-                    '', 
-                    'analysis',
-                    'adjudicator',
-                    rateLimiters,
-                    sequentialQueue,
-                    getEffectiveMaxTokens(adjudicator)
-                  );
-                  adjudicationResult = adjudicationResponse?.results || adjudicationResponse;
-                } catch (error) {
-                  console.error(`Adjudicator failed for comment ${comment.id}:`, error);
-                }
-              }
-            }
+            // Individual adjudication calls removed - now handled by batched approach
 
-            if (!adjudicationResult && !skipAdjudicator) {
-              if (!outOfTime || remainingMs > 5000) {
-                try {
-                  const fallbackResponse = await callAI(
-                    scanB.provider,
-                    scanB.model,
-                    adjudicatorPrompt,
-                    '',
-                    'analysis',
-                    'adjudicator',
-                    rateLimiters,
-                    sequentialQueue,
-                    getEffectiveMaxTokens(scanB)
-                  );
-                  adjudicationResult = fallbackResponse?.results || fallbackResponse;
-                  adjudicatorFallbackUsed = true;
-                } catch (fallbackErr) {
-                  console.warn(`Fallback adjudicator (${scanB.provider}/${scanB.model}) failed for comment ${comment.id}:`, (fallbackErr as Error).message);
-                  adjudicationSkippedReason = outOfTime ? 'time_budget_exceeded' : (adjudicatorIsVeryLowRpm ? 'rate_limit_wait_exceeded_budget' : 'adjudicator_error');
-                }
-              } else {
-                adjudicationSkippedReason = 'time_budget_exceeded';
-              }
-            }
+            // Individual adjudication result processing removed - now handled by batched approach
 
-            if (adjudicationResult) {
-              finalResult = {
-                concerning: concerningDisagreement ? adjudicationResult.concerning : scanAResultCopy.concerning,
-                identifiable: (identifiableDisagreement || safetyNetTriggered) ? adjudicationResult.identifiable : scanAResultCopy.identifiable,
-                reasoning: adjudicationResult.reasoning || scanAResultCopy.reasoning
-              };
-            } else {
-              finalResult = {
-                concerning: scanAResultCopy.concerning,
-                identifiable: scanAResultCopy.identifiable,
-                reasoning: scanAResultCopy.reasoning
-              };
-            }
+            // Summary updates removed - now handled by batched approach
 
-            if (finalResult.concerning || finalResult.identifiable) {
-              summary.concerning += finalResult.concerning ? 1 : 0;
-              summary.identifiable += finalResult.identifiable ? 1 : 0;
-            }
-            if (needsAdjudication) summary.needsAdjudication++;
-
-            const finalMode = (finalResult.concerning || finalResult.identifiable) ? defaultMode : 'original';
+            // Individual adjudication processing removed - now handled by batched approach
             const processedComment = {
               ...comment,
               text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
-              concerning: finalResult.concerning,
-              identifiable: finalResult.identifiable,
-              aiReasoning: adjudicationResult ? ((adjudicatorFallbackUsed ? 'Adjudicator (fallback): ' : 'Adjudicator: ') + (adjudicationResult.reasoning || finalResult.reasoning || '')).trim() : finalResult.reasoning,
+              concerning: scanAResultCopy.concerning,
+              identifiable: scanAResultCopy.identifiable,
+              aiReasoning: scanAResultCopy.reasoning,
               redactedText: null,
               rephrasedText: null,
               mode: finalMode,
@@ -887,12 +811,12 @@ serve(async (req) => {
               debugInfo: {
                 scanAResult: { ...scanAResultCopy, model: `${scanA.provider}/${scanA.model}` },
                 scanBResult: { ...scanBResultCopy, model: `${scanB.provider}/${scanB.model}` },
-                adjudicationResult: adjudicationResult
+                adjudicationResult: { skipped: true, reason: 'batched_pending' } as any
                   ? { ...adjudicationResult, model: adjudicatorFallbackUsed ? `${scanB.provider}/${scanB.model}` : `${adjudicator.provider}/${adjudicator.model}` }
                   : (adjudicationSkippedReason ? { skipped: true, reason: adjudicationSkippedReason } as any : null),
                 needsAdjudication,
                 safetyNetTriggered,
-                finalDecision: finalResult,
+                finalDecision: null,
                 rawResponses: {
                   scanAResponse: scanARawResponse,
                   scanBResponse: scanBRawResponse,
