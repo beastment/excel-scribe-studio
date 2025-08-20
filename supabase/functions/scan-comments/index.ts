@@ -1199,9 +1199,14 @@ serve(async (req) => {
     console.log('Response summary:', response.summary);
 
     // Restore console methods before returning
-    console.log = __origLog;
-    console.warn = __origWarn;
-    console.error = __origError;
+    try {
+      const __root: any = globalThis as any;
+      if (__root.__baseLog && __root.__baseWarn && __root.__baseError) {
+        console.log = __root.__baseLog;
+        console.warn = __root.__baseWarn;
+        console.error = __root.__baseError;
+      }
+    } catch {}
 
     // Mark completion state if no further batches are expected
     try {
@@ -1224,11 +1229,11 @@ serve(async (req) => {
     } catch {}
     // Attempt to restore console methods if they were overridden
     try {
-      const g: any = globalThis as any;
-      if (g.__origLog && g.__origWarn && g.__origError) {
-        console.log = g.__origLog;
-        console.warn = g.__origWarn;
-        console.error = g.__origError;
+      const __root: any = globalThis as any;
+      if (__root.__baseLog && __root.__baseWarn && __root.__baseError) {
+        console.log = __root.__baseLog;
+        console.warn = __root.__baseWarn;
+        console.error = __root.__baseError;
       }
     } catch {}
     const errMsg = error instanceof Error ? error.message : String(error);
