@@ -252,45 +252,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         const phase2Base = 20;
         for (let i = 0; i < needsFollowup.length; i += phase2Base) {
           const chunk = needsFollowup.slice(i, i + phase2Base);
-          // Phase 2A: postprocess-only to guarantee redaction/rephrase runs before adjudication
-          const { data: ppData, error: ppError } = await supabase.functions.invoke('scan-comments', {
-            body: {
-              comments: chunk,
-              defaultMode,
-              skipAdjudicator: true,
-              skipPostprocess: false,
-              useCachedAnalysis: true,
-              scanRunId
-            }
-          });
-          if (ppError) {
-            console.warn('Follow-up postprocess chunk failed:', ppError);
-          } else if (ppData?.comments) {
-            const map = new Map(processedComments.map((x: any) => [x.id, x]));
-            for (const u of ppData.comments) {
-              const fd = u?.debugInfo?.finalDecision;
-              const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!u.concerning;
-              const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!u.identifiable;
-              const merged = (!concerning && !identifiable) ? {
-                ...u,
-                concerning: false,
-                identifiable: false,
-                mode: 'original',
-                text: u.originalText || u.text,
-                redactedText: undefined,
-                rephrasedText: undefined,
-              } : { ...u, concerning, identifiable };
-              const prev = map.get(u.id) || {} as any;
-              const next = { ...prev, ...merged } as any;
-              if (merged.redactedText == null && prev.redactedText != null) next.redactedText = prev.redactedText;
-              if (merged.rephrasedText == null && prev.rephrasedText != null) next.rephrasedText = prev.rephrasedText;
-              map.set(u.id, next);
-            }
-            processedComments = Array.from(map.values());
-            onCommentsUpdate(processedComments);
-          }
-
-          // Phase 2B: adjudication-only
+          // Phase 2A: adjudication-only (must run BEFORE postprocess so backend can decide A vs B text)
           const { data: adjData, error: adjError } = await supabase.functions.invoke('scan-comments', {
             body: {
               comments: chunk,
@@ -334,6 +296,44 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             }
             processedComments = Array.from(map.values());
             setScanProgress(90 + Math.round(((i + chunk.length) / needsFollowup.length) * 10));
+            onCommentsUpdate(processedComments);
+          }
+
+          // Phase 2B: postprocess-only (now that adjudication is finalized for this chunk)
+          const { data: ppData, error: ppError } = await supabase.functions.invoke('scan-comments', {
+            body: {
+              comments: chunk,
+              defaultMode,
+              skipAdjudicator: true,
+              skipPostprocess: false,
+              useCachedAnalysis: true,
+              scanRunId
+            }
+          });
+          if (ppError) {
+            console.warn('Follow-up postprocess chunk failed:', ppError);
+          } else if (ppData?.comments) {
+            const map2 = new Map(processedComments.map((x: any) => [x.id, x]));
+            for (const u of ppData.comments) {
+              const fd = u?.debugInfo?.finalDecision;
+              const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!u.concerning;
+              const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!u.identifiable;
+              const merged = (!concerning && !identifiable) ? {
+                ...u,
+                concerning: false,
+                identifiable: false,
+                mode: 'original',
+                text: u.originalText || u.text,
+                redactedText: undefined,
+                rephrasedText: undefined,
+              } : { ...u, concerning, identifiable };
+              const prev = map2.get(u.id) || {} as any;
+              const next = { ...prev, ...merged } as any;
+              if (merged.redactedText == null && prev.redactedText != null) next.redactedText = prev.redactedText;
+              if (merged.rephrasedText == null && prev.rephrasedText != null) next.rephrasedText = prev.rephrasedText;
+              map2.set(u.id, next);
+            }
+            processedComments = Array.from(map2.values());
             onCommentsUpdate(processedComments);
           }
         }
