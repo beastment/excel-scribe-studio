@@ -27,15 +27,15 @@ serve(async (req) => {
     gAny.__analysisStarted = gAny.__analysisStarted || new Set<string>();
     // Prefix all logs for this request with the run id.
     // Ensure we always wrap the same base logger to avoid double-wrapping.
-    const baseLog = (globalThis as any).__baseLog || console.log;
-    const baseWarn = (globalThis as any).__baseWarn || console.warn;
-    const baseError = (globalThis as any).__baseError || console.error;
-    ;(globalThis as any).__baseLog = baseLog;
-    ;(globalThis as any).__baseWarn = baseWarn;
-    ;(globalThis as any).__baseError = baseError;
-    console.log = (...args: any[]) => baseLog(`[RUN ${scanRunId}]`, ...args);
-    console.warn = (...args: any[]) => baseWarn(`[RUN ${scanRunId}]`, ...args);
-    console.error = (...args: any[]) => baseError(`[RUN ${scanRunId}]`, ...args);
+    const __root = globalThis as any;
+    if (!__root.__baseLog) {
+      __root.__baseLog = console.log;
+      __root.__baseWarn = console.warn;
+      __root.__baseError = console.error;
+    }
+    console.log = (...args: any[]) => __root.__baseLog(`[RUN ${scanRunId}]`, ...args);
+    console.warn = (...args: any[]) => __root.__baseWarn(`[RUN ${scanRunId}]`, ...args);
+    console.error = (...args: any[]) => __root.__baseError(`[RUN ${scanRunId}]`, ...args);
     console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
 
     // If a second initial analysis request arrives for the same scanRunId, ignore it.
