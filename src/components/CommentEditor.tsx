@@ -186,15 +186,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     let processedComments: any[] = [];
 
     try {
-      // Phase 1: single-shot analysis — skip adjudicator and postprocess
-      const isSingleRun = comments.length === 1;
+      // Phase 1: single-shot analysis — let backend handle everything in one pass
       const { data, error } = await supabase.functions.invoke('scan-comments', {
         body: {
           comments,
           defaultMode,
-          skipAdjudicator: true,
-          // For single-row runs, perform postprocess in phase 1 to avoid a second pass
-          skipPostprocess: !isSingleRun,
+          skipAdjudicator: false,
+          skipPostprocess: false,
           scanRunId
         }
       });
@@ -242,116 +240,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         throw new Error(`No comment data received`);
       }
       
-      // Phase 2: follow-up adjudication and postprocess on subset (ensure single execution per scan click)
-      // For single-row runs, if no adjudication is needed, skip phase 2 entirely.
-      const isPhase2SingleRun = comments.length === 1;
-      // Avoid re-entering Phase 2 if a previous invocation already updated comments with adjudication/postprocess
-      const alreadyPhase2 = processedComments.some((c: any) => c?.debugInfo?.finalDecision || c?.redactedText || c?.rephrasedText);
-      const needsFollowup = alreadyPhase2 ? [] : processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || (!isPhase2SingleRun && (c.concerning || c.identifiable)));
-      if (needsFollowup.length > 0) {
-        toast.info(`Running follow-up on ${needsFollowup.length} flagged comments...`);
-        // Phase 2 chunk size: modest size to avoid timeouts
-        const phase2Base = 20;
-        for (let i = 0; i < needsFollowup.length; i += phase2Base) {
-          const chunk = needsFollowup.slice(i, i + phase2Base);
-          // Phase 2A: adjudication-only (must run BEFORE postprocess so backend can decide A vs B text)
-          const { data: adjData, error: adjError } = await supabase.functions.invoke('scan-comments', {
-            body: {
-              comments: chunk,
-              defaultMode,
-              skipAdjudicator: false,
-              skipPostprocess: true,
-              useCachedAnalysis: true,
-              scanRunId
-            }
-          });
-          if (adjError) {
-            console.warn('Follow-up adjudication chunk failed:', adjError);
-          } else if (adjData?.comments) {
-            const map = new Map(processedComments.map((x: any) => [x.id, x]));
-            for (const u of adjData.comments) {
-              const fd = u?.debugInfo?.finalDecision;
-              const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!u.concerning;
-              const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!u.identifiable;
-              const merged = (!concerning && !identifiable) ? {
-                ...u,
-                concerning: false,
-                identifiable: false,
-                mode: 'original',
-                text: u.originalText || u.text,
-                redactedText: undefined,
-                rephrasedText: undefined,
-              } : { ...u, concerning, identifiable };
-              const prev = map.get(u.id) || {} as any;
-              const next = { ...prev, ...merged } as any;
-              // Preserve any previously computed redaction/rephrase from Phase 2A ONLY if still flagged
-              const stillFlagged = concerning || identifiable;
-              if (stillFlagged) {
-                if (merged.redactedText == null && prev.redactedText != null) next.redactedText = prev.redactedText;
-                if (merged.rephrasedText == null && prev.rephrasedText != null) next.rephrasedText = prev.rephrasedText;
-                // Preserve final text if adjudication-only update did not include postprocess content
-                if ((merged.redactedText == null && merged.rephrasedText == null) && prev.text && prev.mode && prev.mode !== 'original') {
-                  next.text = prev.text;
-                }
-              }
-              map.set(u.id, next);
-            }
-            processedComments = Array.from(map.values());
-            setScanProgress(90 + Math.round(((i + chunk.length) / needsFollowup.length) * 10));
-            onCommentsUpdate(processedComments);
-          }
-
-          // Phase 2B: postprocess-only (now that adjudication is finalized for this chunk)
-          const { data: ppData, error: ppError } = await supabase.functions.invoke('scan-comments', {
-            body: {
-              comments: chunk,
-              defaultMode,
-              skipAdjudicator: true,
-              skipPostprocess: false,
-              useCachedAnalysis: true,
-              scanRunId
-            }
-          });
-          if (ppError) {
-            console.warn('Follow-up postprocess chunk failed:', ppError);
-          } else if (ppData?.comments) {
-            const map2 = new Map(processedComments.map((x: any) => [x.id, x]));
-            for (const u of ppData.comments) {
-              const fd = u?.debugInfo?.finalDecision;
-              const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!u.concerning;
-              const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!u.identifiable;
-              const merged = (!concerning && !identifiable) ? {
-                ...u,
-                concerning: false,
-                identifiable: false,
-                mode: 'original',
-                text: u.originalText || u.text,
-                redactedText: undefined,
-                rephrasedText: undefined,
-              } : { ...u, concerning, identifiable };
-              const prev = map2.get(u.id) || {} as any;
-              const next = { ...prev, ...merged } as any;
-              // Preserve adjudicator reasoning if postprocess payload doesn't include it
-              if (!merged.aiReasoning && prev.aiReasoning) next.aiReasoning = prev.aiReasoning;
-              // Preserve adjudication debug info if missing from postprocess payload
-              if (prev.debugInfo) {
-                next.debugInfo = { ...(prev.debugInfo || {}), ...(merged.debugInfo || {}) };
-                if (!merged?.debugInfo?.adjudicationResult && prev.debugInfo.adjudicationResult) {
-                  next.debugInfo.adjudicationResult = prev.debugInfo.adjudicationResult;
-                }
-                if (!merged?.debugInfo?.finalDecision && prev.debugInfo.finalDecision) {
-                  next.debugInfo.finalDecision = prev.debugInfo.finalDecision;
-                }
-              }
-              if (merged.redactedText == null && prev.redactedText != null) next.redactedText = prev.redactedText;
-              if (merged.rephrasedText == null && prev.rephrasedText != null) next.rephrasedText = prev.rephrasedText;
-              map2.set(u.id, next);
-            }
-            processedComments = Array.from(map2.values());
-            onCommentsUpdate(processedComments);
-          }
-        }
-      }
+      // Backend now handles everything in one pass - no Phase 2 needed
 
       // Final update with all processed comments
       setScanProgress(100);
