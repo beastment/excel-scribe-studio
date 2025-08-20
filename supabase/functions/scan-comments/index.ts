@@ -677,9 +677,9 @@ serve(async (req) => {
       } else {
 
                   // Process each comment in the batch
-        console.log(`[RUN ${scanRunId}] ✅ BATCH PROCESSING: Processing ${batch.length} comments with validated results`);
-        console.log(`[RUN ${scanRunId}] ✅ Scan A results count: ${scanAResults.length}`);
-        console.log(`[RUN ${scanRunId}] ✅ Scan B results count: ${scanBResults.length}`);
+        console.log(`✅ BATCH PROCESSING: Processing ${batch.length} comments with validated results`);
+        console.log(`✅ Scan A results count: ${scanAResults.length}`);
+        console.log(`✅ Scan B results count: ${scanBResults.length}`);
         
         // Final validation: Ensure we have valid results for each comment
         if (scanAResults.length !== batch.length || scanBResults.length !== batch.length) {
@@ -695,8 +695,8 @@ serve(async (req) => {
           const scanAResult = scanAResults[j];
           const scanBResult = scanBResults[j];
           
-          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing comment ${comment.id} (index ${j}) - Scan A: ${preview(JSON.stringify(scanAResult), 240)}`);
-          if (isDebug) console.log(`[RUN ${scanRunId}] Batch processing comment ${comment.id} (index ${j}) - Scan B: ${preview(JSON.stringify(scanBResult), 240)}`);
+          if (isDebug) console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan A: ${preview(JSON.stringify(scanAResult), 240)}`);
+          if (isDebug) console.log(`Batch processing comment ${comment.id} (index ${j}) - Scan B: ${preview(JSON.stringify(scanBResult), 240)}`);
 
           // Heuristic safety net - only use when the model response is unusable
           const heur = heuristicAnalyze(comment.originalText || comment.text);
@@ -937,10 +937,19 @@ serve(async (req) => {
         // Perform one batched adjudication call for all queued items and update placeholders
         if (adjQueue.length > 0) {
           try {
+            // De-duplicate adjudication items by comment id to avoid double processing within a single run
+            const uniqueAdjQueue = Array.from(new Map(adjQueue.map(q => [q.comment.id, q])).values());
             // Respect preferred batch size for adjudicator as well
-            const preferredAdj = getPreferredBatchSize(adjudicator, adjQueue.length);
-            const adjChunks = chunkArray(adjQueue, preferredAdj);
+            const preferredAdj = getPreferredBatchSize(adjudicator, uniqueAdjQueue.length);
+            const adjChunks = chunkArray(uniqueAdjQueue, preferredAdj);
             for (const chunk of adjChunks) {
+              // Idempotency guard: prevent duplicate adjudication calls for the same set of ids within one run
+              const adjKey = `adjudicate:${adjudicator.provider}:${adjudicator.model}:${chunk.map(q => q.comment.id).join(',')}`;
+              if (aiDedupe.has(adjKey)) {
+                console.log(`Skipping duplicate adjudication batch for key ${adjKey}`);
+                continue;
+              }
+              aiDedupe.add(adjKey);
               const items = chunk.map(q => ({
                 originalText: q.comment.originalText || q.comment.text,
                 scanA: q.scanAResult,
