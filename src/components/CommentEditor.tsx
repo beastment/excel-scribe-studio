@@ -329,6 +329,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               } : { ...u, concerning, identifiable };
               const prev = map2.get(u.id) || {} as any;
               const next = { ...prev, ...merged } as any;
+              // Preserve adjudicator reasoning if postprocess payload doesn't include it
+              if (!merged.aiReasoning && prev.aiReasoning) next.aiReasoning = prev.aiReasoning;
+              // Preserve adjudication debug info if missing from postprocess payload
+              if (prev.debugInfo) {
+                next.debugInfo = { ...(prev.debugInfo || {}), ...(merged.debugInfo || {}) };
+                if (!merged?.debugInfo?.adjudicationResult && prev.debugInfo.adjudicationResult) {
+                  next.debugInfo.adjudicationResult = prev.debugInfo.adjudicationResult;
+                }
+                if (!merged?.debugInfo?.finalDecision && prev.debugInfo.finalDecision) {
+                  next.debugInfo.finalDecision = prev.debugInfo.finalDecision;
+                }
+              }
               if (merged.redactedText == null && prev.redactedText != null) next.redactedText = prev.redactedText;
               if (merged.rephrasedText == null && prev.rephrasedText != null) next.rephrasedText = prev.rephrasedText;
               map2.set(u.id, next);
