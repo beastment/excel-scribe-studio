@@ -689,7 +689,7 @@ serve(async (req) => {
         
         // Queue for batched adjudication when using cached analysis (Phase 2 adjudication-only)
         const adjQueue: Array<{ scannedIndex: number; comment: any; scanAResult: any; scanBResult: any; bothAgreeConcerning: boolean; bothAgreeIdentifiable: boolean }>= [];
-
+        
         for (let j = 0; j < batch.length; j++) {
           const comment = batch[j];
           const scanAResult = scanAResults[j];
@@ -717,7 +717,7 @@ serve(async (req) => {
             }
             return r;
           };
-
+          
           let scanAResultCopy = JSON.parse(JSON.stringify(scanAResult));
           let scanBResultCopy = JSON.parse(JSON.stringify(scanBResult));
           const scanAResultToProcess = Array.isArray(scanAResultCopy) ? scanAResultCopy[0] : scanAResultCopy;
@@ -734,7 +734,7 @@ serve(async (req) => {
 
           const concerningDisagreement = scanAResultCopy.concerning !== scanBResultCopy.concerning;
           const identifiableDisagreement = scanAResultCopy.identifiable !== scanBResultCopy.identifiable;
-
+          
           if (concerningDisagreement || identifiableDisagreement || safetyNetTriggered) {
             needsAdjudication = true;
 
@@ -805,10 +805,10 @@ serve(async (req) => {
               if (!likelyTooSlow) {
                 try {
                   const adjudicationResponse = await callAI(
-                    adjudicator.provider,
-                    adjudicator.model,
-                    adjudicatorPrompt,
-                    '',
+                    adjudicator.provider, 
+                    adjudicator.model, 
+                    adjudicatorPrompt, 
+                    '', 
                     'analysis',
                     'adjudicator',
                     rateLimiters,
@@ -1087,48 +1087,48 @@ serve(async (req) => {
                   ]);
                 }
 
-                let redactedTexts = normalizeBatchTextParsed(rawRedacted);
-                let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
+              let redactedTexts = normalizeBatchTextParsed(rawRedacted);
+              let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
 
-                // If model returned aligned ID-tagged strings, strip tags and re-align by ID
+              // If model returned aligned ID-tagged strings, strip tags and re-align by ID
                 const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
-                const stripAndIndex = (arr: string[]) => arr.map(s => {
-                  const m = idTag.exec(s || '');
-                  return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
-                });
-                const redIdx = stripAndIndex(redactedTexts);
-                const rephIdx = stripAndIndex(rephrasedTexts);
-                const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
-                if (allHaveIds) {
-                  const expected = flaggedTexts.length;
-                  const byId = (list: { idx: number|null; text: string }[]) => {
-                    const out: string[] = Array(expected).fill('');
-                    for (const it of list) {
-                      if (it.idx && it.idx >= 1 && it.idx <= expected) out[it.idx - 1] = it.text;
-                    }
-                    return out;
-                  };
-                  redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
-                  rephrasedTexts = byId(rephIdx);
-                } else {
-                  redactedTexts = redactedTexts.map(enforceRedactionPolicy);
-                }
+              const stripAndIndex = (arr: string[]) => arr.map(s => {
+                const m = idTag.exec(s || '');
+                return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
+              });
+              const redIdx = stripAndIndex(redactedTexts);
+              const rephIdx = stripAndIndex(rephrasedTexts);
+              const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
+              if (allHaveIds) {
+                const expected = flaggedTexts.length;
+                const byId = (list: { idx: number|null; text: string }[]) => {
+                  const out: string[] = Array(expected).fill('');
+                  for (const it of list) {
+                    if (it.idx && it.idx >= 1 && it.idx <= expected) out[it.idx - 1] = it.text;
+                  }
+                  return out;
+                };
+                redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
+                rephrasedTexts = byId(rephIdx);
+              } else {
+                redactedTexts = redactedTexts.map(enforceRedactionPolicy);
+              }
 
-                // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
-                const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
+              // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
+              const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
                 const expected = chunk.length;
-                let needsFallback = redactedTexts.length !== expected || rephrasedTexts.length !== expected || redactedTexts.some(isInvalid) || rephrasedTexts.some(isInvalid);
-                if (needsFallback) {
-                  console.warn(`Batch text outputs invalid or mismatched (expected=${expected}, red=${redactedTexts.length}, reph=${rephrasedTexts.length}). Running per-item fallback for failed entries.`);
-                  // Build index list of flagged comments to process individually for the failed ones
+              let needsFallback = redactedTexts.length !== expected || rephrasedTexts.length !== expected || redactedTexts.some(isInvalid) || rephrasedTexts.some(isInvalid);
+              if (needsFallback) {
+                console.warn(`Batch text outputs invalid or mismatched (expected=${expected}, red=${redactedTexts.length}, reph=${rephrasedTexts.length}). Running per-item fallback for failed entries.`);
+                // Build index list of flagged comments to process individually for the failed ones
                   for (let flaggedIndex = 0; flaggedIndex < chunk.length; flaggedIndex++) {
-                    const red = redactedTexts[flaggedIndex];
-                    const reph = rephrasedTexts[flaggedIndex];
-                    const redBad = flaggedIndex >= redactedTexts.length || isInvalid(red);
-                    const rephBad = flaggedIndex >= rephrasedTexts.length || isInvalid(reph);
-                    if (redBad || rephBad) {
-                      try {
-                        const [red1, reph1] = await Promise.all([
+                  const red = redactedTexts[flaggedIndex];
+                  const reph = rephrasedTexts[flaggedIndex];
+                  const redBad = flaggedIndex >= redactedTexts.length || isInvalid(red);
+                  const rephBad = flaggedIndex >= rephrasedTexts.length || isInvalid(reph);
+                  if (redBad || rephBad) {
+                    try {
+                      const [red1, reph1] = await Promise.all([
                           redBad ? callAI(
                             activeConfig.provider,
                             activeConfig.model,
@@ -1151,13 +1151,13 @@ serve(async (req) => {
                             undefined,
                             getEffectiveMaxTokens(activeConfig)
                           ) : Promise.resolve(reph)
-                        ]);
-                        if (redBad) redactedTexts[flaggedIndex] = enforceRedactionPolicy(red1 as string);
-                        if (rephBad) rephrasedTexts[flaggedIndex] = reph1 as string;
-                      } catch (perItemErr) {
-                        console.warn(`Per-item fallback failed for flagged index ${flaggedIndex}:`, perItemErr);
-                      }
+                      ]);
+                      if (redBad) redactedTexts[flaggedIndex] = enforceRedactionPolicy(red1 as string);
+                      if (rephBad) rephrasedTexts[flaggedIndex] = reph1 as string;
+                    } catch (perItemErr) {
+                      console.warn(`Per-item fallback failed for flagged index ${flaggedIndex}:`, perItemErr);
                     }
+                  }
                   }
                 }
 
@@ -1179,7 +1179,89 @@ serve(async (req) => {
                   flaggedIndex++;
                 }
               }
+
+              // Additional Phase 2: for items where Scan B flagged identifiable but Scan A did not,
+              // and adjudicator's final decision is identifiable, generate redaction/rephrase with Scan B
+              const preferBIndices: number[] = [];
+              for (let i = 0; i < scannedComments.length; i++) {
+                const c = scannedComments[i];
+                const di = c?.debugInfo || {};
+                const a = di.scanAResult || {};
+                const b = di.scanBResult || {};
+                const fd = di.finalDecision || {};
+                if ((a?.identifiable === false) && (b?.identifiable === true) && (fd?.identifiable === true)) {
+                  preferBIndices.push(i);
+                }
               }
+              if (preferBIndices.length > 0) {
+                const preferBTexts = preferBIndices.map(i => scannedComments[i].originalText || scannedComments[i].text);
+                const activeConfigB = scanB;
+                const preferredPostB = getPreferredBatchSize(activeConfigB, preferBTexts.length);
+                const bChunks = chunkArray(preferBTexts, preferredPostB);
+                const redBAll: string[] = [];
+                const rephBAll: string[] = [];
+                for (const chunk of bChunks) {
+                  const redPromptB = buildBatchTextPrompt(activeConfigB.redact_prompt + REDACTION_POLICY, chunk.length);
+                  const rephPromptB = buildBatchTextPrompt(activeConfigB.rephrase_prompt, chunk.length);
+                  const sentinelInputB = buildSentinelInput(chunk);
+                  const postKeyB = `${activeConfigB.provider}:${activeConfigB.model}:post_batch:${chunk.length}:${sentinelInputB.length}:preferB`;
+                  if (aiDedupe.has(postKeyB)) {
+                    console.log(`Skipping duplicate batch postprocess for key ${postKeyB}`);
+                    continue;
+                  }
+                  aiDedupe.add(postKeyB);
+                  let rawRedB: any = [];
+                  let rawRephB: any = [];
+                  if (activeConfigB.provider === 'bedrock') {
+                    rawRedB = await callAI(activeConfigB.provider, activeConfigB.model, redPromptB, sentinelInputB, 'batch_text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB));
+                    rawRephB = await callAI(activeConfigB.provider, activeConfigB.model, rephPromptB, sentinelInputB, 'batch_text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB));
+                  } else {
+                    [rawRedB, rawRephB] = await Promise.all([
+                      callAI(activeConfigB.provider, activeConfigB.model, redPromptB, sentinelInputB, 'batch_text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB)),
+                      callAI(activeConfigB.provider, activeConfigB.model, rephPromptB, sentinelInputB, 'batch_text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB))
+                    ]);
+                  }
+                  let redTextsB = normalizeBatchTextParsed(rawRedB);
+                  let rephTextsB = normalizeBatchTextParsed(rawRephB);
+                  const isInvalidB = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
+                  const expectedB = chunk.length;
+                  if (redTextsB.length !== expectedB || rephTextsB.length !== expectedB || redTextsB.some(isInvalidB) || rephTextsB.some(isInvalidB)) {
+                    console.warn(`Batch text (Scan B) outputs invalid or mismatched (expected=${expectedB}, red=${redTextsB.length}, reph=${rephTextsB.length}). Running per-item fallback for failed entries.`);
+                    for (let i = 0; i < expectedB; i++) {
+                      const redBad = i >= redTextsB.length || isInvalidB(redTextsB[i]);
+                      const rephBad = i >= rephTextsB.length || isInvalidB(rephTextsB[i]);
+                      if (redBad || rephBad) {
+                        try {
+                          const [r1, p1] = await Promise.all([
+                            redBad ? callAI(activeConfigB.provider, activeConfigB.model, activeConfigB.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), chunk[i], 'text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB)) : Promise.resolve(redTextsB[i]),
+                            rephBad ? callAI(activeConfigB.provider, activeConfigB.model, activeConfigB.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), chunk[i], 'text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB)) : Promise.resolve(rephTextsB[i])
+                          ]);
+                          if (redBad) redTextsB[i] = enforceRedactionPolicy(r1 as string) as string;
+                          if (rephBad) rephTextsB[i] = p1 as string;
+                        } catch (perItemErr) {
+                          console.warn(`Per-item fallback failed for Scan B group item ${i}:`, perItemErr);
+                        }
+                      }
+                    }
+                  }
+                  redBAll.push(...(redTextsB.map(enforceRedactionPolicy) as string[]));
+                  rephBAll.push(...rephTextsB);
+                }
+                // Assign Scan B outputs to the preferB indices only
+                for (let i = 0; i < preferBIndices.length; i++) {
+                  const idx = preferBIndices[i];
+                  const red = redBAll[i];
+                  const reph = rephBAll[i];
+                  if (typeof red === 'string') scannedComments[idx].redactedText = red;
+                  if (typeof reph === 'string') scannedComments[idx].rephrasedText = reph;
+                  if (scannedComments[idx].mode === 'redact' && typeof red === 'string') {
+                    scannedComments[idx].text = enforceRedactionPolicy(red) as string;
+                  } else if (scannedComments[idx].mode === 'rephrase' && typeof reph === 'string') {
+                    scannedComments[idx].text = reph;
+                  }
+                }
+              }
+            }
           } catch (error) {
             console.warn(`Batch redaction/rephrasing failed:`, error);
             // Continue without redaction/rephrasing
@@ -2450,22 +2532,22 @@ async function performAICall(provider: string, model: string, prompt: string, co
     
     // Debug logging
     if (isDebug) {
-      console.log(`AWS Debug - Model: ${model}`);
-      console.log(`AWS Debug - Region: ${awsRegion}`);
-      console.log(`AWS Debug - Service: ${service}`);
-      console.log(`AWS Debug - Host: ${host}`);
-      console.log(`AWS Debug - CanonicalUri: ${canonicalUri}`);
-      console.log(`AWS Debug - PayloadHash: ${payloadHash}`);
-      console.log(`AWS Debug - StringToSign: ${stringToSign}`);
-      console.log(`AWS Debug - Signature: ${signature}`);
-      console.log(`AWS Debug - RequestBody: ${requestBody}`);
+    console.log(`AWS Debug - Model: ${model}`);
+    console.log(`AWS Debug - Region: ${awsRegion}`);
+    console.log(`AWS Debug - Service: ${service}`);
+    console.log(`AWS Debug - Host: ${host}`);
+    console.log(`AWS Debug - CanonicalUri: ${canonicalUri}`);
+    console.log(`AWS Debug - PayloadHash: ${payloadHash}`);
+    console.log(`AWS Debug - StringToSign: ${stringToSign}`);
+    console.log(`AWS Debug - Signature: ${signature}`);
+    console.log(`AWS Debug - RequestBody: ${requestBody}`);
     }
     
     // Create authorization header
     const authorizationHeader = `${algorithm} Credential=${awsAccessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
     
     if (isDebug) {
-      console.log(`Bedrock request to: ${endpoint}`);
+    console.log(`Bedrock request to: ${endpoint}`);
       console.log(`Authorization: ${authorizationHeader}`);
     }
     
