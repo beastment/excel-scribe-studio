@@ -230,8 +230,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       
       // Phase 2: follow-up adjudication and postprocess on subset
       // For single-row runs, if no adjudication is needed, skip phase 2 entirely.
-      const isSingleRun = comments.length === 1;
-      const needsFollowup = processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || (!isSingleRun && (c.concerning || c.identifiable)));
+      const isPhase2SingleRun = comments.length === 1;
+      const needsFollowup = processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || (!isPhase2SingleRun && (c.concerning || c.identifiable)));
       if (needsFollowup.length > 0) {
         toast.info(`Running follow-up on ${needsFollowup.length} flagged comments...`);
         // Phase 2 chunk size: modest size to avoid timeouts
