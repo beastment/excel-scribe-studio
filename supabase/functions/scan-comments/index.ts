@@ -100,6 +100,9 @@ serve(async (req) => {
       useCachedAnalysis = false,
       phase = 'analysis' // 'analysis' | 'postprocess' (for future use)
     } = requestBody;
+
+    // Clarify request intent to disambiguate initial vs follow-up calls in logs
+    console.log(`[REQUEST_DETAILS] phase=${useCachedAnalysis ? 'followup' : 'initial'} cached=${useCachedAnalysis} skipAdjudicator=${skipAdjudicator} skipPostprocess=${skipPostprocess} comments=${comments?.length} batchStart=${batchStart}`);
     
     if (!comments || !Array.isArray(comments)) {
       throw new Error('Invalid comments data');
@@ -160,7 +163,7 @@ serve(async (req) => {
     const scannedComments = [];
     let summary = { total: batch.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
 
-    console.log(`[RUN ${scanRunId}] [PROCESS] Batch ${batchStart + 1}-${Math.min(batchStart + batch.length, comments.length)} of ${comments.length} (preferredA=${preferredAForAnalysis}, preferredB=${preferredBForAnalysis}, chosen=${effectiveBatchSize})`);
+    console.log(`[PROCESS] Batch ${batchStart + 1}-${Math.min(batchStart + batch.length, comments.length)} of ${comments.length} (preferredA=${preferredAForAnalysis}, preferredB=${preferredBForAnalysis}, chosen=${effectiveBatchSize})`);
 
     if (batch.length === 0) {
       throw new Error('No comments in specified batch range');
@@ -566,18 +569,18 @@ serve(async (req) => {
             console.log(`Scan A result ${i}:`, scanAResults[i]);
           }
           // Do not issue another strict retry here; runModelBatch has already attempted one
-          // Fix: Truncate Scan A results to match batch size if we have too many
-          if (scanAResults.length > batch.length) {
-            console.warn(`🔧 FIXING: Truncating Scan A results from ${scanAResults.length} to ${batch.length}`);
-            scanAResults = scanAResults.slice(0, batch.length);
-          }
-          // Additional safety: If we still have mismatched results, pad with default values
-          if (scanAResults.length < batch.length) {
-            console.warn(`🔧 FIXING: Padding Scan A results from ${scanAResults.length} to ${batch.length}`);
-            const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
-            const defaultResultCopy = JSON.parse(JSON.stringify(defaultResult));
-            while (scanAResults.length < batch.length) {
-              scanAResults.push({ ...defaultResultCopy });
+            // Fix: Truncate Scan A results to match batch size if we have too many
+            if (scanAResults.length > batch.length) {
+              console.warn(`🔧 FIXING: Truncating Scan A results from ${scanAResults.length} to ${batch.length}`);
+              scanAResults = scanAResults.slice(0, batch.length);
+            }
+            // Additional safety: If we still have mismatched results, pad with default values
+            if (scanAResults.length < batch.length) {
+              console.warn(`🔧 FIXING: Padding Scan A results from ${scanAResults.length} to ${batch.length}`);
+              const defaultResult = { concerning: false, identifiable: false, reasoning: 'Default result due to missing analysis' };
+              const defaultResultCopy = JSON.parse(JSON.stringify(defaultResult));
+              while (scanAResults.length < batch.length) {
+                scanAResults.push({ ...defaultResultCopy });
             }
           }
         }

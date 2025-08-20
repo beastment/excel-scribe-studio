@@ -242,10 +242,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         throw new Error(`No comment data received`);
       }
       
-      // Phase 2: follow-up adjudication and postprocess on subset
+      // Phase 2: follow-up adjudication and postprocess on subset (ensure single execution per scan click)
       // For single-row runs, if no adjudication is needed, skip phase 2 entirely.
       const isPhase2SingleRun = comments.length === 1;
-      const needsFollowup = processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || (!isPhase2SingleRun && (c.concerning || c.identifiable)));
+      // Avoid re-entering Phase 2 if a previous invocation already updated comments with adjudication/postprocess
+      const alreadyPhase2 = processedComments.some((c: any) => c?.debugInfo?.finalDecision || c?.redactedText || c?.rephrasedText);
+      const needsFollowup = alreadyPhase2 ? [] : processedComments.filter((c: any) => c?.debugInfo?.needsAdjudication || (!isPhase2SingleRun && (c.concerning || c.identifiable)));
       if (needsFollowup.length > 0) {
         toast.info(`Running follow-up on ${needsFollowup.length} flagged comments...`);
         // Phase 2 chunk size: modest size to avoid timeouts
