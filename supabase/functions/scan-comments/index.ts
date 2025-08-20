@@ -24,17 +24,36 @@ serve(async (req) => {
     const gAny: any = globalThis as any;
     gAny.__runInProgress = gAny.__runInProgress || new Set<string>();
     gAny.__runCompleted = gAny.__runCompleted || new Set<string>();
-    // Prefix all logs for this request with the run id
-    const __origLog = console.log;
-    const __origWarn = console.warn;
-    const __origError = console.error;
-    ;(globalThis as any).__origLog = __origLog;
-    ;(globalThis as any).__origWarn = __origWarn;
-    ;(globalThis as any).__origError = __origError;
-    console.log = (...args: any[]) => __origLog(`[RUN ${scanRunId}]`, ...args);
-    console.warn = (...args: any[]) => __origWarn(`[RUN ${scanRunId}]`, ...args);
-    console.error = (...args: any[]) => __origError(`[RUN ${scanRunId}]`, ...args);
+    gAny.__analysisStarted = gAny.__analysisStarted || new Set<string>();
+    // Prefix all logs for this request with the run id.
+    // Ensure we always wrap the same base logger to avoid double-wrapping.
+    const baseLog = (globalThis as any).__baseLog || console.log;
+    const baseWarn = (globalThis as any).__baseWarn || console.warn;
+    const baseError = (globalThis as any).__baseError || console.error;
+    ;(globalThis as any).__baseLog = baseLog;
+    ;(globalThis as any).__baseWarn = baseWarn;
+    ;(globalThis as any).__baseError = baseError;
+    console.log = (...args: any[]) => baseLog(`[RUN ${scanRunId}]`, ...args);
+    console.warn = (...args: any[]) => baseWarn(`[RUN ${scanRunId}]`, ...args);
+    console.error = (...args: any[]) => baseError(`[RUN ${scanRunId}]`, ...args);
     console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
+
+    // If a second initial analysis request arrives for the same scanRunId, ignore it.
+    const isCached = Boolean(requestBody.useCachedAnalysis);
+    if (!isCached) {
+      if (gAny.__analysisStarted.has(scanRunId)) {
+        console.log(`[DUPLICATE ANALYSIS] scanRunId=${scanRunId} received a second initial analysis request. Ignoring.`);
+        return new Response(JSON.stringify({
+          comments: [],
+          batchStart: requestBody.batchStart || 0,
+          batchSize: 0,
+          hasMore: false,
+          totalComments: requestBody.comments?.length || 0,
+          summary: { total: 0, concerning: 0, identifiable: 0 }
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      gAny.__analysisStarted.add(scanRunId);
+    }
 
     // If this run id has already completed, short-circuit to avoid duplicate model calls
     if (gAny.__runCompleted.has(scanRunId)) {

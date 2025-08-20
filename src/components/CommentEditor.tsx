@@ -56,6 +56,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [selectedDemographic, setSelectedDemographic] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const scanInFlightRef = useRef(false);
+  const lastScanTsRef = useRef<number>(0);
 
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -158,6 +159,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     }
   };
   const scanComments = async () => {
+    const now = Date.now();
+    if (now - (lastScanTsRef.current || 0) < 1000) {
+      // Debounce rapid re-triggers within 1s window
+      return;
+    }
+    lastScanTsRef.current = now;
     if (scanInFlightRef.current) {
       toast.info('A scan is already in progress. Please wait.');
       return;
