@@ -272,8 +272,20 @@ const Home = () => {
                         </div>
                       </div>
                       
-                      <h3 className="text-2xl font-semibold mb-4 text-card-foreground">{app.name}</h3>
-                      <p className="text-muted-foreground mb-6 leading-relaxed h-20">{app.description}</p>
+                       <EditableText 
+                         contentKey={`app-name-${app.id}`}
+                         as="h3"
+                         className="text-2xl font-semibold mb-4 text-card-foreground"
+                       >
+                         {app.name}
+                       </EditableText>
+                       <EditableText 
+                         contentKey={`app-description-${app.id}`}
+                         as="p"
+                         className="text-muted-foreground mb-6 leading-relaxed h-20"
+                       >
+                         {app.description}
+                       </EditableText>
                       
                       <div className="space-y-3 mb-8">
                         {app.features.map((feature, idx) => <div key={idx} className="flex items-center space-x-3">
