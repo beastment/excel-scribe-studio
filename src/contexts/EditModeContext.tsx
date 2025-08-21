@@ -168,7 +168,7 @@ export const EditModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const getEditedContent = (key: string, defaultContent: string) => {
-    return pendingEdits[key] || contentEdits[key] || defaultContent;
+    return pendingEdits[key] !== undefined ? pendingEdits[key] : (contentEdits[key] || defaultContent);
   };
 
   const saveChanges = async () => {
