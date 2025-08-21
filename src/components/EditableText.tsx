@@ -120,45 +120,37 @@ export const EditableText: React.FC<EditableTextProps> = ({
     }
   };
 
-  if (isEditMode) {
-    return (
-      <div className="relative">
-        <Component
-          className={cn(
-            className,
-            'transition-all duration-200',
-            isEditMode && 'cursor-pointer hover:bg-primary/10 hover:outline hover:outline-2 hover:outline-primary/30 rounded px-1',
-            isEditing && 'bg-primary/10 outline outline-2 outline-primary/50 rounded px-1'
-          )}
-          onClick={handleClick}
-        >
-          {isEditing ? (
-            <div
-              ref={editRef}
-              contentEditable
-              suppressContentEditableWarning
-              onBlur={handleBlur}
-              onKeyDown={handleKeyDown}
-              className="outline-none"
-              dangerouslySetInnerHTML={{ __html: displayContent }}
-            />
-          ) : (
-            <div dangerouslySetInnerHTML={{ __html: displayContent }} />
-          )}
-        </Component>
-        
-        {showToolbar && isEditing && (
-          <div ref={toolbarRef} className="absolute top-full left-0 mt-2 z-50">
-            <RichTextToolbar onFormat={handleFormat} />
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <Component className={className}>
-      <div dangerouslySetInnerHTML={{ __html: displayContent }} />
-    </Component>
+    <div className="relative">
+      <Component
+        className={cn(
+          className,
+          'transition-all duration-200',
+          isEditMode && 'cursor-pointer hover:bg-primary/10 hover:outline hover:outline-2 hover:outline-primary/30 rounded px-1',
+          isEditing && 'bg-primary/10 outline outline-2 outline-primary/50 rounded px-1'
+        )}
+        onClick={handleClick}
+      >
+        {isEditing ? (
+          <div
+            ref={editRef}
+            contentEditable
+            suppressContentEditableWarning
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            className="outline-none"
+            dangerouslySetInnerHTML={{ __html: displayContent }}
+          />
+        ) : (
+          <div dangerouslySetInnerHTML={{ __html: displayContent }} />
+        )}
+      </Component>
+      
+      {showToolbar && isEditing && (
+        <div ref={toolbarRef} className="absolute top-full left-0 mt-2 z-50">
+          <RichTextToolbar onFormat={handleFormat} />
+        </div>
+      )}
+    </div>
   );
 };
