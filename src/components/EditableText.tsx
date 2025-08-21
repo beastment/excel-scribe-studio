@@ -10,13 +10,15 @@ interface EditableTextProps {
   children: string;
   className?: string;
   as?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'span' | 'div';
+  onBlur?: (newContent: string) => void;
 }
 
 export const EditableText: React.FC<EditableTextProps> = ({ 
   contentKey, 
   children, 
   className,
-  as: Component = 'span'
+  as: Component = 'span',
+  onBlur
 }) => {
   const { 
     isEditMode, 
@@ -87,6 +89,7 @@ export const EditableText: React.FC<EditableTextProps> = ({
       const newContent = editRef.current?.innerHTML || '';
       if (newContent !== displayContent && newContent.trim() !== '') {
         setPendingEdit(contentKey, newContent);
+        onBlur?.(newContent);
       }
       setIsEditing(false);
       setShowToolbar(false);

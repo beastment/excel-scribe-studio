@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EditableText } from '@/components/EditableText';
+import { EditableFeatureList } from '@/components/EditableFeatureList';
 import { Shield, BrainCircuit, ClipboardList, FileText, ArrowRight, Star, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -287,18 +288,11 @@ const Home = () => {
                          {app.description}
                        </EditableText>
                       
-                      <div className="space-y-3 mb-8">
-                         {app.features.map((feature, idx) => <div key={idx} className="flex items-center space-x-3">
-                             <div className={`w-2 h-2 rounded-full mr-2 bg-gradient-to-r ${app.color}`}></div>
-                             <EditableText
-                               contentKey={`app-feature-${app.id}-${idx}`}
-                               as="span"
-                               className="text-card-foreground font-medium"
-                             >
-                               {feature}
-                             </EditableText>
-                           </div>)}
-                      </div>
+                       <EditableFeatureList
+                         appId={app.id}
+                         features={app.features}
+                         color={app.color}
+                       />
                       
                       {shouldAllowClick ? (
                         <Link to={`/apps/${app.id}`}>
