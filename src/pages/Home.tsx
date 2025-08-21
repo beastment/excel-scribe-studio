@@ -199,12 +199,6 @@ const Home = () => {
                           <app.icon className="w-7 h-7 text-white" />
                         </div>
                         <div className="text-right">
-                          {isDisabled && (
-                            <Badge className="bg-red-100 text-red-800 mb-2">
-                              <Settings className="w-3 h-3 mr-1" />
-                              Disabled
-                            </Badge>
-                          )}
                           {app.status === "Live" ? (
                             <Badge className="bg-green-100 text-green-800">
                               <Star className="w-3 h-3 mr-1" />
@@ -235,12 +229,12 @@ const Home = () => {
                               <Settings className="w-3 h-3 mr-1" />
                               Under Maintenance
                             </Badge>
-                          ) : (
+                          ) : app.status !== "None" ? (
                             <Badge className="bg-orange-100 text-orange-800">
                               <Settings className="w-3 h-3 mr-1" />
                               {app.status}
                             </Badge>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                       

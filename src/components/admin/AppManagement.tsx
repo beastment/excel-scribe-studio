@@ -56,6 +56,7 @@ const colorMap = {
 };
 
 const statusOptions = [
+  'None',
   'Live',
   'Just Released', 
   'Currently in Beta',
