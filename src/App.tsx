@@ -26,6 +26,7 @@ import CommentDeIdentification from "./pages/apps/CommentDeIdentification";
 import ThematicAnalysis from "./pages/apps/ThematicAnalysis";
 import ActionPlanningExtension from "./pages/apps/ActionPlanningExtension";
 import ReportWriter from "./pages/apps/ReportWriter";
+import ConsultingServices from "./pages/apps/ConsultingServices";
 
 const queryClient = new QueryClient();
 
@@ -99,6 +100,11 @@ const AppContent = () => {
           shouldShowMaintenance ? 
             <MaintenanceMode /> : 
             <ReportWriter />
+        } />
+        <Route path="/apps/consulting-services" element={
+          shouldShowMaintenance ? 
+            <MaintenanceMode /> : 
+            <ConsultingServices />
         } />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />

@@ -107,6 +107,14 @@ const Home = () => {
       color: "from-orange-500 to-red-500",
       features: ["Automated Narrative Generation", "Custom Report Templates", "Data Visualization Integration"],
       startingPrice: "$249"
+    },
+    "consulting-services": {
+      name: "Consulting Services",
+      description: "When AI is not enough, and you need HI: Human Intelligence. Our professional consultants are registered workplace psychologists.",
+      icon: Shield,
+      color: "from-purple-500 to-pink-500",
+      features: ["Registered Workplace Psychologists", "Survey Strategy & Management", "Action Planning Workshops"],
+      startingPrice: "Contact Us"
     }
   };
 
