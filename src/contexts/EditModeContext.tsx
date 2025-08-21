@@ -96,7 +96,7 @@ export const EditModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           original_content: originalContent,
           edited_content: newContent,
           edited_by: user.id
-        });
+        }, { onConflict: 'content_key' });
 
       if (error) throw error;
 
@@ -135,7 +135,7 @@ export const EditModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       for (const update of updates) {
         const { error } = await supabase
           .from('content_edits')
-          .upsert(update);
+          .upsert(update, { onConflict: 'content_key' });
 
         if (error) throw error;
       }
