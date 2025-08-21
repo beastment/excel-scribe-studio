@@ -65,6 +65,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          is_blurred: boolean
           is_enabled: boolean
           is_hidden: boolean
           name: string
@@ -76,6 +77,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_blurred?: boolean
           is_enabled?: boolean
           is_hidden?: boolean
           name: string
@@ -87,6 +89,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_blurred?: boolean
           is_enabled?: boolean
           is_hidden?: boolean
           name?: string
