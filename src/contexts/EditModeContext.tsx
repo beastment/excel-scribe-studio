@@ -125,24 +125,8 @@ export const EditModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteContent = (key: string) => {
-    setPendingEdits(prev => {
-      const newEdits = { ...prev };
-      delete newEdits[key];
-      return newEdits;
-    });
-    
-    setContentEdits(prev => {
-      const newEdits = { ...prev };
-      delete newEdits[key];
-      return newEdits;
-    });
-
-    setContentPositions(prev => {
-      const newPositions = { ...prev };
-      delete newPositions[key];
-      return newPositions;
-    });
-
+    // Set content to empty string instead of removing from state
+    setPendingEdit(key, '');
     toast.success('Content deleted');
   };
 

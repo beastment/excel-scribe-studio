@@ -64,8 +64,14 @@ export const EditableText: React.FC<EditableTextProps> = ({
     }
   }, [isEditing]);
 
-  const handleClick = () => {
-    if (isEditMode) {
+  const handleClick = (e: React.MouseEvent) => {
+    // Don't start editing if we're dragging or if clicking on edit controls
+    if (isDragging || (e.target as Element).closest('.edit-mode-controls')) {
+      return;
+    }
+    
+    if (isEditMode && !isEditing) {
+      e.stopPropagation();
       setIsEditing(true);
       setShowToolbar(true);
     }
@@ -152,7 +158,8 @@ export const EditableText: React.FC<EditableTextProps> = ({
   };
 
   const handleDelete = (key: string) => {
-    deleteContent(key);
+    // Mark content as deleted by setting it to empty
+    setPendingEdit(key, '');
   };
 
   const handleAddNew = () => {
@@ -160,13 +167,18 @@ export const EditableText: React.FC<EditableTextProps> = ({
     addNewContent(newContent);
   };
 
+  // Don't render if content is marked as deleted
+  if (displayContent === '') {
+    return null;
+  }
+
   return (
     <div 
       ref={setNodeRef}
       style={style}
       className={cn(
         "relative group",
-        isEditMode && "border-dashed border-2 border-transparent hover:border-primary/30 rounded",
+        isEditMode && !isEditing && "border-dashed border-2 border-transparent hover:border-primary/30 rounded",
         isDragging && "opacity-50"
       )}
     >
@@ -174,11 +186,10 @@ export const EditableText: React.FC<EditableTextProps> = ({
         className={cn(
           className,
           'transition-all duration-200',
-          isEditMode && 'cursor-pointer hover:bg-primary/10 hover:outline hover:outline-2 hover:outline-primary/30 rounded px-1',
+          isEditMode && !isEditing && 'cursor-pointer hover:bg-primary/10 hover:outline hover:outline-2 hover:outline-primary/30 rounded px-1',
           isEditing && 'bg-primary/10 outline outline-2 outline-primary/50 rounded px-1'
         )}
         onClick={handleClick}
-        {...(isEditMode && !isEditing ? { ...attributes, ...listeners } : {})}
       >
         {isEditing ? (
           <div
@@ -191,7 +202,10 @@ export const EditableText: React.FC<EditableTextProps> = ({
             dangerouslySetInnerHTML={{ __html: displayContent }}
           />
         ) : (
-          <div dangerouslySetInnerHTML={{ __html: displayContent }} />
+          <div 
+            dangerouslySetInnerHTML={{ __html: displayContent }}
+            {...(isEditMode && !isEditing ? { ...attributes, ...listeners } : {})}
+          />
         )}
       </Component>
       
@@ -201,6 +215,7 @@ export const EditableText: React.FC<EditableTextProps> = ({
           onCopy={handleCopy}
           onDelete={handleDelete}
           onAddNew={handleAddNew}
+          className="edit-mode-controls"
         />
       )}
       
