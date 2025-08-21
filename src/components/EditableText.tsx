@@ -190,7 +190,6 @@ export const EditableText: React.FC<EditableTextProps> = ({
           isEditing && 'bg-primary/10 outline outline-2 outline-primary/50 rounded px-1'
         )}
         onClick={handleClick}
-        {...(isEditMode && !isEditing ? { ...attributes, ...listeners } : {})}
       >
         {isEditing ? (
           <div
@@ -214,6 +213,8 @@ export const EditableText: React.FC<EditableTextProps> = ({
           onDelete={handleDelete}
           onAddNew={handleAddNew}
           className="edit-mode-controls"
+          dragAttributes={attributes}
+          dragListeners={listeners}
         />
       )}
       

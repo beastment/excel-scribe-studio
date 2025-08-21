@@ -15,6 +15,8 @@ interface EditModeControlsProps {
   onDelete: (key: string) => void;
   onAddNew: () => void;
   className?: string;
+  dragAttributes?: Record<string, any>;
+  dragListeners?: Record<string, any>;
 }
 
 export const EditModeControls: React.FC<EditModeControlsProps> = ({
@@ -22,11 +24,13 @@ export const EditModeControls: React.FC<EditModeControlsProps> = ({
   onCopy,
   onDelete,
   onAddNew,
-  className
+  className,
+  dragAttributes,
+  dragListeners,
 }) => {
   return (
     <div className={cn(
-      "absolute -top-8 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50",
+      "absolute -top-8 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 edit-mode-controls",
       className
     )}>
       <div className="flex gap-1 bg-background border rounded-md p-1 shadow-lg">
@@ -57,7 +61,12 @@ export const EditModeControls: React.FC<EditModeControlsProps> = ({
         >
           <Plus className="h-3 w-3" />
         </Button>
-        <div className="h-6 w-6 p-0 flex items-center justify-center cursor-move drag-handle" title="Drag to move">
+        <div 
+          className="h-6 w-6 p-0 flex items-center justify-center cursor-move drag-handle" 
+          title="Drag to move"
+          {...(dragAttributes || {})}
+          {...(dragListeners || {})}
+        >
           <Move className="h-3 w-3 text-muted-foreground" />
         </div>
       </div>
