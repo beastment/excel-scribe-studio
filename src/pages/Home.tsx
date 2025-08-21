@@ -192,7 +192,7 @@ const Home = () => {
               const shouldAllowClick = app.is_enabled || isAdmin;
               
               return (
-                <Card key={app.id} className={`border-0 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-1 bg-card overflow-hidden group ${isDisabled ? 'opacity-60' : ''} ${app.is_blurred ? 'blur-lg' : ''}`}>
+                <Card key={app.id} className={`border-0 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-1 bg-card overflow-hidden group ${isDisabled ? 'opacity-60' : ''} ${app.is_blurred ? 'blur-md' : ''}`}>
                   <CardContent className="p-0">
                     <div className={`h-2 bg-gradient-to-r ${app.color}`}></div>
                     <div className="p-8">
