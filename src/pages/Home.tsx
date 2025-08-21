@@ -15,6 +15,7 @@ interface AppConfiguration {
   is_enabled: boolean;
   is_hidden: boolean;
   is_blurred: boolean;
+  status: string;
   position: number | null;
 }
 
@@ -81,8 +82,7 @@ const Home = () => {
       icon: ClipboardList,
       color: "from-green-500 to-emerald-500",
       features: ["AI-Generated Action Items", "Goal & Progress Tracking", "Manager Accountability Tools"],
-      startingPrice: "$149",
-      status: "development"
+      startingPrice: "$149"
     },
     "thematic-analysis": {
       name: "Thematic Analysis",
@@ -90,8 +90,7 @@ const Home = () => {
       icon: BrainCircuit,
       color: "from-purple-500 to-pink-500",
       features: ["AI-Powered Topic Modeling", "Sentiment Analysis", "Emerging Trend Identification"],
-      startingPrice: "$299",
-      status: "development"
+      startingPrice: "$299"
     },
     "comment-de-identification": {
       name: "Comment De-Identification",
@@ -99,8 +98,7 @@ const Home = () => {
       icon: Shield,
       color: "from-blue-500 to-cyan-500",
       features: ["PII & Sensitive Data Redaction", "Tone & Context Preservation", "Bulk Processing API"],
-      startingPrice: "$199",
-      status: "available"
+      startingPrice: "$199"
     },
     "report-writer": {
       name: "Report Writer",
@@ -108,8 +106,7 @@ const Home = () => {
       icon: FileText,
       color: "from-orange-500 to-red-500",
       features: ["Automated Narrative Generation", "Custom Report Templates", "Data Visualization Integration"],
-      startingPrice: "$249",
-      status: "development"
+      startingPrice: "$249"
     }
   };
 
@@ -120,6 +117,7 @@ const Home = () => {
       ...staticApps[config.app_id as keyof typeof staticApps],
       is_enabled: config.is_enabled,
       is_blurred: config.is_blurred,
+      status: config.status,
       position: config.position
     }))
     .filter(app => app.name) // Filter out any apps that don't have static data
@@ -207,13 +205,42 @@ const Home = () => {
                               Disabled
                             </Badge>
                           )}
-                          {app.status === "available" ? <Badge className="bg-blue-100 text-blue-800">
+                          {app.status === "Live" ? (
+                            <Badge className="bg-green-100 text-green-800">
+                              <Star className="w-3 h-3 mr-1" />
+                              Live
+                            </Badge>
+                          ) : app.status === "Just Released" ? (
+                            <Badge className="bg-emerald-100 text-emerald-800">
+                              <Star className="w-3 h-3 mr-1" />
+                              Just Released
+                            </Badge>
+                          ) : app.status === "Currently in Beta" ? (
+                            <Badge className="bg-blue-100 text-blue-800">
                               <Star className="w-3 h-3 mr-1" />
                               Currently in Beta
-                            </Badge> : <Badge className="bg-orange-100 text-orange-800">
+                            </Badge>
+                          ) : app.status === "In Development" ? (
+                            <Badge className="bg-orange-100 text-orange-800">
                               <Settings className="w-3 h-3 mr-1" />
                               In Development
-                            </Badge>}
+                            </Badge>
+                          ) : app.status === "Planned" ? (
+                            <Badge className="bg-gray-100 text-gray-800">
+                              <Settings className="w-3 h-3 mr-1" />
+                              Planned
+                            </Badge>
+                          ) : app.status === "Under Maintenance" ? (
+                            <Badge className="bg-red-100 text-red-800">
+                              <Settings className="w-3 h-3 mr-1" />
+                              Under Maintenance
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-orange-100 text-orange-800">
+                              <Settings className="w-3 h-3 mr-1" />
+                              {app.status}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                       

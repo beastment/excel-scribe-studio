@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Settings, Shield, BrainCircuit, ClipboardList, FileText, GripVertical, EyeOff, Focus } from 'lucide-react'; // Fixed: Changed Blur to Focus
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -34,6 +35,7 @@ interface AppConfiguration {
   is_enabled: boolean;
   is_hidden: boolean;
   is_blurred: boolean;
+  status: string;
   position: number;
   created_at: string;
   updated_at: string;
@@ -53,6 +55,15 @@ const colorMap = {
   'report-writer': 'from-orange-500 to-red-500',
 };
 
+const statusOptions = [
+  'Live',
+  'Just Released', 
+  'Currently in Beta',
+  'In Development',
+  'Planned',
+  'Under Maintenance'
+];
+
 // Sortable App Item Component
 interface SortableAppItemProps {
   app: AppConfiguration;
@@ -60,9 +71,10 @@ interface SortableAppItemProps {
   onToggleStatus: (appId: string, currentStatus: boolean) => void;
   onToggleHidden: (appId: string, currentHidden: boolean) => void;
   onToggleBlurred: (appId: string, currentBlurred: boolean) => void;
+  onUpdateStatus: (appId: string, newStatus: string) => void;
 }
 
-const SortableAppItem = ({ app, updating, onToggleStatus, onToggleHidden, onToggleBlurred }: SortableAppItemProps) => {
+const SortableAppItem = ({ app, updating, onToggleStatus, onToggleHidden, onToggleBlurred, onUpdateStatus }: SortableAppItemProps) => {
   const {
     attributes,
     listeners,
@@ -101,6 +113,20 @@ const SortableAppItem = ({ app, updating, onToggleStatus, onToggleHidden, onTogg
         <div>
           <h4 className="font-medium text-foreground">{app.name}</h4>
           <p className="text-sm text-muted-foreground">{app.description}</p>
+          <div className="mt-2">
+            <Select value={app.status} onValueChange={(value) => onUpdateStatus(app.app_id, value)}>
+              <SelectTrigger className="w-48 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-background border z-50">
+                {statusOptions.map((status) => (
+                  <SelectItem key={status} value={status} className="hover:bg-muted">
+                    {status}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
       <div className="flex items-center space-x-3">
@@ -293,6 +319,31 @@ export const AppManagement = () => {
     }
   };
 
+  const updateAppStatus = async (appId: string, newStatus: string) => {
+    setUpdating(appId);
+    try {
+      const { error } = await supabase
+        .from('app_configurations')
+        .update({ status: newStatus })
+        .eq('app_id', appId);
+
+      if (error) throw error;
+
+      setApps(apps.map(app => 
+        app.app_id === appId 
+          ? { ...app, status: newStatus }
+          : app
+      ));
+
+      toast.success(`App status updated to "${newStatus}" successfully`);
+    } catch (error) {
+      console.error('Error updating app status:', error);
+      toast.error('Failed to update app status');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   if (loading) {
     return (
       <Card>
@@ -341,6 +392,7 @@ export const AppManagement = () => {
                   onToggleStatus={toggleAppStatus}
                   onToggleHidden={toggleAppHidden}
                   onToggleBlurred={toggleAppBlurred}
+                  onUpdateStatus={updateAppStatus}
                 />
               ))}
             </div>
