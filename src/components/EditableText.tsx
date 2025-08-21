@@ -174,15 +174,15 @@ export const EditableText: React.FC<EditableTextProps> = ({
 
   return (
     <div 
-      ref={setNodeRef}
-      style={style}
       className={cn(
         "relative group",
         isEditMode && !isEditing && "border-dashed border-2 border-transparent hover:border-primary/30 rounded",
         isDragging && "opacity-50"
       )}
+      style={style}
     >
       <Component
+        ref={setNodeRef}
         className={cn(
           className,
           'transition-all duration-200',
@@ -190,6 +190,7 @@ export const EditableText: React.FC<EditableTextProps> = ({
           isEditing && 'bg-primary/10 outline outline-2 outline-primary/50 rounded px-1'
         )}
         onClick={handleClick}
+        {...(isEditMode && !isEditing ? { ...attributes, ...listeners } : {})}
       >
         {isEditing ? (
           <div
@@ -202,10 +203,7 @@ export const EditableText: React.FC<EditableTextProps> = ({
             dangerouslySetInnerHTML={{ __html: displayContent }}
           />
         ) : (
-          <div 
-            dangerouslySetInnerHTML={{ __html: displayContent }}
-            {...(isEditMode && !isEditing ? { ...attributes, ...listeners } : {})}
-          />
+          <div dangerouslySetInnerHTML={{ __html: displayContent }} />
         )}
       </Component>
       
