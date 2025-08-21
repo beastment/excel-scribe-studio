@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useEditMode } from '@/contexts/EditModeContext';
+import { EditModeDialog } from './EditModeDialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,13 +16,40 @@ import { User, LogOut, LayoutDashboard, ChevronDown, Edit } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 export const Navigation = () => {
+  const [showExitDialog, setShowExitDialog] = useState(false);
   const { user, signOut } = useAuth();
   const { isAdmin } = useUserRole();
-  const { isEditMode, toggleEditMode } = useEditMode();
+  const { 
+    isEditMode, 
+    toggleEditMode, 
+    hasPendingChanges, 
+    saveChanges, 
+    discardChanges 
+  } = useEditMode();
   const location = useLocation();
   
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  const handleEditModeToggle = () => {
+    if (isEditMode && hasPendingChanges) {
+      setShowExitDialog(true);
+    } else {
+      toggleEditMode();
+    }
+  };
+
+  const handleSaveAndExit = async () => {
+    await saveChanges();
+    toggleEditMode();
+    setShowExitDialog(false);
+  };
+
+  const handleDiscardAndExit = () => {
+    discardChanges();
+    toggleEditMode();
+    setShowExitDialog(false);
   };
 
   return (
@@ -54,13 +82,14 @@ export const Navigation = () => {
             {/* Admin Edit Mode Toggle */}
             {user && isAdmin() && (
               <Button
-                onClick={toggleEditMode}
+                onClick={handleEditModeToggle}
                 variant={isEditMode ? "default" : "outline"}
                 size="sm"
                 className="flex items-center space-x-2"
               >
                 <Edit className="w-4 h-4" />
                 <span>{isEditMode ? 'Exit Edit' : 'Edit Mode'}</span>
+                {hasPendingChanges && <span className="w-2 h-2 bg-orange-500 rounded-full ml-1" />}
               </Button>
             )}
             
@@ -100,6 +129,13 @@ export const Navigation = () => {
           </div>
         </div>
       </nav>
+
+      <EditModeDialog
+        open={showExitDialog}
+        onOpenChange={setShowExitDialog}
+        onSave={handleSaveAndExit}
+        onDiscard={handleDiscardAndExit}
+      />
     </header>
   );
 };

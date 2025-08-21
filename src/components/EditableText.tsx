@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useEditMode } from '@/contexts/EditModeContext';
+import { RichTextToolbar } from './RichTextToolbar';
 import { cn } from '@/lib/utils';
 
 interface EditableTextProps {
@@ -15,10 +16,11 @@ export const EditableText: React.FC<EditableTextProps> = ({
   className,
   as: Component = 'span'
 }) => {
-  const { isEditMode, updateContent, getEditedContent } = useEditMode();
+  const { isEditMode, setPendingEdit, getEditedContent } = useEditMode();
   const [isEditing, setIsEditing] = useState(false);
-  const [tempContent, setTempContent] = useState('');
+  const [showToolbar, setShowToolbar] = useState(false);
   const editRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   const displayContent = getEditedContent(contentKey, children);
 
@@ -38,17 +40,23 @@ export const EditableText: React.FC<EditableTextProps> = ({
   const handleClick = () => {
     if (isEditMode) {
       setIsEditing(true);
-      setTempContent(displayContent);
+      setShowToolbar(true);
     }
   };
 
-  const handleBlur = () => {
+  const handleBlur = (e: React.FocusEvent) => {
+    // Don't blur if clicking on toolbar
+    if (toolbarRef.current?.contains(e.relatedTarget as Node)) {
+      return;
+    }
+    
     if (isEditing) {
-      const newContent = editRef.current?.textContent || '';
+      const newContent = editRef.current?.innerHTML || '';
       if (newContent !== displayContent && newContent.trim() !== '') {
-        updateContent(contentKey, children, newContent);
+        setPendingEdit(contentKey, newContent);
       }
       setIsEditing(false);
+      setShowToolbar(false);
     }
   };
 
@@ -59,43 +67,98 @@ export const EditableText: React.FC<EditableTextProps> = ({
     }
     if (e.key === 'Escape') {
       if (editRef.current) {
-        editRef.current.textContent = displayContent;
+        editRef.current.innerHTML = displayContent;
       }
       setIsEditing(false);
+      setShowToolbar(false);
+    }
+  };
+
+  const handleFormat = (type: string, value?: string) => {
+    if (!editRef.current) return;
+
+    editRef.current.focus();
+    
+    switch (type) {
+      case 'bold':
+        document.execCommand('bold');
+        break;
+      case 'italic':
+        document.execCommand('italic');
+        break;
+      case 'color':
+        if (value === 'color-branded-blend') {
+          // Apply branded blend gradient
+          const selection = window.getSelection();
+          if (selection && !selection.isCollapsed) {
+            const range = selection.getRangeAt(0);
+            const span = document.createElement('span');
+            span.className = 'bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent';
+            range.surroundContents(span);
+          }
+        } else if (value === 'color-primary') {
+          document.execCommand('foreColor', false, 'hsl(var(--primary))');
+        } else if (value === 'color-success') {
+          document.execCommand('foreColor', false, 'hsl(var(--success))');
+        } else if (value === 'color-muted') {
+          document.execCommand('foreColor', false, 'hsl(var(--muted-foreground))');
+        } else {
+          document.execCommand('removeFormat');
+        }
+        break;
+      case 'size':
+        if (value) {
+          const selection = window.getSelection();
+          if (selection && !selection.isCollapsed) {
+            const range = selection.getRangeAt(0);
+            const span = document.createElement('span');
+            span.className = value;
+            range.surroundContents(span);
+          }
+        }
+        break;
     }
   };
 
   if (isEditMode) {
     return (
-      <Component
-        className={cn(
-          className,
-          'transition-all duration-200',
-          isEditMode && 'cursor-pointer hover:bg-primary/10 hover:outline hover:outline-2 hover:outline-primary/30 rounded px-1',
-          isEditing && 'bg-primary/10 outline outline-2 outline-primary/50 rounded px-1'
+      <div className="relative">
+        <Component
+          className={cn(
+            className,
+            'transition-all duration-200',
+            isEditMode && 'cursor-pointer hover:bg-primary/10 hover:outline hover:outline-2 hover:outline-primary/30 rounded px-1',
+            isEditing && 'bg-primary/10 outline outline-2 outline-primary/50 rounded px-1'
+          )}
+          onClick={handleClick}
+        >
+          {isEditing ? (
+            <div
+              ref={editRef}
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              className="outline-none"
+              dangerouslySetInnerHTML={{ __html: displayContent }}
+            />
+          ) : (
+            <div dangerouslySetInnerHTML={{ __html: displayContent }} />
+          )}
+        </Component>
+        
+        {showToolbar && isEditing && (
+          <div ref={toolbarRef} className="absolute top-full left-0 mt-2 z-50">
+            <RichTextToolbar onFormat={handleFormat} />
+          </div>
         )}
-        onClick={handleClick}
-      >
-        {isEditing ? (
-          <div
-            ref={editRef}
-            contentEditable
-            suppressContentEditableWarning
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            className="outline-none"
-            dangerouslySetInnerHTML={{ __html: displayContent }}
-          />
-        ) : (
-          displayContent
-        )}
-      </Component>
+      </div>
     );
   }
 
   return (
     <Component className={className}>
-      {displayContent}
+      <div dangerouslySetInnerHTML={{ __html: displayContent }} />
     </Component>
   );
 };
