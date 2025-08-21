@@ -14,6 +14,7 @@ interface AppConfiguration {
   description: string | null;
   is_enabled: boolean;
   is_hidden: boolean;
+  is_blurred: boolean;
   position: number | null;
 }
 
@@ -118,6 +119,7 @@ const Home = () => {
       id: config.app_id,
       ...staticApps[config.app_id as keyof typeof staticApps],
       is_enabled: config.is_enabled,
+      is_blurred: config.is_blurred,
       position: config.position
     }))
     .filter(app => app.name) // Filter out any apps that don't have static data
@@ -190,7 +192,7 @@ const Home = () => {
               const shouldAllowClick = app.is_enabled || isAdmin;
               
               return (
-                <Card key={app.id} className={`border-0 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-1 bg-card overflow-hidden group ${isDisabled ? 'opacity-60' : ''}`}>
+                <Card key={app.id} className={`border-0 shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-1 bg-card overflow-hidden group ${isDisabled ? 'opacity-60' : ''} ${app.is_blurred ? 'blur-sm hover:blur-none' : ''}`}>
                   <CardContent className="p-0">
                     <div className={`h-2 bg-gradient-to-r ${app.color}`}></div>
                     <div className="p-8">
