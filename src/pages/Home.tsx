@@ -288,10 +288,16 @@ const Home = () => {
                        </EditableText>
                       
                       <div className="space-y-3 mb-8">
-                        {app.features.map((feature, idx) => <div key={idx} className="flex items-center space-x-3">
-                            <div className={`w-2 h-2 rounded-full mr-2 bg-gradient-to-r ${app.color}`}></div>
-                            <span className="text-card-foreground font-medium">{feature}</span>
-                          </div>)}
+                         {app.features.map((feature, idx) => <div key={idx} className="flex items-center space-x-3">
+                             <div className={`w-2 h-2 rounded-full mr-2 bg-gradient-to-r ${app.color}`}></div>
+                             <EditableText
+                               contentKey={`app-feature-${app.id}-${idx}`}
+                               as="span"
+                               className="text-card-foreground font-medium"
+                             >
+                               {feature}
+                             </EditableText>
+                           </div>)}
                       </div>
                       
                       {shouldAllowClick ? (
@@ -321,12 +327,20 @@ const Home = () => {
       {/* CTA Section */}
       <section className="py-20 bg-gradient-to-r from-blue-600 to-purple-600">
         <div className="max-w-4xl mx-auto px-6 text-center">
-          <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
+          <EditableText 
+            contentKey="cta-title"
+            as="h2"
+            className="text-3xl lg:text-4xl font-bold text-white mb-6"
+          >
             Ready to Revolutionize Your Feedback Process?
-          </h2>
-          <p className="text-xl text-blue-100 mb-10">
+          </EditableText>
+          <EditableText 
+            contentKey="cta-subtitle"
+            as="p"
+            className="text-xl text-blue-100 mb-10"
+          >
             Join hundreds of organizations that have transformed their employee experience with our platform.
-          </p>
+          </EditableText>
           
            <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
              {user ? <Link to="/comments">
