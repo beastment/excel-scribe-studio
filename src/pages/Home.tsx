@@ -141,7 +141,7 @@ const Home = () => {
   }
   return <div className="pt-20">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-background to-secondary py-20 lg:py-32">
+      <section className="relative overflow-hidden bg-gradient-to-br from-background to-secondary py-12 lg:py-20">
         <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10"></div>
         
         <div className="max-w-7xl mx-auto px-6">
