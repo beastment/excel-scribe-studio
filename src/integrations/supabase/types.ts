@@ -170,6 +170,36 @@ export type Database = {
         }
         Relationships: []
       }
+      content_edits: {
+        Row: {
+          content_key: string
+          created_at: string
+          edited_by: string
+          edited_content: string
+          id: string
+          original_content: string
+          updated_at: string
+        }
+        Insert: {
+          content_key: string
+          created_at?: string
+          edited_by: string
+          edited_content: string
+          id?: string
+          original_content: string
+          updated_at?: string
+        }
+        Update: {
+          content_key?: string
+          created_at?: string
+          edited_by?: string
+          edited_content?: string
+          id?: string
+          original_content?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       maintenance_mode: {
         Row: {
           id: string

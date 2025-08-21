@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { EditableText } from '@/components/EditableText';
 import { Shield, BrainCircuit, ClipboardList, FileText, ArrowRight, Star, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -150,15 +151,30 @@ const Home = () => {
               <span>Powered by Enterprise-Grade AI</span>
             </div>
             
-            <h1 className="text-4xl lg:text-6xl font-bold text-foreground mb-6 leading-tight">
+            <EditableText 
+              contentKey="home-hero-title"
+              as="h1"
+              className="text-4xl lg:text-6xl font-bold text-foreground mb-6 leading-tight"
+            >
               Leverage AI to Unlock the
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"> True Voice </span>
+            </EditableText>
+            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              <EditableText contentKey="home-hero-title-highlight"> True Voice </EditableText>
+            </span>
+            <EditableText 
+              contentKey="home-hero-title-end"
+              className="text-4xl lg:text-6xl font-bold text-foreground mb-6 leading-tight"
+            >
               in Your Employee Feedback
-            </h1>
+            </EditableText>
             
-            <p className="text-xl text-muted-foreground mb-10 leading-relaxed max-w-3xl mx-auto">
+            <EditableText 
+              contentKey="home-hero-subtitle"
+              as="p"
+              className="text-xl text-muted-foreground mb-10 leading-relaxed max-w-3xl mx-auto"
+            >
               Our suite of AI-powered tools helps you analyze, understand, and act on employee feedback faster and more effectively than ever before.
-            </p>
+            </EditableText>
             
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
               {user ? <Link to="/comments">
@@ -185,10 +201,20 @@ const Home = () => {
       <section id="apps" className="py-12 bg-gradient-to-br from-background to-secondary">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
+            <EditableText 
+              contentKey="home-apps-title"
+              as="h2"
+              className="text-3xl lg:text-4xl font-bold text-foreground mb-4"
+            >
               Powerful AI Applications
-            </h2>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">Choose from our suite of specialized applications, each designed to supercharge a specific part of your feedback analysis workflow. No need to change providers, our offerings leverage your existing survey platform.</p>
+            </EditableText>
+            <EditableText 
+              contentKey="home-apps-subtitle"
+              as="p"
+              className="text-xl text-muted-foreground max-w-3xl mx-auto"
+            >
+              Choose from our suite of specialized applications, each designed to supercharge a specific part of your feedback analysis workflow. No need to change providers, our offerings leverage your existing survey platform.
+            </EditableText>
           </div>
           
           <div className={`grid gap-8 ${apps.length === 1 ? 'lg:grid-cols-1 max-w-2xl mx-auto' : apps.length === 3 ? 'lg:grid-cols-2 xl:grid-cols-3' : 'lg:grid-cols-2'}`}>

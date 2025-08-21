@@ -2,6 +2,8 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
+import { useEditMode } from '@/contexts/EditModeContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,11 +11,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { User, LogOut, LayoutDashboard, ChevronDown } from 'lucide-react';
+import { User, LogOut, LayoutDashboard, ChevronDown, Edit } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 export const Navigation = () => {
   const { user, signOut } = useAuth();
+  const { isAdmin } = useUserRole();
+  const { isEditMode, toggleEditMode } = useEditMode();
   const location = useLocation();
   
   const handleSignOut = async () => {
@@ -46,6 +50,19 @@ export const Navigation = () => {
             </Link>
 
             <ThemeToggle />
+            
+            {/* Admin Edit Mode Toggle */}
+            {user && isAdmin() && (
+              <Button
+                onClick={toggleEditMode}
+                variant={isEditMode ? "default" : "outline"}
+                size="sm"
+                className="flex items-center space-x-2"
+              >
+                <Edit className="w-4 h-4" />
+                <span>{isEditMode ? 'Exit Edit' : 'Edit Mode'}</span>
+              </Button>
+            )}
             
             {user ? (
               <DropdownMenu>
