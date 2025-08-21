@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Shield, ArrowRight, Check, Star, Eye, Lock, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { EditableText } from '@/components/EditableText';
 const CommentDeIdentification = () => {
   const {
     user
@@ -44,13 +45,17 @@ const CommentDeIdentification = () => {
             </div>
             
             <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-              Comment 
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"> De-Identification</span>
+              <EditableText contentKey="comment-de-id-title" as="span">Comment </EditableText>
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                <EditableText contentKey="comment-de-id-title-highlight" as="span"> De-Identification</EditableText>
+              </span>
             </h1>
             
             <p className="text-xl text-gray-600 mb-6 leading-relaxed max-w-3xl mx-auto">
-              Securely anonymize employee feedback while preserving the original tone and intent. 
-              Remove personally identifiable information without losing valuable insights.
+              <EditableText contentKey="comment-de-id-description" as="span">
+                Securely anonymize employee feedback while preserving the original tone and intent. 
+                Remove personally identifiable information without losing valuable insights.
+              </EditableText>
             </p>
             
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto mb-8">
@@ -86,11 +91,13 @@ const CommentDeIdentification = () => {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-              Advanced De-Identification Features
+              <EditableText contentKey="comment-de-id-features-title" as="span">Advanced De-Identification Features</EditableText>
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Our AI-powered system provides comprehensive privacy protection while maintaining data utility. 
-              Our AI also has situational awareness, and can protect people from giving themselves away by describing roles, specific events, etc.
+              <EditableText contentKey="comment-de-id-features-description" as="span">
+                Our AI-powered system provides comprehensive privacy protection while maintaining data utility. 
+                Our AI also has situational awareness, and can protect people from giving themselves away by describing roles, specific events, etc.
+              </EditableText>
             </p>
           </div>
           
@@ -102,8 +109,12 @@ const CommentDeIdentification = () => {
                       <feature.icon className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-semibold mb-3 text-gray-900">{feature.title}</h3>
-                      <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+                      <h3 className="text-xl font-semibold mb-3 text-gray-900">
+                        <EditableText contentKey={`comment-de-id-feature-${index}-title`} as="span">{feature.title}</EditableText>
+                      </h3>
+                      <p className="text-gray-600 leading-relaxed">
+                        <EditableText contentKey={`comment-de-id-feature-${index}-desc`} as="span">{feature.description}</EditableText>
+                      </p>
                     </div>
                   </div>
                 </CardContent>

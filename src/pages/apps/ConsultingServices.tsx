@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Users, Target, TrendingUp, MessageSquare, CheckCircle, Brain, Star, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { EditableText } from '@/components/EditableText';
 
 const ConsultingServices = () => {
   const services = [
@@ -88,12 +89,16 @@ const ConsultingServices = () => {
             </div>
             
             <h1 className="text-4xl lg:text-6xl font-bold text-foreground mb-6 leading-tight">
-              Consulting
-              <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent"> Services</span>
+              <EditableText contentKey="consulting-title" as="span">Consulting</EditableText>
+              <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                <EditableText contentKey="consulting-title-highlight" as="span"> Services</EditableText>
+              </span>
             </h1>
             
             <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
-              When AI is not enough, and you need HI: Human Intelligence. Our professional consultants are registered workplace psychologists, specialising in working with you to obtain maximum value from your survey results.
+              <EditableText contentKey="consulting-description" as="span">
+                When AI is not enough, and you need HI: Human Intelligence. Our professional consultants are registered workplace psychologists, specialising in working with you to obtain maximum value from your survey results.
+              </EditableText>
             </p>
 
             <Badge className="bg-green-100 text-green-800 text-lg px-4 py-2 mb-8">

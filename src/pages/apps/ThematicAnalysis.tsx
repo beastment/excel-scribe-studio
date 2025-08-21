@@ -14,6 +14,7 @@ import {
   Users
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { EditableText } from '@/components/EditableText';
 
 const ThematicAnalysis = () => {
   const { user } = useAuth();
@@ -67,13 +68,17 @@ const ThematicAnalysis = () => {
             </div>
             
             <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-              Thematic 
-              <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent"> Analysis</span>
+              <EditableText contentKey="thematic-analysis-title" as="span">Thematic </EditableText>
+              <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                <EditableText contentKey="thematic-analysis-title-highlight" as="span"> Analysis</EditableText>
+              </span>
             </h1>
             
             <p className="text-xl text-gray-600 mb-10 leading-relaxed max-w-3xl mx-auto">
-              Automatically discover and categorize key themes and sentiment from thousands of employee comments. 
-              Turn unstructured feedback into actionable insights.
+              <EditableText contentKey="thematic-analysis-description" as="span">
+                Automatically discover and categorize key themes and sentiment from thousands of employee comments. 
+                Turn unstructured feedback into actionable insights.
+              </EditableText>
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">

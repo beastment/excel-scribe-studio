@@ -14,6 +14,7 @@ import {
   Download
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { EditableText } from '@/components/EditableText';
 
 const ReportWriter = () => {
   const { user } = useAuth();
@@ -67,13 +68,17 @@ const ReportWriter = () => {
             </div>
             
             <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-              Report 
-              <span className="bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent"> Writer</span>
+              <EditableText contentKey="report-writer-title" as="span">Report </EditableText>
+              <span className="bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+                <EditableText contentKey="report-writer-title-highlight" as="span"> Writer</EditableText>
+              </span>
             </h1>
             
             <p className="text-xl text-gray-600 mb-10 leading-relaxed max-w-3xl mx-auto">
-              Instantly generate executive summaries and narrative reports from your quantitative and qualitative data. 
-              Transform complex insights into compelling stories.
+              <EditableText contentKey="report-writer-description" as="span">
+                Instantly generate executive summaries and narrative reports from your quantitative and qualitative data. 
+                Transform complex insights into compelling stories.
+              </EditableText>
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">

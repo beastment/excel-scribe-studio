@@ -14,6 +14,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { EditableText } from '@/components/EditableText';
 
 const ActionPlanningExtension = () => {
   const { user } = useAuth();
@@ -67,13 +68,17 @@ const ActionPlanningExtension = () => {
             </div>
             
             <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-              Action Planning 
-              <span className="bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent"> Extension</span>
+              <EditableText contentKey="action-planning-title" as="span">Action Planning </EditableText>
+              <span className="bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                <EditableText contentKey="action-planning-title-highlight" as="span"> Extension</EditableText>
+              </span>
             </h1>
             
             <p className="text-xl text-gray-600 mb-10 leading-relaxed max-w-3xl mx-auto">
-              Turn employee feedback into concrete action plans with AI-suggested initiatives and progress tracking. 
-              Close the feedback loop and drive meaningful change.
+              <EditableText contentKey="action-planning-description" as="span">
+                Turn employee feedback into concrete action plans with AI-suggested initiatives and progress tracking. 
+                Close the feedback loop and drive meaningful change.
+              </EditableText>
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
