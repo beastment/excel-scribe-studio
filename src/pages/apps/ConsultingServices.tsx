@@ -127,10 +127,10 @@ const ConsultingServices = () => {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
-              Our Professional Services
+              <EditableText contentKey="consulting-services-title" as="span">Our Professional Services</EditableText>
             </h2>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              Comprehensive consulting services delivered by registered workplace psychologists with deep expertise in organisational development and survey analysis.
+              <EditableText contentKey="consulting-services-description" as="span">Comprehensive consulting services delivered by registered workplace psychologists with deep expertise in organisational development and survey analysis.</EditableText>
             </p>
           </div>
           
@@ -175,11 +175,11 @@ const ConsultingServices = () => {
           </div>
           
           <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
-            Why Choose Our Human Intelligence?
+            <EditableText contentKey="consulting-why-title" as="span">Why Choose Our Human Intelligence?</EditableText>
           </h2>
           
           <p className="text-xl text-purple-100 mb-10">
-            Our consultants bring deep psychological expertise and proven methodologies to help you unlock insights that AI alone cannot provide. We bridge the gap between data and human understanding.
+            <EditableText contentKey="consulting-why-description" as="span">Our consultants bring deep psychological expertise and proven methodologies to help you unlock insights that AI alone cannot provide. We bridge the gap between data and human understanding.</EditableText>
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">

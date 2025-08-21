@@ -97,10 +97,10 @@ const ActionPlanningExtension = () => {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-              From Feedback to Action
+              <EditableText contentKey="action-planning-features-title" as="span">From Feedback to Action</EditableText>
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Bridge the gap between collecting feedback and implementing change with intelligent action planning.
+              <EditableText contentKey="action-planning-features-description" as="span">Bridge the gap between collecting feedback and implementing change with intelligent action planning.</EditableText>
             </p>
           </div>
           
@@ -113,8 +113,12 @@ const ActionPlanningExtension = () => {
                       <feature.icon className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-semibold mb-3 text-gray-900">{feature.title}</h3>
-                      <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+                      <h3 className="text-xl font-semibold mb-3 text-gray-900">
+                        <EditableText contentKey={`action-planning-feature-${index}-title`} as="span">{feature.title}</EditableText>
+                      </h3>
+                      <p className="text-gray-600 leading-relaxed">
+                        <EditableText contentKey={`action-planning-feature-${index}-desc`} as="span">{feature.description}</EditableText>
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -130,10 +134,10 @@ const ActionPlanningExtension = () => {
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
               <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-6">
-                Drive Real Organizational Change
+                <EditableText contentKey="action-planning-why-title" as="span">Drive Real Organizational Change</EditableText>
               </h2>
               <p className="text-xl text-gray-600 mb-8">
-                Stop letting valuable feedback go unactionable. Transform insights into measurable improvements with systematic action planning.
+                <EditableText contentKey="action-planning-why-description" as="span">Stop letting valuable feedback go unactionable. Transform insights into measurable improvements with systematic action planning.</EditableText>
               </p>
               
               <div className="space-y-4">
@@ -142,7 +146,9 @@ const ActionPlanningExtension = () => {
                     <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
                       <Check className="w-4 h-4 text-green-600" />
                     </div>
-                    <p className="text-gray-700 font-medium">{benefit}</p>
+                    <p className="text-gray-700 font-medium">
+                      <EditableText contentKey={`action-planning-benefit-${index}`} as="span">{benefit}</EditableText>
+                    </p>
                   </div>
                 ))}
               </div>
@@ -193,10 +199,10 @@ const ActionPlanningExtension = () => {
       <section className="py-20 bg-gradient-to-r from-green-600 to-emerald-600">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
-            Ready to Close the Feedback Loop?
+            <EditableText contentKey="action-planning-cta-title" as="span">Ready to Close the Feedback Loop?</EditableText>
           </h2>
           <p className="text-xl text-green-100 mb-10">
-            Join forward-thinking organizations who are turning employee insights into measurable business improvements.
+            <EditableText contentKey="action-planning-cta-description" as="span">Join forward-thinking organizations who are turning employee insights into measurable business improvements.</EditableText>
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">

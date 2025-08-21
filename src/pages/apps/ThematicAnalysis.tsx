@@ -97,10 +97,10 @@ const ThematicAnalysis = () => {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-              Advanced Theme Discovery
+              <EditableText contentKey="thematic-analysis-features-title" as="span">Advanced Theme Discovery</EditableText>
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Our AI analyzes patterns in language, emotion, and context to reveal the true voice of your employees.
+              <EditableText contentKey="thematic-analysis-features-description" as="span">Our AI analyzes patterns in language, emotion, and context to reveal the true voice of your employees.</EditableText>
             </p>
           </div>
           
@@ -113,8 +113,12 @@ const ThematicAnalysis = () => {
                       <feature.icon className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-semibold mb-3 text-gray-900">{feature.title}</h3>
-                      <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+                      <h3 className="text-xl font-semibold mb-3 text-gray-900">
+                        <EditableText contentKey={`thematic-analysis-feature-${index}-title`} as="span">{feature.title}</EditableText>
+                      </h3>
+                      <p className="text-gray-600 leading-relaxed">
+                        <EditableText contentKey={`thematic-analysis-feature-${index}-desc`} as="span">{feature.description}</EditableText>
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -130,10 +134,10 @@ const ThematicAnalysis = () => {
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
               <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-6">
-                Transform Feedback Into Intelligence
+                <EditableText contentKey="thematic-analysis-why-title" as="span">Transform Feedback Into Intelligence</EditableText>
               </h2>
               <p className="text-xl text-gray-600 mb-8">
-                Stop spending weeks manually categorizing feedback. Let AI reveal the patterns and insights that matter most.
+                <EditableText contentKey="thematic-analysis-why-description" as="span">Stop spending weeks manually categorizing feedback. Let AI reveal the patterns and insights that matter most.</EditableText>
               </p>
               
               <div className="space-y-4">
@@ -142,7 +146,9 @@ const ThematicAnalysis = () => {
                     <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
                       <Check className="w-4 h-4 text-green-600" />
                     </div>
-                    <p className="text-gray-700 font-medium">{benefit}</p>
+                    <p className="text-gray-700 font-medium">
+                      <EditableText contentKey={`thematic-analysis-benefit-${index}`} as="span">{benefit}</EditableText>
+                    </p>
                   </div>
                 ))}
               </div>
@@ -193,10 +199,10 @@ const ThematicAnalysis = () => {
       <section className="py-20 bg-gradient-to-r from-purple-600 to-pink-600">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
-            Be First to Unlock Hidden Insights
+            <EditableText contentKey="thematic-analysis-cta-title" as="span">Be First to Unlock Hidden Insights</EditableText>
           </h2>
           <p className="text-xl text-purple-100 mb-10">
-            Join our early access program and be among the first to experience AI-powered thematic analysis.
+            <EditableText contentKey="thematic-analysis-cta-description" as="span">Join our early access program and be among the first to experience AI-powered thematic analysis.</EditableText>
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">

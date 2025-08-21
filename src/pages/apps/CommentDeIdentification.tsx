@@ -129,10 +129,10 @@ const CommentDeIdentification = () => {
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
               <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-6">
-                Why Choose Our De-Identification?
+                <EditableText contentKey="comment-de-id-why-title" as="span">Why Choose Our De-Identification?</EditableText>
               </h2>
               <p className="text-xl text-gray-600 mb-8">
-                Protect your organization and employees while maintaining the valuable insights hidden in your feedback data.
+                <EditableText contentKey="comment-de-id-why-description" as="span">Protect your organization and employees while maintaining the valuable insights hidden in your feedback data.</EditableText>
               </p>
               
               <div className="space-y-4">
@@ -140,7 +140,9 @@ const CommentDeIdentification = () => {
                     <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
                       <Check className="w-4 h-4 text-green-600" />
                     </div>
-                    <p className="text-gray-700 font-medium">{benefit}</p>
+                    <p className="text-gray-700 font-medium">
+                      <EditableText contentKey={`comment-de-id-benefit-${index}`} as="span">{benefit}</EditableText>
+                    </p>
                   </div>)}
               </div>
             </div>
@@ -198,10 +200,10 @@ $0.25 for each comment after that</div>
       <section className="py-20 bg-gradient-to-r from-blue-600 to-purple-600">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
-            Ready to Secure Your Employee Feedback?
+            <EditableText contentKey="comment-de-id-cta-title" as="span">Ready to Secure Your Employee Feedback?</EditableText>
           </h2>
           <p className="text-xl text-blue-100 mb-10">
-            Join organizations worldwide who trust us to protect their sensitive data while preserving valuable insights.
+            <EditableText contentKey="comment-de-id-cta-description" as="span">Join organizations worldwide who trust us to protect their sensitive data while preserving valuable insights.</EditableText>
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">

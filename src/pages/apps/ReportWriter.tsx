@@ -97,10 +97,10 @@ const ReportWriter = () => {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-              Intelligent Report Generation
+              <EditableText contentKey="report-writer-features-title" as="span">Intelligent Report Generation</EditableText>
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Let AI craft professional reports that tell the story behind your data with clarity and impact.
+              <EditableText contentKey="report-writer-features-description" as="span">Let AI craft professional reports that tell the story behind your data with clarity and impact.</EditableText>
             </p>
           </div>
           
@@ -113,8 +113,12 @@ const ReportWriter = () => {
                       <feature.icon className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-semibold mb-3 text-gray-900">{feature.title}</h3>
-                      <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+                      <h3 className="text-xl font-semibold mb-3 text-gray-900">
+                        <EditableText contentKey={`report-writer-feature-${index}-title`} as="span">{feature.title}</EditableText>
+                      </h3>
+                      <p className="text-gray-600 leading-relaxed">
+                        <EditableText contentKey={`report-writer-feature-${index}-desc`} as="span">{feature.description}</EditableText>
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -130,10 +134,10 @@ const ReportWriter = () => {
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
               <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-6">
-                Professional Reports in Minutes
+                <EditableText contentKey="report-writer-why-title" as="span">Professional Reports in Minutes</EditableText>
               </h2>
               <p className="text-xl text-gray-600 mb-8">
-                Stop spending days creating reports manually. Generate professional, branded reports that tell compelling data stories automatically.
+                <EditableText contentKey="report-writer-why-description" as="span">Stop spending days creating reports manually. Generate professional, branded reports that tell compelling data stories automatically.</EditableText>
               </p>
               
               <div className="space-y-4">
@@ -142,7 +146,9 @@ const ReportWriter = () => {
                     <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
                       <Check className="w-4 h-4 text-green-600" />
                     </div>
-                    <p className="text-gray-700 font-medium">{benefit}</p>
+                    <p className="text-gray-700 font-medium">
+                      <EditableText contentKey={`report-writer-benefit-${index}`} as="span">{benefit}</EditableText>
+                    </p>
                   </div>
                 ))}
               </div>
@@ -193,10 +199,10 @@ const ReportWriter = () => {
       <section className="py-20 bg-gradient-to-r from-orange-600 to-red-600">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
-            Transform Data Into Stories
+            <EditableText contentKey="report-writer-cta-title" as="span">Transform Data Into Stories</EditableText>
           </h2>
           <p className="text-xl text-orange-100 mb-10">
-            Join organizations who are revolutionizing how they communicate insights with AI-powered report generation.
+            <EditableText contentKey="report-writer-cta-description" as="span">Join organizations who are revolutionizing how they communicate insights with AI-powered report generation.</EditableText>
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
