@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, HashRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { EditModeProvider } from "@/contexts/EditModeContext";
+import { EditModeWrapper } from "@/components/EditModeWrapper";
 import { ThemeProvider } from "next-themes";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Navigation } from "@/components/Navigation";
@@ -135,7 +136,9 @@ const App = () => {
               <Toaster />
               <Sonner />
               <Router>
-                <AppContent />
+                <EditModeWrapper>
+                  <AppContent />
+                </EditModeWrapper>
               </Router>
             </TooltipProvider>
           </ThemeProvider>

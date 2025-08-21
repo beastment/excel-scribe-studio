@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { RichTextToolbar } from './RichTextToolbar';
+import { EditModeControls } from './EditModeControls';
 import { cn } from '@/lib/utils';
+import { useDraggable } from '@dnd-kit/core';
 
 interface EditableTextProps {
   contentKey: string;
@@ -16,13 +18,38 @@ export const EditableText: React.FC<EditableTextProps> = ({
   className,
   as: Component = 'span'
 }) => {
-  const { isEditMode, setPendingEdit, getEditedContent } = useEditMode();
+  const { 
+    isEditMode, 
+    setPendingEdit, 
+    getEditedContent, 
+    setContentPosition,
+    getContentPosition,
+    copyContent,
+    pasteContent,
+    deleteContent,
+    addNewContent
+  } = useEditMode();
   const [isEditing, setIsEditing] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
   const editRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const displayContent = getEditedContent(contentKey, children);
+  
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: contentKey,
+    disabled: !isEditMode || isEditing,
+  });
+
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+  } : undefined;
 
   useEffect(() => {
     if (isEditing && editRef.current) {
@@ -120,8 +147,29 @@ export const EditableText: React.FC<EditableTextProps> = ({
     }
   };
 
+  const handleCopy = (key: string) => {
+    copyContent(key);
+  };
+
+  const handleDelete = (key: string) => {
+    deleteContent(key);
+  };
+
+  const handleAddNew = () => {
+    const newContent = pasteContent() || 'New content';
+    addNewContent(newContent);
+  };
+
   return (
-    <div className="relative">
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "relative group",
+        isEditMode && "border-dashed border-2 border-transparent hover:border-primary/30 rounded",
+        isDragging && "opacity-50"
+      )}
+    >
       <Component
         className={cn(
           className,
@@ -130,6 +178,7 @@ export const EditableText: React.FC<EditableTextProps> = ({
           isEditing && 'bg-primary/10 outline outline-2 outline-primary/50 rounded px-1'
         )}
         onClick={handleClick}
+        {...(isEditMode && !isEditing ? { ...attributes, ...listeners } : {})}
       >
         {isEditing ? (
           <div
@@ -145,6 +194,15 @@ export const EditableText: React.FC<EditableTextProps> = ({
           <div dangerouslySetInnerHTML={{ __html: displayContent }} />
         )}
       </Component>
+      
+      {isEditMode && !isEditing && (
+        <EditModeControls
+          contentKey={contentKey}
+          onCopy={handleCopy}
+          onDelete={handleDelete}
+          onAddNew={handleAddNew}
+        />
+      )}
       
       {showToolbar && isEditing && (
         <div ref={toolbarRef} className="absolute top-full left-0 mt-2 z-50">

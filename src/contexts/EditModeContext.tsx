@@ -8,6 +8,12 @@ interface ContentEdit {
   content_key: string;
   original_content: string;
   edited_content: string;
+  position?: { x: number; y: number };
+}
+
+interface ContentPosition {
+  x: number;
+  y: number;
 }
 
 interface EditModeContextType {
@@ -15,9 +21,17 @@ interface EditModeContextType {
   toggleEditMode: () => void;
   contentEdits: Record<string, string>;
   pendingEdits: Record<string, string>;
+  contentPositions: Record<string, ContentPosition>;
+  clipboard: string | null;
   updateContent: (key: string, originalContent: string, newContent: string) => Promise<void>;
   setPendingEdit: (key: string, content: string) => void;
   getEditedContent: (key: string, defaultContent: string) => string;
+  setContentPosition: (key: string, position: ContentPosition) => void;
+  getContentPosition: (key: string) => ContentPosition | null;
+  copyContent: (key: string) => void;
+  pasteContent: () => string | null;
+  deleteContent: (key: string) => void;
+  addNewContent: (content: string) => string;
   saveChanges: () => Promise<void>;
   discardChanges: () => void;
   hasPendingChanges: boolean;
@@ -29,6 +43,8 @@ export const EditModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isEditMode, setIsEditMode] = useState(false);
   const [contentEdits, setContentEdits] = useState<Record<string, string>>({});
   const [pendingEdits, setPendingEdits] = useState<Record<string, string>>({});
+  const [contentPositions, setContentPositions] = useState<Record<string, ContentPosition>>({});
+  const [clipboard, setClipboard] = useState<string | null>(null);
   const { user } = useAuth();
   const { isAdmin } = useUserRole();
 
@@ -80,6 +96,61 @@ export const EditModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ...prev,
       [key]: content
     }));
+  };
+
+  const setContentPosition = (key: string, position: ContentPosition) => {
+    setContentPositions(prev => ({
+      ...prev,
+      [key]: position
+    }));
+  };
+
+  const getContentPosition = (key: string): ContentPosition | null => {
+    return contentPositions[key] || null;
+  };
+
+  const copyContent = (key: string) => {
+    const content = getEditedContent(key, '');
+    setClipboard(content);
+    toast.success('Content copied to clipboard');
+  };
+
+  const pasteContent = (): string | null => {
+    if (clipboard) {
+      toast.success('Content pasted');
+      return clipboard;
+    }
+    toast.error('No content in clipboard');
+    return null;
+  };
+
+  const deleteContent = (key: string) => {
+    setPendingEdits(prev => {
+      const newEdits = { ...prev };
+      delete newEdits[key];
+      return newEdits;
+    });
+    
+    setContentEdits(prev => {
+      const newEdits = { ...prev };
+      delete newEdits[key];
+      return newEdits;
+    });
+
+    setContentPositions(prev => {
+      const newPositions = { ...prev };
+      delete newPositions[key];
+      return newPositions;
+    });
+
+    toast.success('Content deleted');
+  };
+
+  const addNewContent = (content: string): string => {
+    const newKey = `new-content-${Date.now()}`;
+    setPendingEdit(newKey, content);
+    toast.success('New content added');
+    return newKey;
   };
 
   const updateContent = async (key: string, originalContent: string, newContent: string) => {
@@ -166,9 +237,17 @@ export const EditModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       toggleEditMode,
       contentEdits,
       pendingEdits,
+      contentPositions,
+      clipboard,
       updateContent,
       setPendingEdit,
       getEditedContent,
+      setContentPosition,
+      getContentPosition,
+      copyContent,
+      pasteContent,
+      deleteContent,
+      addNewContent,
       saveChanges,
       discardChanges,
       hasPendingChanges
