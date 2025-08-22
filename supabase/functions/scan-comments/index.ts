@@ -879,8 +879,8 @@ serve(async (req) => {
               concerning: scanAResultCopy.concerning,
               identifiable: scanAResultCopy.identifiable,
               aiReasoning: scanAResultCopy.reasoning,
-              redactedText,
-              rephrasedText,
+              redactedText: null,
+              rephrasedText: null,
               
               // Set the correct mode based on content type
               mode: finalMode,
