@@ -271,7 +271,7 @@ serve(async (req) => {
     };
 
     const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
-      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ITEM k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.`;
+      const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ITEM k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.\n- IMPORTANT: The <<<ITEM k>>> prefix is ONLY for identification - do NOT include <<<END k>>> markers anywhere in your output.`;
       return `${basePrompt}\n\n${sentinels}`;
     };
 
@@ -1843,11 +1843,19 @@ function parseBatchTextList(content: string): string[] {
 }
 
 function normalizeBatchTextParsed(parsed: any): string[] {
+  // Helper function to clean up any remaining sentinel markers
+  const cleanSentinels = (text: string): string => {
+    return text
+      .replace(/<<<END\s+\d+>>>/gi, '') // Remove END markers
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+  };
+
   // If already a string array, drop header-like lines and return
   if (Array.isArray(parsed)) {
     const cleaned = parsed
       .filter((v) => v != null)
-      .map((v) => (typeof v === 'string' ? v.trim() : JSON.stringify(v)))
+      .map((v) => (typeof v === 'string' ? cleanSentinels(v.trim()) : cleanSentinels(JSON.stringify(v))))
       .filter((s) => s.length > 0)
       .filter((s) => !/^here\s+(?:is|are)[\s\S]*?:\s*$/i.test(s));
 
