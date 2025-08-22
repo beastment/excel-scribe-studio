@@ -262,6 +262,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             setScanProgress(90);
             
             // Phase 2: post-process flagged comments
+            console.log(`[BATCH] AI Config preferred_batch_size: ${aiConfigs?.preferred_batch_size || 'not set (using default 10)'}`);
+            
             const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
               body: {
                 comments: flaggedComments.map((c: any) => ({
@@ -280,7 +282,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   model: aiConfigs?.model || 'gpt-4o-mini',
                   redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
                   rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
-                  max_tokens: aiConfigs?.max_tokens || 4096
+                  max_tokens: aiConfigs?.max_tokens || 4096,
+                  preferred_batch_size: aiConfigs?.preferred_batch_size || 10
                 },
                 defaultMode,
                 scanRunId // Pass the same run ID for log correlation
@@ -579,7 +582,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             ...comment,
             mode
           }],
-          aiConfig,
+          scanConfig: {
+            provider: aiConfigData?.provider || 'openai',
+            model: aiConfigData?.model || 'gpt-4o-mini',
+            redact_prompt: aiConfigData?.redact_prompt || 'Redact any personally identifiable information from this text while preserving the meaning.',
+            rephrase_prompt: aiConfigData?.rephrase_prompt || 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
+            max_tokens: aiConfigData?.max_tokens || 2000,
+            preferred_batch_size: aiConfigData?.preferred_batch_size || 10
+          },
+          defaultMode: mode,
           scanRunId: `reprocess-${Date.now()}`
         }
       });
