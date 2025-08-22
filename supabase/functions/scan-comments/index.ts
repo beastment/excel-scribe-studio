@@ -891,6 +891,8 @@ serve(async (req) => {
               const prompt = buildBatchAdjudicationPrompt(items.length);
               const input = buildBatchAdjudicationInput(items);
               let adjResp: any;
+              
+              console.log(`Starting adjudication with primary model: ${adjudicator.provider}/${adjudicator.model}`);
               try {
                 adjResp = await callAI(
                   adjudicator.provider,
@@ -904,27 +906,87 @@ serve(async (req) => {
                   getEffectiveMaxTokens(adjudicator)
                 );
               } catch (primaryErr) {
-                adjResp = await callAI(
-                  scanB.provider,
-                  scanB.model,
-                  prompt,
-                  input,
-                  'batch_analysis',
-                  'adjudicator',
-                  rateLimiters,
-                  sequentialQueue,
-                  getEffectiveMaxTokens(scanB)
-                );
+                console.warn(`Primary adjudicator (${adjudicator.provider}/${adjudicator.model}) failed:`, (primaryErr as Error).message);
+                // Only use fallback for critical errors, not for parsing issues
+                if (primaryErr instanceof Error && 
+                    (primaryErr.message.includes('timeout') || 
+                     primaryErr.message.includes('rate limit') || 
+                     primaryErr.message.includes('quota') ||
+                     primaryErr.message.includes('service unavailable'))) {
+                  console.log(`Using fallback adjudicator (${scanB.provider}/${scanB.model}) due to critical error`);
+                  adjResp = await callAI(
+                    scanB.provider,
+                    scanB.model,
+                    prompt,
+                    input,
+                    'batch_analysis',
+                    'adjudicator',
+                    rateLimiters,
+                    sequentialQueue,
+                    getEffectiveMaxTokens(scanB)
+                  );
+                } else {
+                  console.log(`Skipping fallback adjudicator - error appears to be parsing-related, not critical`);
+                  console.log(`Error details: ${(primaryErr as Error).message}`);
+                  // Set a default response to avoid further processing
+                  adjResp = { results: null };
+                }
               }
               let adjResults = adjResp?.results || adjResp;
+              
+              // Log the adjudication response for debugging
+              console.log(`Adjudication response type: ${typeof adjResults}, isArray: ${Array.isArray(adjResults)}`);
+              if (adjResults) {
+                console.log(`Adjudication response preview: ${preview(JSON.stringify(adjResults), 200)}`);
+              }
+              
               if (!Array.isArray(adjResults)) {
                 const extracted = extractJsonArrayOrObjects(typeof adjResults === 'string' ? adjResults : JSON.stringify(adjResults));
-                if (Array.isArray(extracted)) adjResults = extracted;
+                if (Array.isArray(extracted)) {
+                  adjResults = extracted;
+                  console.log(`Successfully extracted JSON array from adjudication response`);
+                } else {
+                  console.warn(`Failed to extract valid JSON array from adjudication response`);
+                }
               }
+              
               if (Array.isArray(adjResults) && adjResults.some((x: any) => x && typeof x.index === 'number')) {
                 adjResults = realignResultsByIndex(adjResults, items.length);
+                console.log(`Realigned adjudication results by index`);
               }
-              for (let qi = 0; qi < chunk.length; qi++) {
+              
+              // Validate that we have valid adjudication results before processing
+              if (!Array.isArray(adjResults) || adjResults.length === 0) {
+                console.warn(`No valid adjudication results available, using Scan A results as fallback`);
+                // Process with Scan A results only
+                for (let qi = 0; qi < chunk.length; qi++) {
+                  const q = chunk[qi];
+                  const prev = scannedComments[q.scannedIndex];
+                  const resolved = {
+                    concerning: q.scanAResult.concerning,
+                    identifiable: q.scanAResult.identifiable,
+                    reasoning: q.scanAResult.reasoning
+                  };
+                  
+                  if (resolved.concerning) summary.concerning++;
+                  if (resolved.identifiable) summary.identifiable++;
+                  summary.needsAdjudication++;
+
+                  prev.concerning = resolved.concerning;
+                  prev.identifiable = resolved.identifiable;
+                  prev.aiReasoning = `Adjudication failed, using Scan A result: ${resolved.reasoning}`.trim();
+                  prev.mode = (resolved.concerning || resolved.identifiable) ? defaultMode : 'original';
+                  prev.text = prev.mode === 'original' ? (q.comment.originalText || q.comment.text) : prev.text;
+                  prev.debugInfo = {
+                    ...prev.debugInfo,
+                    adjudicationResult: { skipped: true, reason: 'adjudication_failed' } as any,
+                    finalDecision: resolved,
+                    rawResponses: { ...(prev.debugInfo?.rawResponses || {}), adjudicationResponse: null }
+                  };
+                }
+              } else {
+                // Process with valid adjudication results
+                for (let qi = 0; qi < chunk.length; qi++) {
                 const q = chunk[qi];
                 const res = Array.isArray(adjResults) ? adjResults[qi] : null;
                 const prev = scannedComments[q.scannedIndex];
@@ -942,12 +1004,13 @@ serve(async (req) => {
                 prev.aiReasoning = `Adjudicator: ${resolved.reasoning}`.trim();
                 prev.mode = (resolved.concerning || resolved.identifiable) ? defaultMode : 'original';
                 prev.text = prev.mode === 'original' ? (q.comment.originalText || q.comment.text) : prev.text;
-                prev.debugInfo = {
-                  ...prev.debugInfo,
-                  adjudicationResult: { ...(res || resolved), model: `${adjudicator.provider}/${adjudicator.model}` },
-                  finalDecision: resolved,
-                  rawResponses: { ...(prev.debugInfo?.rawResponses || {}), adjudicationResponse: (adjResp && (adjResp as any).rawResponse) || null }
-                };
+                                  prev.debugInfo = {
+                    ...prev.debugInfo,
+                    adjudicationResult: { ...(res || resolved), model: `${adjudicator.provider}/${adjudicator.model}` },
+                    finalDecision: resolved,
+                    rawResponses: { ...(prev.debugInfo?.rawResponses || {}), adjudicationResponse: (adjResp && (adjResp as any).rawResponse) || null }
+                  };
+                }
               }
             }
           } catch (e) {
