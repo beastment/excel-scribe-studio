@@ -121,6 +121,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
 
+    console.log(`[TOGGLE] Switching comment ${commentId} to mode: ${mode}`, {
+      currentMode: comment.mode,
+      hasRedactedText: !!comment.redactedText,
+      hasRephrasedText: !!comment.rephrasedText,
+      concerning: comment.concerning,
+      identifiable: comment.identifiable
+    });
+
     // Determine the middle column text based on mode
     let middleColumnText = '';
     if (mode === 'edit') {
@@ -144,18 +152,21 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     } : c);
     onCommentsUpdate(updatedComments);
 
-    // Reprocess if we don't have the required text for the mode, or if it's a concerning/identifiable comment that needs updating
+    // Only reprocess if we don't have the required text for the mode AND the comment is flagged
     if (comment.concerning || comment.identifiable) {
       if (mode === 'redact' && !comment.redactedText) {
+        console.log(`[TOGGLE] Need to reprocess for redact mode - no redactedText available`);
         // If switching to redact mode but no redacted text exists, reprocess
         await reprocessComment(commentId, mode);
       } else if (mode === 'rephrase' && !comment.rephrasedText) {
+        console.log(`[TOGGLE] Need to reprocess for rephrase mode - no rephrasedText available`);
         // If switching to rephrase mode but no rephrased text exists, reprocess
         await reprocessComment(commentId, mode);
-      } else if (mode !== 'revert' && mode !== 'edit') {
-        // For other modes that need reprocessing
-        await reprocessComment(commentId, mode);
+      } else {
+        console.log(`[TOGGLE] No reprocessing needed - text already available for mode: ${mode}`);
       }
+    } else {
+      console.log(`[TOGGLE] Comment not flagged (concerning: ${comment.concerning}, identifiable: ${comment.identifiable}) - no reprocessing needed`);
     }
   };
   const scanComments = async () => {
@@ -506,47 +517,49 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const reprocessComment = async (commentId: string, mode: 'redact' | 'rephrase' | 'revert') => {
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
+    
     try {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('scan-comments', {
+      // Get AI configuration for post-processing
+      const { data: aiConfigData } = await supabase
+        .from('ai_configurations')
+        .select('*')
+        .eq('is_active', true)
+        .single();
+
+      const aiConfig = aiConfigData || {
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        redact_prompt: 'Redact any personally identifiable information from this text while preserving the meaning.',
+        rephrase_prompt: 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
+        max_tokens: 2000
+      };
+
+      // Call post-process-comments directly since we already have scan results
+      const { data, error } = await supabase.functions.invoke('post-process-comments', {
         body: {
           comments: [{
             ...comment,
             mode
           }],
-          defaultMode: mode
+          aiConfig,
+          scanRunId: `reprocess-${Date.now()}`
         }
       });
+      
       if (error) throw new Error(error.message);
-      if (data?.comments && data.comments.length > 0) {
-        let updatedComment = data.comments[0];
-        // Normalize to ensure flags align with final decision and clear stale AI text if not flagged
-        const fd = updatedComment?.debugInfo?.finalDecision;
-        const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!updatedComment.concerning;
-        const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!updatedComment.identifiable;
-        if (!concerning && !identifiable) {
-          updatedComment = {
-            ...updatedComment,
-            concerning: false,
-            identifiable: false,
-            mode: 'revert',
-            text: updatedComment.originalText || updatedComment.text,
-            redactedText: undefined,
-            rephrasedText: undefined,
-          };
-        } else {
-          updatedComment = { ...updatedComment, concerning, identifiable };
-        }
-        const middleColumnText = mode === 'rephrase' ? updatedComment.rephrasedText : updatedComment.redactedText;
+      if (data?.processedComments && data.processedComments.length > 0) {
+        let updatedComment = data.processedComments[0];
+        
+        // Update the comment with the processed text
         const updatedComments = comments.map(c => c.id === commentId ? {
           ...c,
           ...updatedComment,
           mode,
-          text: middleColumnText || updatedComment.text || c.text,
+          text: mode === 'rephrase' ? (updatedComment.rephrasedText || c.text) : 
+                 mode === 'redact' ? (updatedComment.redactedText || c.text) : c.text,
           approved: false
         } : c);
+        
         onCommentsUpdate(updatedComments);
         toast.success(`Comment ${mode === 'redact' ? 'redacted' : 'rephrased'} successfully`);
       }
