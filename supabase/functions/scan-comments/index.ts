@@ -110,8 +110,7 @@ serve(async (req) => {
 
     const { data: configs, error: configError } = await supabase
       .from('ai_configurations')
-      .select('*')
-      .eq('is_active', true);
+      .select('*');
 
     if (configError) {
       console.error('Database error fetching AI configurations:', configError);

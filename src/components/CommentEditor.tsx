@@ -232,7 +232,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           .from('ai_configurations')
           .select('*')
           .eq('scanner_type', 'adjudicator')
-          .eq('is_active', true)
           .single();
         
         if (configError || !adjudicatorConfigs) {
@@ -568,7 +567,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       const { data: aiConfigData } = await supabase
         .from('ai_configurations')
         .select('*')
-        .eq('is_active', true)
+        .eq('scanner_type', 'scan_a')
         .single();
 
       const aiConfig = aiConfigData || {
