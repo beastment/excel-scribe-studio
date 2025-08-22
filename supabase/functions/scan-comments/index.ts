@@ -1032,39 +1032,64 @@ serve(async (req) => {
               console.log('Skipping redaction/rephrasing to avoid timeouts (time budget exceeded)');
               // Trigger post-processing function for flagged comments
               const flaggedCount = flaggedComments.length;
+              console.log(`[POSTPROCESS] Found ${flaggedCount} flagged comments that need post-processing`);
+              
               if (flaggedCount > 0) {
                 console.log(`[POSTPROCESS] Triggering post-processing function for ${flaggedCount} flagged comments`);
+                console.log(`[POSTPROCESS] Supabase URL: ${Deno.env.get('SUPABASE_URL')}`);
+                console.log(`[POSTPROCESS] Anon Key: ${Deno.env.get('SUPABASE_ANON_KEY') ? 'Present' : 'Missing'}`);
                 
                 try {
                   // Call the post-processing function
-                  const postProcessResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/post-process-comments`, {
+                  console.log(`[POSTPROCESS] Making fetch request to post-processing function...`);
+                  
+                  // Check if the post-processing function endpoint exists
+                  const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/post-process-comments`;
+                  console.log(`[POSTPROCESS] Function URL: ${functionUrl}`);
+                  
+                  const postProcessPayload = {
+                    comments: flaggedComments.map(c => ({
+                      id: c.id || `comment_${c.scannedIndex}`,
+                      originalText: c.originalText || c.text,
+                      text: c.text,
+                      concerning: c.concerning,
+                      identifiable: c.identifiable,
+                      mode: c.mode || ((c.concerning || c.identifiable) ? defaultMode : 'original'),
+                      scanAResult: c.scanAResult,
+                      adjudicationResult: c.adjudicationResult
+                    })),
+                    scanConfig: {
+                      provider: activeConfig.provider,
+                      model: activeConfig.model,
+                      redact_prompt: activeConfig.redact_prompt,
+                      rephrase_prompt: activeConfig.rephrase_prompt,
+                      max_tokens: getEffectiveMaxTokens(activeConfig)
+                    },
+                    defaultMode
+                  };
+                  
+                  console.log(`[POSTPROCESS] Payload preview: ${JSON.stringify(postProcessPayload).substring(0, 500)}...`);
+                  
+                  // First check if the function exists with a HEAD request
+                  try {
+                    console.log(`[POSTPROCESS] Checking if function exists...`);
+                    const headResponse = await fetch(functionUrl, { method: 'HEAD' });
+                    console.log(`[POSTPROCESS] Function check response: ${headResponse.status} ${headResponse.statusText}`);
+                  } catch (headError) {
+                    console.warn(`[POSTPROCESS] Function check failed:`, headError);
+                  }
+                  
+                  const postProcessResponse = await fetch(functionUrl, {
                     method: 'POST',
                     headers: {
                       'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
                       'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                      comments: flaggedComments.map(c => ({
-                        id: c.id || `comment_${c.scannedIndex}`,
-                        originalText: c.originalText || c.text,
-                        text: c.text,
-                        concerning: c.concerning,
-                        identifiable: c.identifiable,
-                        mode: c.mode || ((c.concerning || c.identifiable) ? defaultMode : 'original'),
-                        scanAResult: c.scanAResult,
-                        adjudicationResult: c.adjudicationResult
-                      })),
-                      scanConfig: {
-                        provider: activeConfig.provider,
-                        model: activeConfig.model,
-                        redact_prompt: activeConfig.redact_prompt,
-                        rephrase_prompt: activeConfig.rephrase_prompt,
-                        max_tokens: getEffectiveMaxTokens(activeConfig)
-                      },
-                      defaultMode
-                    })
+                    body: JSON.stringify(postProcessPayload)
                   });
 
+                  console.log(`[POSTPROCESS] Response status: ${postProcessResponse.status} ${postProcessResponse.statusText}`);
+                  
                   if (postProcessResponse.ok) {
                     const postProcessResult = await postProcessResponse.json();
                     console.log(`[POSTPROCESS] Successfully processed ${postProcessResult.summary.redacted} redacted, ${postProcessResult.summary.rephrased} rephrased`);
@@ -1085,7 +1110,9 @@ serve(async (req) => {
                       }
                     }
                   } else {
-                    console.warn(`[POSTPROCESS] Failed to call post-processing function: ${postProcessResponse.status}`);
+                    console.warn(`[POSTPROCESS] Failed to call post-processing function: ${postProcessResponse.status} ${postProcessResponse.statusText}`);
+                    const errorText = await postProcessResponse.text();
+                    console.warn(`[POSTPROCESS] Error response: ${errorText}`);
                   }
                 } catch (postProcessError) {
                   console.error(`[POSTPROCESS] Error calling post-processing function:`, postProcessError);
