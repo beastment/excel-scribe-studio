@@ -371,10 +371,118 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const result = await response.json();
     return result.choices[0]?.message?.content || '';
   } else if (provider === 'bedrock') {
-    // Bedrock implementation would go here
-    throw new Error('Bedrock provider not yet implemented in scan-comments function');
+    // AWS Bedrock implementation
+    const region = Deno.env.get('AWS_REGION') || 'us-east-1';
+    const accessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+    
+    if (!accessKeyId || !secretAccessKey) {
+      throw new Error('AWS credentials not configured');
+    }
+
+    // Create AWS signature v4
+    const host = `bedrock-runtime.${region}.amazonaws.com`;
+    const endpoint = `https://${host}/model/${model}/invoke`;
+    
+    const bedrockPayload = {
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: 4096,
+      messages: payload.messages,
+      temperature: payload.temperature
+    };
+
+    const date = new Date();
+    const amzDate = date.toISOString().replace(/[:\-]|\.\d{3}/g, '');
+    
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Host': host,
+        'X-Amz-Date': amzDate,
+        'Authorization': await createAWSSignature(
+          'POST',
+          endpoint,
+          JSON.stringify(bedrockPayload),
+          accessKeyId,
+          secretAccessKey,
+          region,
+          amzDate
+        ),
+      },
+      body: JSON.stringify(bedrockPayload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Bedrock API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return result.content[0]?.text || '';
       } else {
     throw new Error(`Unsupported provider: ${provider}`);
   }
   }
+
+// AWS Signature V4 implementation for Bedrock
+async function createAWSSignature(
+  method: string,
+  url: string,
+  body: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+  region: string,
+  amzDate: string
+): Promise<string> {
+  const { hostname, pathname } = new URL(url);
+  const dateStamp = amzDate.substring(0, 8);
+  
+  // Create canonical request
+  const canonicalHeaders = `host:${hostname}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'host;x-amz-date';
+  const payloadHash = await sha256(body);
+  const canonicalRequest = `${method}\n${pathname}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  
+  // Create string to sign
+  const algorithm = 'AWS4-HMAC-SHA256';
+  const credentialScope = `${dateStamp}/${region}/bedrock/aws4_request`;
+  const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${await sha256(canonicalRequest)}`;
+  
+  // Calculate signature
+  const kDate = await hmacSha256(`AWS4${secretAccessKey}`, dateStamp);
+  const kRegion = await hmacSha256(kDate, region);
+  const kService = await hmacSha256(kRegion, 'bedrock');
+  const kSigning = await hmacSha256(kService, 'aws4_request');
+  const signature = await hmacSha256(kSigning, stringToSign);
+  
+  // Create authorization header
+  const authorization = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${arrayBufferToHex(signature)}`;
+  
+  return authorization;
+}
+
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  return arrayBufferToHex(hashBuffer);
+}
+
+async function hmacSha256(key: string | ArrayBuffer, message: string): Promise<ArrayBuffer> {
+  const keyBuffer = typeof key === 'string' ? new TextEncoder().encode(key) : key;
+  const msgBuffer = new TextEncoder().encode(message);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBuffer,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  return await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
+}
+
+function arrayBufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
