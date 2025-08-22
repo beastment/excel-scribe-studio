@@ -1048,100 +1048,60 @@ serve(async (req) => {
                 console.log(`[POSTPROCESS] Supabase URL: ${Deno.env.get('SUPABASE_URL')}`);
                 console.log(`[POSTPROCESS] Anon Key: ${Deno.env.get('SUPABASE_ANON_KEY') ? 'Present' : 'Missing'}`);
                 
-                try {
-                  // Call the post-processing function
-                  console.log(`[POSTPROCESS] Making fetch request to post-processing function...`);
-                  
-                  // Check if the post-processing function endpoint exists
-                  const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/post-process-comments`;
-                  console.log(`[POSTPROCESS] Function URL: ${functionUrl}`);
-                  console.log(`[POSTPROCESS] SUPABASE_URL: ${Deno.env.get('SUPABASE_URL')}`);
-                  console.log(`[POSTPROCESS] SUPABASE_ANON_KEY: ${Deno.env.get('SUPABASE_ANON_KEY') ? 'Present' : 'Missing'}`);
-                  
-                  const postProcessPayload = {
-                    comments: flaggedComments.map(c => ({
-                      id: c.id || `comment_${c.scannedIndex}`,
-                      scannedIndex: c.scannedIndex, // Preserve the scannedIndex for later lookup
-                      originalText: c.originalText || c.text,
-                      text: c.text,
-                      concerning: c.concerning,
-                      identifiable: c.identifiable,
-                      mode: c.mode || ((c.concerning || c.identifiable) ? defaultMode : 'original'),
-                      scanAResult: c.scanAResult,
-                      adjudicationResult: c.adjudicationResult
-                    })),
-                    scanConfig: {
-                      provider: activeConfig.provider,
-                      model: activeConfig.model,
-                      redact_prompt: activeConfig.redact_prompt,
-                      rephrase_prompt: activeConfig.rephrase_prompt,
-                      max_tokens: getEffectiveMaxTokens(activeConfig)
-                    },
-                    defaultMode
-                  };
-                  
-                  console.log(`[POSTPROCESS] Payload size: ${JSON.stringify(postProcessPayload).length} characters`);
-                  
-                  // First check if the function exists with a HEAD request
-                  try {
-                    console.log(`[POSTPROCESS] Checking if function exists...`);
-                    const headResponse = await fetch(functionUrl, { 
-                      method: 'HEAD',
-                      headers: {
-                        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-                      }
-                    });
-                    console.log(`[POSTPROCESS] Function check response: ${headResponse.status} ${headResponse.statusText}`);
-                  } catch (headError) {
-                    console.warn(`[POSTPROCESS] Function check failed:`, headError);
-                  }
-                  
-                  const postProcessResponse = await fetch(functionUrl, {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(postProcessPayload)
-                  });
-
-                  console.log(`[POSTPROCESS] Response status: ${postProcessResponse.status} ${postProcessResponse.statusText}`);
-                  
-                  if (postProcessResponse.ok) {
-                    const postProcessResult = await postProcessResponse.json();
-                    console.log(`[POSTPROCESS] Successfully processed ${postProcessResult.summary.redacted} redacted, ${postProcessResult.summary.rephrased} rephrased`);
-                    
-                    // Update the scanned comments with post-processing results
-                    console.log(`[POSTPROCESS] Updating ${postProcessResult.processedComments.length} processed comments`);
-                    console.log(`[POSTPROCESS] Processed comment IDs: ${postProcessResult.processedComments.map(c => c.id).join(', ')}`);
-                    console.log(`[POSTPROCESS] Flagged comment IDs: ${flaggedComments.map(c => c.id || `comment_${c.scannedIndex}`).join(', ')}`);
-                    
-                    for (const processedComment of postProcessResult.processedComments) {
-                      console.log(`[POSTPROCESS] Processing comment ${processedComment.id} with scannedIndex ${processedComment.scannedIndex}`);
-                      
-                      if (processedComment.scannedIndex !== undefined && processedComment.scannedIndex >= 0) {
-                        const index = processedComment.scannedIndex;
-                        console.log(`[POSTPROCESS] Updating comment at index ${index}...`);
-                        if (scannedComments[index]) {
-                          scannedComments[index].redactedText = processedComment.redactedText;
-                          scannedComments[index].rephrasedText = processedComment.rephrasedText;
-                          scannedComments[index].text = processedComment.finalText;
-                          scannedComments[index].mode = processedComment.mode;
-                          console.log(`[POSTPROCESS] Successfully updated comment ${processedComment.id} at index ${index} with mode ${processedComment.mode}`);
-                        } else {
-                          console.warn(`[POSTPROCESS] Index ${index} not found in scannedComments (array length: ${scannedComments.length})`);
-                        }
-                      } else {
-                        console.warn(`[POSTPROCESS] Comment ${processedComment.id} has no valid scannedIndex: ${processedComment.scannedIndex}`);
-                      }
-                    }
+                // Call the post-processing function (fire and forget)
+                console.log(`[POSTPROCESS] Making fetch request to post-processing function...`);
+                
+                const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/post-process-comments`;
+                console.log(`[POSTPROCESS] Function URL: ${functionUrl}`);
+                
+                const postProcessPayload = {
+                  comments: flaggedComments.map(c => ({
+                    id: c.id || `comment_${c.scannedIndex}`,
+                    scannedIndex: c.scannedIndex,
+                    originalText: c.originalText || c.text,
+                    text: c.text,
+                    concerning: c.concerning,
+                    identifiable: c.identifiable,
+                    mode: c.mode || ((c.concerning || c.identifiable) ? defaultMode : 'original'),
+                    scanAResult: c.scanAResult,
+                    adjudicationResult: c.adjudicationResult
+                  })),
+                  scanConfig: {
+                    provider: activeConfig.provider,
+                    model: activeConfig.model,
+                    redact_prompt: activeConfig.redact_prompt,
+                    rephrase_prompt: activeConfig.rephrase_prompt,
+                    max_tokens: getEffectiveMaxTokens(activeConfig)
+                  },
+                  defaultMode
+                };
+                
+                console.log(`[POSTPROCESS] Payload size: ${JSON.stringify(postProcessPayload).length} characters`);
+                
+                // Fire and forget - post-processing will handle the results independently
+                fetch(functionUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(postProcessPayload)
+                }).then(response => {
+                  if (response.ok) {
+                    console.log(`[POSTPROCESS] Successfully initiated post-processing for ${flaggedComments.length} flagged comments`);
                   } else {
-                    console.warn(`[POSTPROCESS] Failed to call post-processing function: ${postProcessResponse.status} ${postProcessResponse.statusText}`);
-                    const errorText = await postProcessResponse.text();
-                    console.warn(`[POSTPROCESS] Error response: ${errorText}`);
+                    console.warn(`[POSTPROCESS] Failed to initiate post-processing: ${response.status} ${response.statusText}`);
                   }
-                } catch (postProcessError) {
-                  console.error(`[POSTPROCESS] Error calling post-processing function:`, postProcessError);
+                }).catch(error => {
+                  console.error(`[POSTPROCESS] Error initiating post-processing:`, error);
+                });
+                
+                // Mark flagged comments as pending post-processing
+                for (const comment of flaggedComments) {
+                  if (comment.scannedIndex !== undefined && scannedComments[comment.scannedIndex]) {
+                    scannedComments[comment.scannedIndex].text = `[POST-PROCESSING PENDING: ${comment.text.substring(0, 100)}...]`;
+                    scannedComments[comment.scannedIndex].mode = 'pending';
+                  }
                 }
               }
             } else if (activeConfig.provider === 'bedrock' && activeConfig.model.startsWith('mistral.')) {
