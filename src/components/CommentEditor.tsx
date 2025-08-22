@@ -312,12 +312,50 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   const processed = processedMap.get(comment.id);
                   console.log(`Looking for processed comment with ID ${comment.id}:`, processed);
                   if (processed) {
-                    return {
-                      ...comment,
-                      text: processed.finalText,
+                    console.log(`[POSTPROCESS] Raw processed comment:`, {
+                      id: processed.id,
+                      mode: processed.mode,
+                      finalText: processed.finalText,
                       redactedText: processed.redactedText,
                       rephrasedText: processed.rephrasedText,
-                      mode: processed.mode,
+                      hasRedacted: !!processed.redactedText,
+                      hasRephrased: !!processed.rephrasedText
+                    });
+                    
+                    // Determine the final text based on default mode preference
+                    let finalText = comment.text; // Keep original text as fallback
+                    let finalMode = defaultMode; // Use user's default mode preference
+                    
+                    console.log(`[MODE] Comment ${comment.id} - defaultMode: ${defaultMode}, hasRedacted: ${!!processed.redactedText}, hasRephrased: ${!!processed.rephrasedText}`);
+                    
+                    if (defaultMode === 'redact' && processed.redactedText) {
+                      finalText = processed.redactedText;
+                      finalMode = 'redact';
+                      console.log(`[MODE] Using redacted text for comment ${comment.id}`);
+                    } else if (defaultMode === 'rephrase' && processed.rephrasedText) {
+                      finalText = processed.rephrasedText;
+                      finalMode = 'rephrase';
+                      console.log(`[MODE] Using rephrased text for comment ${comment.id}`);
+                    } else if (defaultMode === 'redact' && processed.rephrasedText) {
+                      // Fallback: if redacted text not available, use rephrased
+                      finalText = processed.rephrasedText;
+                      finalMode = 'rephrase';
+                      console.log(`[MODE] Fallback to rephrased text for comment ${comment.id} (redacted not available)`);
+                    } else if (defaultMode === 'rephrase' && processed.redactedText) {
+                      // Fallback: if rephrased text not available, use redacted
+                      finalText = processed.redactedText;
+                      finalMode = 'redact';
+                      console.log(`[MODE] Fallback to redacted text for comment ${comment.id} (rephrased not available)`);
+                    }
+                    
+                    console.log(`[MODE] Final result for comment ${comment.id}: mode=${finalMode}, textLength=${finalText.length}`);
+                    
+                    return {
+                      ...comment,
+                      text: finalText,
+                      redactedText: processed.redactedText,
+                      rephrasedText: processed.rephrasedText,
+                      mode: finalMode, // Use the determined final mode
                       needsPostProcessing: false, // Mark as processed
                       isPostProcessed: true // Add flag to prevent re-processing
                     };
