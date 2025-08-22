@@ -280,16 +280,25 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               toast.warning(`Post-processing failed for some comments: ${postProcessError.message}`);
             } else if (postProcessData?.processedComments) {
               console.log(`Post-processing completed:`, postProcessData);
+              console.log(`Post-processing response structure:`, {
+                hasProcessedComments: !!postProcessData.processedComments,
+                processedCommentsLength: postProcessData.processedComments?.length,
+                sampleProcessedComment: postProcessData.processedComments?.[0],
+                summary: postProcessData.summary
+              });
               
               // Create a map of processed comments by ID
               const processedMap = new Map(
                 postProcessData.processedComments.map((c: any) => [c.id, c])
               );
               
+              console.log(`Created processedMap with ${processedMap.size} entries:`, Array.from(processedMap.keys()));
+              
               // Merge post-processing results back into the scan data
               const finalComments = data.comments.map((comment: any) => {
                 if (comment.needsPostProcessing) {
                   const processed = processedMap.get(comment.id);
+                  console.log(`Looking for processed comment with ID ${comment.id}:`, processed);
                   if (processed) {
                     return {
                       ...comment,
@@ -316,6 +325,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               setScanProgress(95);
             } else {
               console.warn('Post-processing returned no data, using scan results with placeholders');
+              console.log('Full post-process response:', postProcessData);
               processedComments = data.comments;
             }
           } catch (postProcessError) {

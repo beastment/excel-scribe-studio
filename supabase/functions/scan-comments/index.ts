@@ -1039,10 +1039,21 @@ serve(async (req) => {
               });
               
               scannedComments[i].text = `[POST-PROCESSING NEEDED: ${comment.text.substring(0, 100)}...]`;
-              scannedComments[i].mode = comment.mode || ((comment.concerning || comment.identifiable) ? defaultMode : 'original');
+              
+              // Set the correct mode based on content type
+              let mode = 'original';
+              if (comment.concerning && comment.identifiable) {
+                mode = defaultMode; // Use default mode when both flags are true
+              } else if (comment.concerning) {
+                mode = 'redact'; // Redact concerning content
+              } else if (comment.identifiable) {
+                mode = 'rephrase'; // Rephrase identifiable content
+              }
+              
+              scannedComments[i].mode = mode;
               scannedComments[i].needsPostProcessing = true;
               
-              console.log(`[DEBUG] Successfully marked comment at index ${i} for post-processing`);
+              console.log(`[DEBUG] Successfully marked comment at index ${i} for post-processing with mode: ${mode} (concerning: ${comment.concerning}, identifiable: ${comment.identifiable})`);
             }
           }
         }
