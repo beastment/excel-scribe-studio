@@ -1043,9 +1043,10 @@ serve(async (req) => {
               // Set the correct mode based on content type
               let mode = 'original';
               if (comment.concerning && comment.identifiable) {
-                mode = defaultMode; // Use default mode when both flags are true
+                // If both flags are true, use the more appropriate mode based on content
+                mode = comment.concerning ? 'redact' : 'rephrase';
               } else if (comment.concerning) {
-                mode = defaultMode; // Use default mode for concerning content
+                mode = 'redact'; // Always redact concerning content
               } else if (comment.identifiable) {
                 mode = 'rephrase'; // Always rephrase identifiable content
               }
