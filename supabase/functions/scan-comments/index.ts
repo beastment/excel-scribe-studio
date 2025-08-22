@@ -1055,6 +1055,8 @@ serve(async (req) => {
                   // Check if the post-processing function endpoint exists
                   const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/post-process-comments`;
                   console.log(`[POSTPROCESS] Function URL: ${functionUrl}`);
+                  console.log(`[POSTPROCESS] SUPABASE_URL: ${Deno.env.get('SUPABASE_URL')}`);
+                  console.log(`[POSTPROCESS] SUPABASE_ANON_KEY: ${Deno.env.get('SUPABASE_ANON_KEY') ? 'Present' : 'Missing'}`);
                   
                   const postProcessPayload = {
                     comments: flaggedComments.map(c => ({
@@ -1082,7 +1084,12 @@ serve(async (req) => {
                   // First check if the function exists with a HEAD request
                   try {
                     console.log(`[POSTPROCESS] Checking if function exists...`);
-                    const headResponse = await fetch(functionUrl, { method: 'HEAD' });
+                    const headResponse = await fetch(functionUrl, { 
+                      method: 'HEAD',
+                      headers: {
+                        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+                      }
+                    });
                     console.log(`[POSTPROCESS] Function check response: ${headResponse.status} ${headResponse.statusText}`);
                   } catch (headError) {
                     console.warn(`[POSTPROCESS] Function check failed:`, headError);
