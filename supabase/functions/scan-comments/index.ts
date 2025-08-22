@@ -362,7 +362,7 @@ serve(async (req) => {
 
     {
       const requestStartMs = Date.now();
-      const timeBudgetMs = 100000; // increased to 100s to allow more time for post-processing
+      const timeBudgetMs = 30000; // reduced to 30s to test post-processing edge function
       const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace job level/grade indicators (e.g., \"Level 5\", \"L5\", \"Band 3\") with \"XXXX\".\n- Replace tenure/time-in-role statements (e.g., \"3 years in role\", \"tenure\") with \"XXXX\".`;
       // Prepare batch input for AI models (use original text, not redacted)
       const batchTexts = batch.map(comment => comment.originalText || comment.text);
