@@ -770,8 +770,8 @@ serve(async (req) => {
                   }
                 }
               };
-              const scannedIndex = scannedComments.length;
               scannedComments.push(placeholder);
+              const scannedIndex = scannedComments.length - 1; // Use the actual index after push
               adjQueue.push({
                 scannedIndex,
                 comment,
@@ -1028,11 +1028,21 @@ serve(async (req) => {
           console.log(`[POSTPROCESS] ${flaggedCount} flagged comments marked for post-processing (${concerningCount} concerning, ${identifiableCount} identifiable)`);
           
           // Mark flagged comments as needing post-processing
-          for (const comment of flaggedComments) {
-            if (comment.scannedIndex !== undefined && scannedComments[comment.scannedIndex]) {
-              scannedComments[comment.scannedIndex].text = `[POST-PROCESSING NEEDED: ${comment.text.substring(0, 100)}...]`;
-              scannedComments[comment.scannedIndex].mode = comment.mode || ((comment.concerning || comment.identifiable) ? defaultMode : 'original');
-              scannedComments[comment.scannedIndex].needsPostProcessing = true;
+          for (let i = 0; i < scannedComments.length; i++) {
+            const comment = scannedComments[i];
+            if (comment.concerning || comment.identifiable) {
+              console.log(`[DEBUG] Processing flagged comment at index ${i}:`, {
+                id: comment.id,
+                index: i,
+                concerning: comment.concerning,
+                identifiable: comment.identifiable
+              });
+              
+              scannedComments[i].text = `[POST-PROCESSING NEEDED: ${comment.text.substring(0, 100)}...]`;
+              scannedComments[i].mode = comment.mode || ((comment.concerning || comment.identifiable) ? defaultMode : 'original');
+              scannedComments[i].needsPostProcessing = true;
+              
+              console.log(`[DEBUG] Successfully marked comment at index ${i} for post-processing`);
             }
           }
         }
@@ -1057,6 +1067,20 @@ serve(async (req) => {
     
     console.log('Returning response with comments count:', response.comments.length);
     console.log('Response summary:', response.summary);
+    
+    // Debug: Check if needsPostProcessing flags are set correctly
+    const needsPostProcessingCount = response.comments.filter(c => c.needsPostProcessing).length;
+    console.log(`[DEBUG] Final response has ${needsPostProcessingCount} comments with needsPostProcessing=true`);
+    
+    if (needsPostProcessingCount > 0) {
+      const sampleFlagged = response.comments.filter(c => c.needsPostProcessing).slice(0, 2);
+      console.log(`[DEBUG] Sample flagged comments:`, sampleFlagged.map(c => ({
+        id: c.id,
+        needsPostProcessing: c.needsPostProcessing,
+        concerning: c.concerning,
+        identifiable: c.identifiable
+      })));
+    }
 
     // Restore console methods before returning
     try {

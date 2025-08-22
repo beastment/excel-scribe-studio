@@ -204,8 +204,32 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
 
       if (data?.comments) {
+        // Debug: Log the structure of scan results
+        console.log('Scan results structure:', {
+          totalComments: data.comments.length,
+          sampleComment: data.comments[0],
+          hasNeedsPostProcessing: data.comments.some((c: any) => c.needsPostProcessing),
+          needsPostProcessingCount: data.comments.filter((c: any) => c.needsPostProcessing).length,
+          concerningCount: data.comments.filter((c: any) => c.concerning).length,
+          identifiableCount: data.comments.filter((c: any) => c.identifiable).length
+        });
+        
+        // Debug: Check a few specific comments to see their structure
+        const sampleComments = data.comments.slice(0, 3);
+        console.log('Sample comments structure:', sampleComments.map(c => ({
+          id: c.id,
+          needsPostProcessing: c.needsPostProcessing,
+          concerning: c.concerning,
+          identifiable: c.identifiable,
+          mode: c.mode,
+          text: c.text?.substring(0, 100),
+          hasNeedsPostProcessing: 'needsPostProcessing' in c
+        })));
+        
         // Check if there are flagged comments that need post-processing
         const flaggedComments = data.comments.filter((c: any) => c.needsPostProcessing);
+        
+        console.log('Flagged comments for post-processing:', flaggedComments);
         
         if (flaggedComments.length > 0) {
           console.log(`Found ${flaggedComments.length} flagged comments, calling post-process-comments...`);
