@@ -362,7 +362,7 @@ serve(async (req) => {
 
     {
       const requestStartMs = Date.now();
-      const timeBudgetMs = 55000; // aim to return within ~55s to avoid client timeouts
+      const timeBudgetMs = 100000; // increased to 100s to allow more time for post-processing
       const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace job level/grade indicators (e.g., \"Level 5\", \"L5\", \"Band 3\") with \"XXXX\".\n- Replace tenure/time-in-role statements (e.g., \"3 years in role\", \"tenure\") with \"XXXX\".`;
       // Prepare batch input for AI models (use original text, not redacted)
       const batchTexts = batch.map(comment => comment.originalText || comment.text);
@@ -1030,6 +1030,67 @@ serve(async (req) => {
             // Skip only if we're out of time; allow batching even on very low RPM models (handled by sequential queue and backoff)
             if (outOfTime) {
               console.log('Skipping redaction/rephrasing to avoid timeouts (time budget exceeded)');
+              // Trigger post-processing function for flagged comments
+              const flaggedCount = flaggedComments.length;
+              if (flaggedCount > 0) {
+                console.log(`[POSTPROCESS] Triggering post-processing function for ${flaggedCount} flagged comments`);
+                
+                try {
+                  // Call the post-processing function
+                  const postProcessResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/post-process-comments`, {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      comments: flaggedComments.map(c => ({
+                        id: c.id || `comment_${c.scannedIndex}`,
+                        originalText: c.originalText || c.text,
+                        text: c.text,
+                        concerning: c.concerning,
+                        identifiable: c.identifiable,
+                        mode: c.mode || ((c.concerning || c.identifiable) ? defaultMode : 'original'),
+                        scanAResult: c.scanAResult,
+                        adjudicationResult: c.adjudicationResult
+                      })),
+                      scanConfig: {
+                        provider: activeConfig.provider,
+                        model: activeConfig.model,
+                        redact_prompt: activeConfig.redact_prompt,
+                        rephrase_prompt: activeConfig.rephrase_prompt,
+                        max_tokens: getEffectiveMaxTokens(activeConfig)
+                      },
+                      defaultMode
+                    })
+                  });
+
+                  if (postProcessResponse.ok) {
+                    const postProcessResult = await postProcessResponse.json();
+                    console.log(`[POSTPROCESS] Successfully processed ${postProcessResult.summary.redacted} redacted, ${postProcessResult.summary.rephrased} rephrased`);
+                    
+                    // Update the scanned comments with post-processing results
+                    for (const processedComment of postProcessResult.processedComments) {
+                      const originalComment = flaggedComments.find(c => 
+                        (c.id || `comment_${c.scannedIndex}`) === processedComment.id
+                      );
+                      if (originalComment) {
+                        const index = originalComment.scannedIndex;
+                        if (scannedComments[index]) {
+                          scannedComments[index].redactedText = processedComment.redactedText;
+                          scannedComments[index].rephrasedText = processedComment.rephrasedText;
+                          scannedComments[index].text = processedComment.finalText;
+                          scannedComments[index].mode = processedComment.mode;
+                        }
+                      }
+                    }
+                  } else {
+                    console.warn(`[POSTPROCESS] Failed to call post-processing function: ${postProcessResponse.status}`);
+                  }
+                } catch (postProcessError) {
+                  console.error(`[POSTPROCESS] Error calling post-processing function:`, postProcessError);
+                }
+              }
             } else if (activeConfig.provider === 'bedrock' && activeConfig.model.startsWith('mistral.')) {
               for (let k = 0; k < scannedComments.length; k++) {
                 if (scannedComments[k].concerning || scannedComments[k].identifiable) {
