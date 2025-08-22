@@ -19,7 +19,7 @@ serve(async (req) => {
     const requestBody = await req.json();
     // Generate a per-request scanRunId for log correlation
     const scanRunId = requestBody.scanRunId || String(Math.floor(1000 + Math.random() * 9000));
-    ;(globalThis as any).__scanRunId = scanRunId;
+    (globalThis as any).__scanRunId = scanRunId;
     
     // Global run-guards to prevent duplicate analysis batches for the same run id
     const gAny: any = globalThis as any;
@@ -87,15 +87,15 @@ serve(async (req) => {
     gAny.__runInProgress.add(scanRunId);
     
     const { 
-      comments, 
+      comments: inputComments, 
       defaultMode = 'redact',
       batchStart = 0,
       useCachedAnalysis = false
     } = requestBody;
 
-    console.log(`[REQUEST_DETAILS] phase=${useCachedAnalysis ? 'followup' : 'initial'} cached=${useCachedAnalysis} comments=${comments?.length} batchStart=${batchStart}`);
+    console.log(`[REQUEST_DETAILS] phase=${useCachedAnalysis ? 'followup' : 'initial'} cached=${useCachedAnalysis} comments=${inputComments?.length} batchStart=${batchStart}`);
 
-    if (!comments || !Array.isArray(comments) || comments.length === 0) {
+    if (!inputComments || !Array.isArray(inputComments) || inputComments.length === 0) {
       return new Response(JSON.stringify({ error: 'No comments provided' }), { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
         status: 400 
@@ -127,11 +127,11 @@ serve(async (req) => {
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
 
     // Process comments in batches
-    const batch = comments.slice(batchStart, batchStart + 100); // Process up to 100 at a time
+    const batch = inputComments.slice(batchStart, batchStart + 100); // Process up to 100 at a time
     let summary = { total: batch.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     const scannedComments: any[] = [];
 
-    console.log(`[PROCESS] Batch ${batchStart + 1}-${batchStart + batch.length} of ${comments.length} (preferredA=${scanA.preferred_batch_size || 100}, preferredB=${scanB.preferred_batch_size || 100}, chosen=${batch.length})`);
+    console.log(`[PROCESS] Batch ${batchStart + 1}-${batchStart + batch.length} of ${inputComments.length} (preferredA=${scanA.preferred_batch_size || 100}, preferredB=${scanB.preferred_batch_size || 100}, chosen=${batch.length})`);
 
     // Process batch with Scan A and Scan B in parallel
     const [scanAResults, scanBResults] = await Promise.all([
@@ -173,12 +173,23 @@ serve(async (req) => {
       if (concerning) summary.concerning++;
       if (identifiable) summary.identifiable++;
 
+      // Determine the mode based on content type
+      let mode: 'redact' | 'rephrase' | 'original';
+      if (concerning) {
+        mode = 'redact';
+      } else if (identifiable) {
+        mode = 'rephrase';
+      } else {
+        mode = 'original';
+      }
+
       // Create comment result with adjudication flags
       const processedComment = {
         ...comment,
         text: comment.originalText || comment.text,
         concerning,
         identifiable,
+        mode, // Add the mode field
         aiReasoning: scanAResult.reasoning,
         needsAdjudication,
         adjudicationData: {
@@ -206,8 +217,8 @@ serve(async (req) => {
       comments: scannedComments,
       batchStart,
       batchSize: scannedComments.length,
-      hasMore: batchStart + scannedComments.length < comments.length,
-      totalComments: comments.length,
+      hasMore: batchStart + scannedComments.length < inputComments.length,
+      totalComments: inputComments.length,
       summary: {
         total: scannedComments.length,
         concerning: scannedComments.filter(c => c.concerning).length,
