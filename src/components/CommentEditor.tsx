@@ -255,8 +255,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             adjudicatorConfig: {
               provider: adjudicatorConfigs?.provider || 'openai',
               model: adjudicatorConfigs?.model || 'gpt-4o-mini',
-              prompt: adjudicatorConfigs?.scan_prompt || 'You are an AI adjudicator resolving disagreements between two AI scanners.',
-              max_tokens: adjudicatorConfigs?.max_tokens || 4096
+              prompt: adjudicatorConfigs?.analysis_prompt || 'You are an AI adjudicator resolving disagreements between two AI scanners.'
             },
             scanRunId
           }
@@ -277,9 +276,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               if (adjudicated) {
             return {
                   ...comment,
-                  concerning: adjudicated.concerning,
-                  identifiable: adjudicated.identifiable,
-                  aiReasoning: adjudicated.reasoning,
+                  concerning: (adjudicated as any).concerning,
+                  identifiable: (adjudicated as any).identifiable,
+                  aiReasoning: (adjudicated as any).reasoning,
                   needsAdjudication: false,
                   isAdjudicated: true
                 };
@@ -334,7 +333,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               model: aiConfigs?.model || 'gpt-4o-mini',
               redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
               rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
-              max_tokens: aiConfigs?.max_tokens || 4096,
+              
               preferred_batch_size: aiConfigs?.preferred_batch_size || 10
             },
             defaultMode,
@@ -358,7 +357,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           // Merge post-processing results back into the scan data
           const finalComments = data.comments.map((comment: any) => {
             if (comment.concerning || comment.identifiable) {
-              const processed = processedMap.get(comment.id);
+              const processed = processedMap.get(comment.id) as any;
               if (processed) {
                 console.log(`[POSTPROCESS] Raw processed comment:`, {
                   id: processed.id,
@@ -575,7 +574,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         model: 'gpt-4o-mini',
         redact_prompt: 'Redact any personally identifiable information from this text while preserving the meaning.',
         rephrase_prompt: 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
-        max_tokens: 2000
+        
       };
 
       // Call post-process-comments directly since we already have scan results
@@ -590,7 +589,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             model: aiConfigData?.model || 'gpt-4o-mini',
             redact_prompt: aiConfigData?.redact_prompt || 'Redact any personally identifiable information from this text while preserving the meaning.',
             rephrase_prompt: aiConfigData?.rephrase_prompt || 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
-            max_tokens: aiConfigData?.max_tokens || 2000,
+            
             preferred_batch_size: aiConfigData?.preferred_batch_size || 10
           },
           defaultMode: mode,

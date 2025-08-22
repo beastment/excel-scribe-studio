@@ -142,8 +142,8 @@ serve(async (req) => {
 
     // Process batch with Scan A and Scan B in parallel
     const [scanAResults, scanBResults] = await Promise.all([
-      callAI(scanA.provider, scanA.model, scanA.scan_prompt, buildBatchInput(batch), 'batch_analysis'),
-      callAI(scanB.provider, scanB.model, scanB.scan_prompt, buildBatchInput(batch), 'batch_analysis')
+      callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis'),
+      callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis')
     ]);
 
         console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
