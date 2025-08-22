@@ -204,8 +204,109 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
 
       if (data?.comments) {
+        // Check if there are flagged comments that need post-processing
+        const flaggedComments = data.comments.filter((c: any) => c.needsPostProcessing);
+        
+        if (flaggedComments.length > 0) {
+          console.log(`Found ${flaggedComments.length} flagged comments, calling post-process-comments...`);
+          setScanProgress(85);
+          toast.info(`Post-processing ${flaggedComments.length} flagged comments...`);
+          
+          try {
+            // Get AI configuration for post-processing
+            const { data: aiConfigs, error: configError } = await supabase
+              .from('ai_configurations')
+              .select('*')
+              .eq('scanner_type', 'scan_a')
+              .single();
+            
+            if (configError || !aiConfigs) {
+              console.warn('Failed to fetch AI configuration, using defaults');
+            }
+            
+            setScanProgress(90);
+            
+            // Phase 2: post-process flagged comments
+            const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
+              body: {
+                comments: flaggedComments.map((c: any) => ({
+                  id: c.id,
+                  scannedIndex: c.scannedIndex,
+                  originalText: c.originalText || c.text,
+                  text: c.text,
+                  concerning: c.concerning,
+                  identifiable: c.identifiable,
+                  mode: c.mode,
+                  scanAResult: c.scanAResult,
+                  adjudicationResult: c.adjudicationResult
+                })),
+                scanConfig: {
+                  provider: aiConfigs?.provider || 'openai',
+                  model: aiConfigs?.model || 'gpt-4o-mini',
+                  redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                  rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+                  max_tokens: aiConfigs?.max_tokens || 4096
+                },
+                defaultMode
+              }
+            });
+
+            if (postProcessError) {
+              console.error(`Post-processing error:`, postProcessError);
+              toast.warning(`Post-processing failed for some comments: ${postProcessError.message}`);
+            } else if (postProcessData?.processedComments) {
+              console.log(`Post-processing completed:`, postProcessData);
+              
+              // Create a map of processed comments by ID
+              const processedMap = new Map(
+                postProcessData.processedComments.map((c: any) => [c.id, c])
+              );
+              
+              // Merge post-processing results back into the scan data
+              const finalComments = data.comments.map((comment: any) => {
+                if (comment.needsPostProcessing) {
+                  const processed = processedMap.get(comment.id);
+                  if (processed) {
+                    return {
+                      ...comment,
+                      text: processed.finalText,
+                      redactedText: processed.redactedText,
+                      rephrasedText: processed.rephrasedText,
+                      mode: processed.mode,
+                      needsPostProcessing: false
+                    };
+                  }
+                }
+                return comment;
+              });
+              
+              // Update processedComments with the merged results
+              processedComments = finalComments;
+              
+              // Show success message with post-processing summary
+              const summary = postProcessData.summary;
+              if (summary) {
+                toast.success(`Post-processing complete: ${summary.redacted} redacted, ${summary.rephrased} rephrased, ${summary.original} unchanged`);
+              }
+              
+              setScanProgress(95);
+            } else {
+              console.warn('Post-processing returned no data, using scan results with placeholders');
+              processedComments = data.comments;
+            }
+          } catch (postProcessError) {
+            console.error('Post-processing failed:', postProcessError);
+            toast.warning('Post-processing failed, showing scan results with placeholders');
+            // Continue with scan results if post-processing fails
+            processedComments = data.comments;
+          }
+        } else {
+          // No flagged comments, use scan results directly
+          processedComments = data.comments;
+        }
+
         // Normalize results to ensure UI flags match final decision
-        const normalizedComments = data.comments.map((c: any) => {
+        const normalizedComments = processedComments.map((c: any) => {
           const fd = c?.debugInfo?.finalDecision;
           const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!c.concerning;
           const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!c.identifiable;
@@ -239,8 +340,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         throw new Error(`No comment data received`);
       }
       
-      // Backend now handles everything in one pass - no Phase 2 needed
-
       // Final update with all processed comments
       setScanProgress(100);
       setHasScanRun(true);
