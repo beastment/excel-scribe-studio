@@ -807,10 +807,22 @@ serve(async (req) => {
             // Individual adjudication processing removed - now handled by batched approach
             const processedComment = {
               ...comment,
-              text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
-              concerning: scanAResultCopy.concerning,
-              identifiable: scanAResultCopy.identifiable,
-              aiReasoning: scanAResultCopy.reasoning,
+              text: (() => {
+                // Set the correct mode based on content type
+                let mode = 'original';
+                if (finalResult.concerning && finalResult.identifiable) {
+                  mode = finalResult.concerning ? 'redact' : 'rephrase';
+                } else if (finalResult.concerning) {
+                  mode = 'redact';
+                } else if (finalResult.identifiable) {
+                  mode = 'rephrase';
+                }
+                
+                return mode === 'original' ? (comment.originalText || comment.text) : comment.text;
+              })(),
+              concerning: scanAResult.concerning,
+              identifiable: scanAResult.identifiable,
+              aiReasoning: scanAResult.reasoning,
               redactedText,
               rephrasedText,
               
@@ -871,17 +883,7 @@ serve(async (req) => {
               rephrasedText,
               
               // Set the correct mode based on content type
-              mode: (() => {
-                if (finalResult.concerning && finalResult.identifiable) {
-                  return finalResult.concerning ? 'redact' : 'rephrase';
-                } else if (finalResult.concerning) {
-                  return 'redact';
-                } else if (finalResult.identifiable) {
-                  return 'rephrase';
-                } else {
-                  return 'original';
-                }
-              })(),
+              mode: finalMode,
               
               approved: false,
               hideAiResponse: false,
@@ -1440,9 +1442,22 @@ JSON with EXACT values for agreements:
 
   const processedComment = {
     ...comment,
-    concerning: finalResult.concerning,
-    identifiable: finalResult.identifiable,
-    aiReasoning: finalResult.reasoning,
+    text: (() => {
+      // Set the correct mode based on content type
+      let mode = 'original';
+      if (finalResult.concerning && finalResult.identifiable) {
+        mode = finalResult.concerning ? 'redact' : 'rephrase';
+      } else if (finalResult.concerning) {
+        mode = 'redact';
+      } else if (finalResult.identifiable) {
+        mode = 'rephrase';
+      }
+      
+      return mode === 'original' ? (comment.originalText || comment.text) : comment.text;
+    })(),
+    concerning: scanAResult.concerning,
+    identifiable: scanAResult.identifiable,
+    aiReasoning: scanAResult.reasoning,
     redactedText,
     rephrasedText,
     
