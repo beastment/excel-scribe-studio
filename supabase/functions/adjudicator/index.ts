@@ -131,9 +131,14 @@ CRITICAL: Return ONLY the JSON array, no prose, no code fences, no explanations 
 
 // Build adjudication input
 function buildAdjudicationInput(comments: AdjudicationRequest['comments']): string {
-  return `Comments to adjudicate (each bounded by sentinels):
-
-${comments.map((comment, i) => `<<<ITEM ${i + 1>>>
+  const items = comments.map((comment, i) => {
+    const concerningStatus = comment.agreements.concerning === null ? 'No agreement' : 
+      comment.agreements.concerning ? 'Both agree true' : 'Both agree false';
+    const identifiableStatus = comment.agreements.identifiable === null ? 'No agreement' : 
+      comment.agreements.identifiable ? 'Both agree true' : 
+      comment.agreements.identifiable === false ? 'Both agree false' : 'Disagree';
+    
+    return `<<<ITEM ${i + 1}>>>
 Original Text: ${comment.originalText}
 
 Scan A (${comment.scanAResult.model}):
@@ -147,10 +152,15 @@ Scan B (${comment.scanBResult.model}):
 - Reasoning: ${comment.scanBResult.reasoning}
 
 Agreements:
-- Concerning: ${comment.agreements.concerning === null ? 'No agreement' : comment.agreements.concerning ? 'Both agree true' : 'Both agree false'}
-- Identifiable: ${comment.agreements.identifiable === null ? 'No agreement' : comment.agreements.identifiable ? 'Both agree true' : comment.agreements.identifiable === false ? 'Both agree false' : 'Disagree'}
+- Concerning: ${concerningStatus}
+- Identifiable: ${identifiableStatus}
 
-<<<END ${i + 1>>>`).join('\n\n')}`;
+<<<END ${i + 1}>>>`;
+  }).join('\n\n');
+
+  return `Comments to adjudicate (each bounded by sentinels):
+
+${items}`;
 }
 
 // Parse adjudication response

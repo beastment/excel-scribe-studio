@@ -276,7 +276,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             if (comment.needsAdjudication) {
               const adjudicated = adjudicatedMap.get(comment.id);
               if (adjudicated) {
-                return {
+            return {
                   ...comment,
                   concerning: adjudicated.concerning,
                   identifiable: adjudicated.identifiable,
