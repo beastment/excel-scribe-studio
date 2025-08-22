@@ -744,7 +744,16 @@ serve(async (req) => {
 
             // Always use batched adjudication when possible to avoid duplicate calls
             if (!skipAdjudicator) {
-              const finalMode = (scanAResultCopy.concerning || scanAResultCopy.identifiable) ? defaultMode : 'original';
+              // Set the correct mode based on content type
+              let finalMode = 'original';
+              if (scanAResultCopy.concerning && scanAResultCopy.identifiable) {
+                finalMode = scanAResultCopy.concerning ? 'redact' : 'rephrase';
+              } else if (scanAResultCopy.concerning) {
+                finalMode = 'redact';
+              } else if (scanAResultCopy.identifiable) {
+                finalMode = 'rephrase';
+              }
+              
               const placeholder: any = {
                 ...comment,
                 text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
@@ -802,9 +811,22 @@ serve(async (req) => {
               concerning: scanAResultCopy.concerning,
               identifiable: scanAResultCopy.identifiable,
               aiReasoning: scanAResultCopy.reasoning,
-              redactedText: null,
-              rephrasedText: null,
-              mode: finalMode,
+              redactedText,
+              rephrasedText,
+              
+              // Set the correct mode based on content type
+              mode: (() => {
+                if (finalResult.concerning && finalResult.identifiable) {
+                  return finalResult.concerning ? 'redact' : 'rephrase';
+                } else if (finalResult.concerning) {
+                  return 'redact';
+                } else if (finalResult.identifiable) {
+                  return 'rephrase';
+                } else {
+                  return 'original';
+                }
+              })(),
+              
               approved: false,
               hideAiResponse: false,
               debugInfo: {
@@ -829,16 +851,38 @@ serve(async (req) => {
             scannedComments.push(processedComment);
           } else {
             // No adjudication needed; use Scan A result (already patched) as final
-            const finalMode = (scanAResultCopy.concerning || scanAResultCopy.identifiable) ? defaultMode : 'original';
+            // Set the correct mode based on content type
+            let finalMode = 'original';
+            if (scanAResultCopy.concerning && scanAResultCopy.identifiable) {
+              finalMode = scanAResultCopy.concerning ? 'redact' : 'rephrase';
+            } else if (scanAResultCopy.concerning) {
+              finalMode = 'redact';
+            } else if (scanAResultCopy.identifiable) {
+              finalMode = 'rephrase';
+            }
+            
             const processedComment = {
               ...comment,
               text: finalMode === 'original' ? (comment.originalText || comment.text) : comment.text,
               concerning: scanAResultCopy.concerning,
               identifiable: scanAResultCopy.identifiable,
               aiReasoning: scanAResultCopy.reasoning,
-              redactedText: null,
-              rephrasedText: null,
-              mode: finalMode,
+              redactedText,
+              rephrasedText,
+              
+              // Set the correct mode based on content type
+              mode: (() => {
+                if (finalResult.concerning && finalResult.identifiable) {
+                  return finalResult.concerning ? 'redact' : 'rephrase';
+                } else if (finalResult.concerning) {
+                  return 'redact';
+                } else if (finalResult.identifiable) {
+                  return 'rephrase';
+                } else {
+                  return 'original';
+                }
+              })(),
+              
               approved: false,
               hideAiResponse: false,
               debugInfo: {
@@ -1401,7 +1445,20 @@ JSON with EXACT values for agreements:
     aiReasoning: finalResult.reasoning,
     redactedText,
     rephrasedText,
-    mode: finalResult.concerning || finalResult.identifiable ? defaultMode : 'original',
+    
+    // Set the correct mode based on content type
+    mode: (() => {
+      if (finalResult.concerning && finalResult.identifiable) {
+        return finalResult.concerning ? 'redact' : 'rephrase';
+      } else if (finalResult.concerning) {
+        return 'redact';
+      } else if (finalResult.identifiable) {
+        return 'rephrase';
+      } else {
+        return 'original';
+      }
+    })(),
+    
     approved: false,
     hideAiResponse: false,
     debugInfo: {
