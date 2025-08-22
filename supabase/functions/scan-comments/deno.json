@@ -1,0 +1,9 @@
+{
+  "functions": [
+    {
+      "name": "scan-comments",
+      "import_map": "./import_map.json",
+      "verify_jwt": false
+    }
+  ]
+}

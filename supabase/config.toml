@@ -1,1 +1,4 @@
 project_id = "abobvpamaiwrgwtghoyh"
+
+[functions.scan-comments]
+verify_jwt = false
