@@ -974,7 +974,18 @@ serve(async (req) => {
                   prev.concerning = resolved.concerning;
                   prev.identifiable = resolved.identifiable;
                   prev.aiReasoning = `Adjudication failed, using Scan A result: ${resolved.reasoning}`.trim();
-                  prev.mode = (resolved.concerning || resolved.identifiable) ? defaultMode : 'original';
+                  
+                  // Set the correct mode based on content type
+                  if (resolved.concerning && resolved.identifiable) {
+                    prev.mode = resolved.concerning ? 'redact' : 'rephrase';
+                  } else if (resolved.concerning) {
+                    prev.mode = 'redact';
+                  } else if (resolved.identifiable) {
+                    prev.mode = 'rephrase';
+                  } else {
+                    prev.mode = 'original';
+                  }
+                  
                   prev.text = prev.mode === 'original' ? (q.comment.originalText || q.comment.text) : prev.text;
                   prev.debugInfo = {
                     ...prev.debugInfo,
@@ -1001,7 +1012,18 @@ serve(async (req) => {
                 prev.concerning = resolved.concerning;
                 prev.identifiable = resolved.identifiable;
                 prev.aiReasoning = `Adjudicator: ${resolved.reasoning}`.trim();
-                prev.mode = (resolved.concerning || resolved.identifiable) ? defaultMode : 'original';
+                
+                // Set the correct mode based on content type
+                if (resolved.concerning && resolved.identifiable) {
+                  prev.mode = resolved.concerning ? 'redact' : 'rephrase';
+                } else if (resolved.concerning) {
+                  prev.mode = 'redact';
+                } else if (resolved.identifiable) {
+                  prev.mode = 'rephrase';
+                } else {
+                  prev.mode = 'original';
+                }
+                
                 prev.text = prev.mode === 'original' ? (q.comment.originalText || q.comment.text) : prev.text;
                                   prev.debugInfo = {
                     ...prev.debugInfo,
@@ -1035,7 +1057,9 @@ serve(async (req) => {
                 id: comment.id,
                 index: i,
                 concerning: comment.concerning,
-                identifiable: comment.identifiable
+                identifiable: comment.identifiable,
+                originalMode: comment.mode,
+                defaultMode: defaultMode
               });
               
               scannedComments[i].text = `[POST-PROCESSING NEEDED: ${comment.text.substring(0, 100)}...]`;
@@ -1045,16 +1069,24 @@ serve(async (req) => {
               if (comment.concerning && comment.identifiable) {
                 // If both flags are true, use the more appropriate mode based on content
                 mode = comment.concerning ? 'redact' : 'rephrase';
+                console.log(`[DEBUG] Both flags true - setting mode to: ${mode}`);
               } else if (comment.concerning) {
                 mode = 'redact'; // Always redact concerning content
+                console.log(`[DEBUG] Concerning content - setting mode to: redact`);
               } else if (comment.identifiable) {
                 mode = 'rephrase'; // Always rephrase identifiable content
+                console.log(`[DEBUG] Identifiable content - setting mode to: rephrase`);
+              } else {
+                console.log(`[DEBUG] No flags set - keeping mode as: original`);
               }
               
               // Don't override if comment already has a specific mode set
               if (comment.mode && comment.mode !== 'original') {
+                console.log(`[DEBUG] Preserving existing mode: ${comment.mode}`);
                 mode = comment.mode;
               }
+              
+              console.log(`[DEBUG] Final mode assignment: ${mode}`);
               
               scannedComments[i].mode = mode;
               scannedComments[i].needsPostProcessing = true;
