@@ -113,9 +113,17 @@ serve(async (req) => {
       .select('*')
       .eq('is_active', true);
 
-    if (configError || !configs || configs.length === 0) {
-      throw new Error('Failed to fetch AI configurations');
+    if (configError) {
+      console.error('Database error fetching AI configurations:', configError);
+      throw new Error(`Database error: ${configError.message || JSON.stringify(configError)}`);
     }
+
+    if (!configs || configs.length === 0) {
+      console.error('No active AI configurations found');
+      throw new Error('No active AI configurations found in database');
+    }
+
+    console.log(`[CONFIG] Found ${configs.length} active configurations:`, configs.map(c => `${c.scanner_type}:${c.provider}/${c.model}`));
 
     const scanA = configs.find(c => c.scanner_type === 'scan_a');
     const scanB = configs.find(c => c.scanner_type === 'scan_b');
