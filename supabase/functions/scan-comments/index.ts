@@ -1020,11 +1020,6 @@ serve(async (req) => {
 
         // Batch process redaction and rephrasing for flagged comments
         console.log(`[POSTPROCESS] scannedComments length: ${scannedComments.length}`);
-        console.log(`[POSTPROCESS] scannedComments sample:`, JSON.stringify(scannedComments.slice(0, 3).map(c => ({ 
-          concerning: c.concerning, 
-          identifiable: c.identifiable,
-          text: c.text?.substring(0, 100)
-        })).substring(0, 500)));
         
         const flaggedComments = scannedComments.filter(c => c.concerning || c.identifiable);
         console.log(`[POSTPROCESS] skipPostprocess: ${skipPostprocess}, flaggedComments.length: ${flaggedComments.length}`);
@@ -1042,14 +1037,8 @@ serve(async (req) => {
               // Trigger post-processing function for flagged comments
               const flaggedCount = flaggedComments.length;
               console.log(`[POSTPROCESS] Found ${flaggedCount} flagged comments that need post-processing`);
-              console.log(`[POSTPROCESS] flaggedComments array:`, JSON.stringify(flaggedComments.map(c => ({ 
-                id: c.id || `comment_${c.scannedIndex}`, 
-                concerning: c.concerning, 
-                identifiable: c.identifiable 
-              })).substring(0, 500)));
               
               // Debug: Check what's in scannedComments
-              console.log(`[POSTPROCESS] scannedComments length: ${scannedComments.length}`);
               const concerningCount = scannedComments.filter(c => c.concerning).length;
               const identifiableCount = scannedComments.filter(c => c.identifiable).length;
               console.log(`[POSTPROCESS] scannedComments - concerning: ${concerningCount}, identifiable: ${identifiableCount}`);
@@ -1088,7 +1077,7 @@ serve(async (req) => {
                     defaultMode
                   };
                   
-                  console.log(`[POSTPROCESS] Payload preview: ${JSON.stringify(postProcessPayload).substring(0, 500)}...`);
+                  console.log(`[POSTPROCESS] Payload size: ${JSON.stringify(postProcessPayload).length} characters`);
                   
                   // First check if the function exists with a HEAD request
                   try {
