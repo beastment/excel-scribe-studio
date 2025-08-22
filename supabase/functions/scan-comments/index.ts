@@ -139,8 +139,8 @@ serve(async (req) => {
       callAI(scanB.provider, scanB.model, scanB.scan_prompt, buildBatchInput(batch), 'batch_analysis')
     ]);
 
-    console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
-    console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
+        console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
+        console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
 
     // Parse and validate results
     const scanAResultsArray = parseBatchResults(scanAResults, batch.length, 'Scan A');
@@ -184,14 +184,14 @@ serve(async (req) => {
       }
 
       // Create comment result with adjudication flags
-      const processedComment = {
-        ...comment,
+            const processedComment = {
+              ...comment,
         text: comment.originalText || comment.text,
         concerning,
         identifiable,
         mode, // Add the mode field
         aiReasoning: scanAResult.reasoning,
-        needsAdjudication,
+                needsAdjudication,
         adjudicationData: {
           scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
           scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
@@ -246,7 +246,7 @@ serve(async (req) => {
       console.warn('Failed to restore console methods:', e);
     }
 
-    return new Response(JSON.stringify(response), { 
+    return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
 
@@ -276,11 +276,15 @@ serve(async (req) => {
 
 // Utility functions
 function buildBatchInput(comments: any[]): string {
+  const items = comments.map((comment, i) => 
+    `<<<ITEM ${i + 1}>>>
+${comment.originalText || comment.text}
+<<<END ${i + 1}>>>`
+  ).join('\n\n');
+  
   return `Comments to analyze (each bounded by sentinels):
 
-${comments.map((comment, i) => `<<<ITEM ${i + 1>>>
-${comment.originalText || comment.text}
-<<<END ${i + 1>>>`).join('\n\n')}`;
+${items}`;
 }
 
 function parseBatchResults(response: any, expectedCount: number, source: string): any[] {
@@ -310,7 +314,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
       identifiable: Boolean(item.identifiable),
       reasoning: String(item.reasoning || 'No reasoning provided')
     }));
-  } catch (error) {
+      } catch (error) {
     console.error(`Failed to parse ${source} results:`, error);
     console.error(`Raw ${source} response:`, response);
     throw new Error(`Failed to parse ${source} results: ${error.message}`);
@@ -362,8 +366,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
   } else if (provider === 'bedrock') {
     // Bedrock implementation would go here
     throw new Error('Bedrock provider not yet implemented in scan-comments function');
-  } else {
+      } else {
     throw new Error(`Unsupported provider: ${provider}`);
   }
-}
+  }
 
