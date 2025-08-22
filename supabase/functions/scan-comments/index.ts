@@ -1111,18 +1111,29 @@ serve(async (req) => {
                     console.log(`[POSTPROCESS] Successfully processed ${postProcessResult.summary.redacted} redacted, ${postProcessResult.summary.rephrased} rephrased`);
                     
                     // Update the scanned comments with post-processing results
+                    console.log(`[POSTPROCESS] Updating ${postProcessResult.processedComments.length} processed comments`);
+                    console.log(`[POSTPROCESS] Processed comment IDs: ${postProcessResult.processedComments.map(c => c.id).join(', ')}`);
+                    console.log(`[POSTPROCESS] Flagged comment IDs: ${flaggedComments.map(c => c.id || `comment_${c.scannedIndex}`).join(', ')}`);
+                    
                     for (const processedComment of postProcessResult.processedComments) {
+                      console.log(`[POSTPROCESS] Looking for comment with ID: ${processedComment.id}`);
                       const originalComment = flaggedComments.find(c => 
                         (c.id || `comment_${c.scannedIndex}`) === processedComment.id
                       );
                       if (originalComment) {
                         const index = originalComment.scannedIndex;
+                        console.log(`[POSTPROCESS] Found comment ${processedComment.id} at index ${index}, updating...`);
                         if (scannedComments[index]) {
                           scannedComments[index].redactedText = processedComment.redactedText;
                           scannedComments[index].rephrasedText = processedComment.rephrasedText;
                           scannedComments[index].text = processedComment.finalText;
                           scannedComments[index].mode = processedComment.mode;
+                          console.log(`[POSTPROCESS] Updated comment ${processedComment.id} with mode ${processedComment.mode}`);
+                        } else {
+                          console.warn(`[POSTPROCESS] Index ${index} not found in scannedComments`);
                         }
+                      } else {
+                        console.warn(`[POSTPROCESS] Could not find original comment with ID: ${processedComment.id}`);
                       }
                     }
                   } else {
