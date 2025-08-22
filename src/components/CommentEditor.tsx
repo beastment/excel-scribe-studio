@@ -260,7 +260,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   text: c.text,
                   concerning: c.concerning,
                   identifiable: c.identifiable,
-                  mode: c.mode,
+                  mode: c.mode, // Preserve the mode set by scan-comments
                   scanAResult: c.scanAResult,
                   adjudicationResult: c.adjudicationResult
                 })),
@@ -271,7 +271,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
                   max_tokens: aiConfigs?.max_tokens || 4096
                 },
-                defaultMode
+                defaultMode,
+                scanRunId // Pass the same run ID for log correlation
               }
             });
 
@@ -306,7 +307,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       redactedText: processed.redactedText,
                       rephrasedText: processed.rephrasedText,
                       mode: processed.mode,
-                      needsPostProcessing: false
+                      needsPostProcessing: false, // Mark as processed
+                      isPostProcessed: true // Add flag to prevent re-processing
                     };
                   }
                 }

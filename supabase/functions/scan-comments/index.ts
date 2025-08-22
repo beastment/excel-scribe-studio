@@ -1045,15 +1045,30 @@ serve(async (req) => {
               if (comment.concerning && comment.identifiable) {
                 mode = defaultMode; // Use default mode when both flags are true
               } else if (comment.concerning) {
-                mode = 'redact'; // Redact concerning content
+                mode = defaultMode; // Use default mode for concerning content
               } else if (comment.identifiable) {
-                mode = 'rephrase'; // Rephrase identifiable content
+                mode = 'rephrase'; // Always rephrase identifiable content
+              }
+              
+              // Don't override if comment already has a specific mode set
+              if (comment.mode && comment.mode !== 'original') {
+                mode = comment.mode;
               }
               
               scannedComments[i].mode = mode;
               scannedComments[i].needsPostProcessing = true;
               
               console.log(`[DEBUG] Successfully marked comment at index ${i} for post-processing with mode: ${mode} (concerning: ${comment.concerning}, identifiable: ${comment.identifiable})`);
+              
+              // Additional debugging for mode assignment
+              console.log(`[DEBUG] Mode assignment details:`, {
+                commentId: comment.id,
+                originalMode: comment.mode,
+                defaultMode: defaultMode,
+                finalMode: mode,
+                concerning: comment.concerning,
+                identifiable: comment.identifiable
+              });
             }
           }
         }

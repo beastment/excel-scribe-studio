@@ -201,6 +201,7 @@ interface PostProcessRequest {
     max_tokens?: number;
   };
   defaultMode: 'redact' | 'rephrase';
+  scanRunId?: string; // Add scanRunId to the interface
 }
 
 interface PostProcessResponse {
@@ -228,12 +229,8 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  // Generate a unique run ID for this request
-  const runId = Math.floor(Math.random() * 10000);
-  const logPrefix = `[RUN ${runId}]`;
-
   try {
-    const { comments, scanConfig, defaultMode }: PostProcessRequest = await req.json()
+    const { comments, scanConfig, defaultMode, scanRunId }: PostProcessRequest = await req.json()
     
     if (!comments || !Array.isArray(comments) || comments.length === 0) {
       return new Response(
@@ -241,6 +238,10 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }
+
+    // Use scanRunId if provided, otherwise generate a new one
+    const runId = scanRunId || Math.floor(Math.random() * 10000);
+    const logPrefix = `[RUN ${runId}]`;
 
     console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
 
