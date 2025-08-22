@@ -96,13 +96,12 @@ serve(async (req) => {
       batchStart = 0,
       // Optional orchestration flags to ensure fast responses under edge timeouts
       skipAdjudicator = false,
-      skipPostprocess = false,
       useCachedAnalysis = false,
       phase = 'analysis' // 'analysis' | 'postprocess' (for future use)
     } = requestBody;
 
     // Clarify request intent to disambiguate initial vs follow-up calls in logs
-    console.log(`[REQUEST_DETAILS] phase=${useCachedAnalysis ? 'followup' : 'initial'} cached=${useCachedAnalysis} skipAdjudicator=${skipAdjudicator} skipPostprocess=${skipPostprocess} comments=${comments?.length} batchStart=${batchStart}`);
+    console.log(`[REQUEST_DETAILS] phase=${useCachedAnalysis ? 'followup' : 'initial'} cached=${useCachedAnalysis} skipAdjudicator=${skipAdjudicator} comments=${comments?.length} batchStart=${batchStart}`);
     
     if (!comments || !Array.isArray(comments)) {
       throw new Error('Invalid comments data');
@@ -658,7 +657,7 @@ serve(async (req) => {
               sequentialQueue,
               scanAResponse?.rawResponse,
               scanBResponse?.rawResponse,
-              { skipAdjudicator, skipPostprocess, requestStartMs, timeBudgetMs }
+              { skipAdjudicator, requestStartMs, timeBudgetMs }
             );
           } catch (error) {
             console.error(`Individual processing failed for comment ${comment.id} (index ${j}) with Scan A (${scanA.provider}/${scanA.model}) and Scan B (${scanB.provider}/${scanB.model}):`, error);
@@ -1018,319 +1017,23 @@ serve(async (req) => {
           }
         }
 
-        // Batch process redaction and rephrasing for flagged comments
-        console.log(`[POSTPROCESS] scannedComments length: ${scannedComments.length}`);
-        
+        // Mark flagged comments as needing post-processing
         const flaggedComments = scannedComments.filter(c => c.concerning || c.identifiable);
-        console.log(`[POSTPROCESS] skipPostprocess: ${skipPostprocess}, flaggedComments.length: ${flaggedComments.length}`);
-        if (!skipPostprocess && flaggedComments.length > 0) {
-          const flaggedTexts = flaggedComments.map(c => c.originalText || c.text);
-          const activeConfig = scanA; // Use scan_a config for batch operations
-
-          try {
-            const activeIsVeryLowRpm = activeConfig.provider === 'bedrock' && /sonnet|opus/i.test(activeConfig.model);
-            const outOfTime = Date.now() - requestStartMs > timeBudgetMs;
-            console.log(`[POSTPROCESS] outOfTime check: ${outOfTime}, elapsed: ${Date.now() - requestStartMs}ms, budget: ${timeBudgetMs}ms`);
-            // Skip only if we're out of time; allow batching even on very low RPM models (handled by sequential queue and backoff)
-            if (outOfTime) {
-              console.log('Skipping redaction/rephrasing to avoid timeouts (time budget exceeded)');
-              // Trigger post-processing function for flagged comments
-              const flaggedCount = flaggedComments.length;
-              console.log(`[POSTPROCESS] Found ${flaggedCount} flagged comments that need post-processing`);
-              
-              // Debug: Check what's in scannedComments
-              const concerningCount = scannedComments.filter(c => c.concerning).length;
-              const identifiableCount = scannedComments.filter(c => c.identifiable).length;
-              console.log(`[POSTPROCESS] scannedComments - concerning: ${concerningCount}, identifiable: ${identifiableCount}`);
-              
-              if (flaggedCount > 0) {
-                console.log(`[POSTPROCESS] Triggering post-processing function for ${flaggedCount} flagged comments`);
-                console.log(`[POSTPROCESS] Supabase URL: ${Deno.env.get('SUPABASE_URL')}`);
-                console.log(`[POSTPROCESS] Anon Key: ${Deno.env.get('SUPABASE_ANON_KEY') ? 'Present' : 'Missing'}`);
-                
-                // Call the post-processing function (fire and forget)
-                console.log(`[POSTPROCESS] Making fetch request to post-processing function...`);
-                
-                const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/post-process-comments`;
-                console.log(`[POSTPROCESS] Function URL: ${functionUrl}`);
-                
-                const postProcessPayload = {
-                  comments: flaggedComments.map(c => ({
-                    id: c.id || `comment_${c.scannedIndex}`,
-                    scannedIndex: c.scannedIndex,
-                    originalText: c.originalText || c.text,
-                    text: c.text,
-                    concerning: c.concerning,
-                    identifiable: c.identifiable,
-                    mode: c.mode || ((c.concerning || c.identifiable) ? defaultMode : 'original'),
-                    scanAResult: c.scanAResult,
-                    adjudicationResult: c.adjudicationResult
-                  })),
-                  scanConfig: {
-                    provider: activeConfig.provider,
-                    model: activeConfig.model,
-                    redact_prompt: activeConfig.redact_prompt,
-                    rephrase_prompt: activeConfig.rephrase_prompt,
-                    max_tokens: getEffectiveMaxTokens(activeConfig)
-                  },
-                  defaultMode
-                };
-                
-                console.log(`[POSTPROCESS] Payload size: ${JSON.stringify(postProcessPayload).length} characters`);
-                
-                // Fire and forget - post-processing will handle the results independently
-                fetch(functionUrl, {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(postProcessPayload)
-                }).then(response => {
-                  if (response.ok) {
-                    console.log(`[POSTPROCESS] Successfully initiated post-processing for ${flaggedComments.length} flagged comments`);
-                  } else {
-                    console.warn(`[POSTPROCESS] Failed to initiate post-processing: ${response.status} ${response.statusText}`);
-                  }
-                }).catch(error => {
-                  console.error(`[POSTPROCESS] Error initiating post-processing:`, error);
-                });
-                
-                // Mark flagged comments as pending post-processing
-                for (const comment of flaggedComments) {
-                  if (comment.scannedIndex !== undefined && scannedComments[comment.scannedIndex]) {
-                    scannedComments[comment.scannedIndex].text = `[POST-PROCESSING PENDING: ${comment.text.substring(0, 100)}...]`;
-                    scannedComments[comment.scannedIndex].mode = 'pending';
-                  }
-                }
-              }
-            } else if (activeConfig.provider === 'bedrock' && activeConfig.model.startsWith('mistral.')) {
-              for (let k = 0; k < scannedComments.length; k++) {
-                if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                  try {
-                    const [red, reph] = await Promise.all([
-                      callAI(activeConfig.provider, activeConfig.model, activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters),
-                      callAI(activeConfig.provider, activeConfig.model, activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), scannedComments[k].originalText || scannedComments[k].text, 'text', 'scan_a', rateLimiters)
-                    ]);
-                    scannedComments[k].redactedText = enforceRedactionPolicy(red);
-                    scannedComments[k].rephrasedText = reph;
-
-                    if (scannedComments[k].mode === 'redact' && red) {
-                      scannedComments[k].text = enforceRedactionPolicy(red);
-                    } else if (scannedComments[k].mode === 'rephrase' && reph) {
-                      scannedComments[k].text = reph;
-                    }
-                  } catch (perItemErr) {
-                    console.warn(`Per-item redaction/rephrasing failed for comment index ${k}:`, perItemErr);
-                  }
-                }
-              }
-            } else if (!outOfTime) {
-              // Respect preferred batch size for post-processing
-              const preferredPost = getPreferredBatchSize(activeConfig, flaggedTexts.length);
-              const chunks = chunkArray(flaggedTexts, preferredPost);
-              const redactedTextsAll: string[] = [];
-              const rephrasedTextsAll: string[] = [];
-              for (const chunk of chunks) {
-                const redPrompt = buildBatchTextPrompt(activeConfig.redact_prompt + REDACTION_POLICY, chunk.length);
-                const rephPrompt = buildBatchTextPrompt(activeConfig.rephrase_prompt, chunk.length);
-                const sentinelInput = buildSentinelInput(chunk);
-                const postKey = `${activeConfig.provider}:${activeConfig.model}:post_batch:${chunk.length}:${sentinelInput.length}`;
-                if (aiDedupe.has(postKey)) {
-                  console.log(`Skipping duplicate batch postprocess for key ${postKey}`);
-                  continue;
-                }
-                aiDedupe.add(postKey);
-                let rawRedacted: any = [];
-                let rawRephrased: any = [];
-                if (activeConfig.provider === 'bedrock') {
-                  rawRedacted = await callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getEffectiveMaxTokens(activeConfig));
-                  rawRephrased = await callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getEffectiveMaxTokens(activeConfig));
-                } else {
-                  [rawRedacted, rawRephrased] = await Promise.all([
-                    callAI(activeConfig.provider, activeConfig.model, redPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getEffectiveMaxTokens(activeConfig)),
-                    callAI(activeConfig.provider, activeConfig.model, rephPrompt, sentinelInput, 'batch_text', 'scan_a', rateLimiters, undefined, getEffectiveMaxTokens(activeConfig))
-                  ]);
-                }
-
-              let redactedTexts = normalizeBatchTextParsed(rawRedacted);
-              let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
-
-              // If model returned aligned ID-tagged strings, strip tags and re-align by ID
-                const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
-              const stripAndIndex = (arr: string[]) => arr.map(s => {
-                const m = idTag.exec(s || '');
-                return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
-              });
-              const redIdx = stripAndIndex(redactedTexts);
-              const rephIdx = stripAndIndex(rephrasedTexts);
-              const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
-              if (allHaveIds) {
-                const expected = flaggedTexts.length;
-                const byId = (list: { idx: number|null; text: string }[]) => {
-                  const out: string[] = Array(expected).fill('');
-                  for (const it of list) {
-                    if (it.idx && it.idx >= 1 && it.idx <= expected) out[it.idx - 1] = it.text;
-                  }
-                  return out;
-                };
-                redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
-                rephrasedTexts = byId(rephIdx);
-              } else {
-                redactedTexts = redactedTexts.map(enforceRedactionPolicy);
-              }
-
-              // Validate lengths and basic sanity; if invalid, run targeted per-item fallbacks
-              const isInvalid = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
-                const expected = chunk.length;
-              let needsFallback = redactedTexts.length !== expected || rephrasedTexts.length !== expected || redactedTexts.some(isInvalid) || rephrasedTexts.some(isInvalid);
-              if (needsFallback) {
-                console.warn(`Batch text outputs invalid or mismatched (expected=${expected}, red=${redactedTexts.length}, reph=${rephrasedTexts.length}). Running per-item fallback for failed entries.`);
-                // Build index list of flagged comments to process individually for the failed ones
-                  for (let flaggedIndex = 0; flaggedIndex < chunk.length; flaggedIndex++) {
-                  const red = redactedTexts[flaggedIndex];
-                  const reph = rephrasedTexts[flaggedIndex];
-                  const redBad = flaggedIndex >= redactedTexts.length || isInvalid(red);
-                  const rephBad = flaggedIndex >= rephrasedTexts.length || isInvalid(reph);
-                  if (redBad || rephBad) {
-                    try {
-                      const [red1, reph1] = await Promise.all([
-                          redBad ? callAI(
-                            activeConfig.provider,
-                            activeConfig.model,
-                            activeConfig.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'),
-                            chunk[flaggedIndex],
-                            'text',
-                            'scan_a',
-                            rateLimiters,
-                            undefined,
-                            getEffectiveMaxTokens(activeConfig)
-                          ) : Promise.resolve(red),
-                          rephBad ? callAI(
-                            activeConfig.provider,
-                            activeConfig.model,
-                            activeConfig.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'),
-                            chunk[flaggedIndex],
-                            'text',
-                            'scan_a',
-                            rateLimiters,
-                            undefined,
-                            getEffectiveMaxTokens(activeConfig)
-                          ) : Promise.resolve(reph)
-                      ]);
-                      if (redBad) redactedTexts[flaggedIndex] = enforceRedactionPolicy(red1 as string);
-                      if (rephBad) rephrasedTexts[flaggedIndex] = reph1 as string;
-                    } catch (perItemErr) {
-                      console.warn(`Per-item fallback failed for flagged index ${flaggedIndex}:`, perItemErr);
-                    }
-                  }
-                  }
-                }
-
-                redactedTextsAll.push(...redactedTexts.map(enforceRedactionPolicy) as string[]);
-                rephrasedTextsAll.push(...rephrasedTexts);
-              }
-
-              // Apply accumulated redacted and rephrased texts across all flagged comments
-              let flaggedIndex = 0;
-              for (let k = 0; k < scannedComments.length; k++) {
-                if (scannedComments[k].concerning || scannedComments[k].identifiable) {
-                  scannedComments[k].redactedText = redactedTextsAll[flaggedIndex] ?? null;
-                  scannedComments[k].rephrasedText = rephrasedTextsAll[flaggedIndex] ?? null;
-                  if (scannedComments[k].mode === 'redact' && redactedTextsAll[flaggedIndex]) {
-                    scannedComments[k].text = enforceRedactionPolicy(redactedTextsAll[flaggedIndex]);
-                  } else if (scannedComments[k].mode === 'rephrase' && rephrasedTextsAll[flaggedIndex]) {
-                    scannedComments[k].text = rephrasedTextsAll[flaggedIndex];
-                  }
-                  flaggedIndex++;
-                }
-              }
-
-              // Additional Phase 2: for items where Scan B flagged identifiable but Scan A did not,
-              // and adjudicator's final decision is identifiable, generate redaction/rephrase with Scan B
-              const preferBIndices: number[] = [];
-              for (let i = 0; i < scannedComments.length; i++) {
-                const c = scannedComments[i];
-                const di = c?.debugInfo || {};
-                const a = di.scanAResult || {};
-                const b = di.scanBResult || {};
-                const fd = di.finalDecision || {};
-                if ((a?.identifiable === false) && (b?.identifiable === true) && (fd?.identifiable === true)) {
-                  preferBIndices.push(i);
-                }
-              }
-              if (preferBIndices.length > 0) {
-                const preferBTexts = preferBIndices.map(i => scannedComments[i].originalText || scannedComments[i].text);
-                const activeConfigB = scanB;
-                const preferredPostB = getPreferredBatchSize(activeConfigB, preferBTexts.length);
-                const bChunks = chunkArray(preferBTexts, preferredPostB);
-                const redBAll: string[] = [];
-                const rephBAll: string[] = [];
-                for (const chunk of bChunks) {
-                  const redPromptB = buildBatchTextPrompt(activeConfigB.redact_prompt + REDACTION_POLICY, chunk.length);
-                  const rephPromptB = buildBatchTextPrompt(activeConfigB.rephrase_prompt, chunk.length);
-                  const sentinelInputB = buildSentinelInput(chunk);
-                  const postKeyB = `${activeConfigB.provider}:${activeConfigB.model}:post_batch:${chunk.length}:${sentinelInputB.length}:preferB`;
-                  if (aiDedupe.has(postKeyB)) {
-                    console.log(`Skipping duplicate batch postprocess for key ${postKeyB}`);
-                    continue;
-                  }
-                  aiDedupe.add(postKeyB);
-                  let rawRedB: any = [];
-                  let rawRephB: any = [];
-                  if (activeConfigB.provider === 'bedrock') {
-                    rawRedB = await callAI(activeConfigB.provider, activeConfigB.model, redPromptB, sentinelInputB, 'batch_text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB));
-                    rawRephB = await callAI(activeConfigB.provider, activeConfigB.model, rephPromptB, sentinelInputB, 'batch_text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB));
-                  } else {
-                    [rawRedB, rawRephB] = await Promise.all([
-                      callAI(activeConfigB.provider, activeConfigB.model, redPromptB, sentinelInputB, 'batch_text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB)),
-                      callAI(activeConfigB.provider, activeConfigB.model, rephPromptB, sentinelInputB, 'batch_text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB))
-                    ]);
-                  }
-                  let redTextsB = normalizeBatchTextParsed(rawRedB);
-                  let rephTextsB = normalizeBatchTextParsed(rawRephB);
-                  const isInvalidB = (s: string | null | undefined) => !s || !String(s).trim() || /^(\[|here\s+(is|are))/i.test(String(s).trim());
-                  const expectedB = chunk.length;
-                  if (redTextsB.length !== expectedB || rephTextsB.length !== expectedB || redTextsB.some(isInvalidB) || rephTextsB.some(isInvalidB)) {
-                    console.warn(`Batch text (Scan B) outputs invalid or mismatched (expected=${expectedB}, red=${redTextsB.length}, reph=${rephTextsB.length}). Running per-item fallback for failed entries.`);
-                    for (let i = 0; i < expectedB; i++) {
-                      const redBad = i >= redTextsB.length || isInvalidB(redTextsB[i]);
-                      const rephBad = i >= rephTextsB.length || isInvalidB(rephTextsB[i]);
-                      if (redBad || rephBad) {
-                        try {
-                          const [r1, p1] = await Promise.all([
-                            redBad ? callAI(activeConfigB.provider, activeConfigB.model, activeConfigB.redact_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), chunk[i], 'text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB)) : Promise.resolve(redTextsB[i]),
-                            rephBad ? callAI(activeConfigB.provider, activeConfigB.model, activeConfigB.rephrase_prompt.replace('these comments', 'this comment').replace('parallel list', 'single'), chunk[i], 'text', 'scan_b', rateLimiters, undefined, getEffectiveMaxTokens(activeConfigB)) : Promise.resolve(rephTextsB[i])
-                          ]);
-                          if (redBad) redTextsB[i] = enforceRedactionPolicy(r1 as string) as string;
-                          if (rephBad) rephTextsB[i] = p1 as string;
-                        } catch (perItemErr) {
-                          console.warn(`Per-item fallback failed for Scan B group item ${i}:`, perItemErr);
-                        }
-                      }
-                    }
-                  }
-                  redBAll.push(...(redTextsB.map(enforceRedactionPolicy) as string[]));
-                  rephBAll.push(...rephTextsB);
-                }
-                // Assign Scan B outputs to the preferB indices only
-                for (let i = 0; i < preferBIndices.length; i++) {
-                  const idx = preferBIndices[i];
-                  const red = redBAll[i];
-                  const reph = rephBAll[i];
-                  if (typeof red === 'string') scannedComments[idx].redactedText = red;
-                  if (typeof reph === 'string') scannedComments[idx].rephrasedText = reph;
-                  if (scannedComments[idx].mode === 'redact' && typeof red === 'string') {
-                    scannedComments[idx].text = enforceRedactionPolicy(red) as string;
-                  } else if (scannedComments[idx].mode === 'rephrase' && typeof reph === 'string') {
-                    scannedComments[idx].text = reph;
-                  }
-                }
-              }
+        
+        if (flaggedComments.length > 0) {
+          const concerningCount = flaggedComments.filter(c => c.concerning).length;
+          const identifiableCount = flaggedComments.filter(c => c.identifiable).length;
+          const flaggedCount = flaggedComments.length;
+          
+          console.log(`[POSTPROCESS] ${flaggedCount} flagged comments marked for post-processing (${concerningCount} concerning, ${identifiableCount} identifiable)`);
+          
+          // Mark flagged comments as needing post-processing
+          for (const comment of flaggedComments) {
+            if (comment.scannedIndex !== undefined && scannedComments[comment.scannedIndex]) {
+              scannedComments[comment.scannedIndex].text = `[POST-PROCESSING NEEDED: ${comment.text.substring(0, 100)}...]`;
+              scannedComments[comment.scannedIndex].mode = comment.mode || ((comment.concerning || comment.identifiable) ? defaultMode : 'original');
+              scannedComments[comment.scannedIndex].needsPostProcessing = true;
             }
-          } catch (error) {
-            console.warn(`Batch redaction/rephrasing failed:`, error);
-            // Continue without redaction/rephrasing
           }
         }
       }

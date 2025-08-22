@@ -192,7 +192,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           comments,
           defaultMode,
           skipAdjudicator: false,
-          skipPostprocess: false,
           scanRunId
         }
       });
