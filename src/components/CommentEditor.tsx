@@ -193,246 +193,250 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     // Generate a short 4-digit scanRunId so backend logs can be filtered to this click
     const scanRunId = String(Math.floor(1000 + Math.random() * 9000));
 
-    // Single-shot analysis request; backend handles effective batch sizing per model
-    let processedComments: any[] = [];
-
     try {
-      // Phase 1: single-shot analysis — let backend handle everything in one pass
+      // Phase 1: Scan comments with Scan A and Scan B
+      setScanProgress(10);
+      toast.info('Phase 1: Scanning comments for concerning/identifiable content...');
+      
       const { data, error } = await supabase.functions.invoke('scan-comments', {
         body: {
           comments,
           defaultMode,
-          skipAdjudicator: false,
           scanRunId
         }
       });
 
-      console.log(`Single analysis response:`, { data, error });
+      console.log(`Scan response:`, { data, error });
 
       if (error) {
-        console.error(`Analysis error:`, error);
+        console.error(`Scan error:`, error);
         throw new Error(error.message || JSON.stringify(error));
       }
 
-      if (data?.comments) {
-        // Debug: Log the structure of scan results
-        console.log('Scan results structure:', {
-          totalComments: data.comments.length,
-          sampleComment: data.comments[0],
-          hasNeedsPostProcessing: data.comments.some((c: any) => c.needsPostProcessing),
-          needsPostProcessingCount: data.comments.filter((c: any) => c.needsPostProcessing).length,
-          concerningCount: data.comments.filter((c: any) => c.concerning).length,
-          identifiableCount: data.comments.filter((c: any) => c.identifiable).length
-        });
-        
-        // Debug: Check a few specific comments to see their structure
-        const sampleComments = data.comments.slice(0, 3);
-        console.log('Sample comments structure:', sampleComments.map(c => ({
-          id: c.id,
-          needsPostProcessing: c.needsPostProcessing,
-          concerning: c.concerning,
-          identifiable: c.identifiable,
-          mode: c.mode,
-          text: c.text?.substring(0, 100),
-          hasNeedsPostProcessing: 'needsPostProcessing' in c
-        })));
-        
-        // Check if there are flagged comments that need post-processing
-        const flaggedComments = data.comments.filter((c: any) => c.needsPostProcessing);
-        
-        console.log('Flagged comments for post-processing:', flaggedComments);
-        
-        if (flaggedComments.length > 0) {
-          console.log(`Found ${flaggedComments.length} flagged comments, calling post-process-comments...`);
-          setScanProgress(85);
-          toast.info(`Post-processing ${flaggedComments.length} flagged comments...`);
-          
-          try {
-            // Get AI configuration for post-processing
-            const { data: aiConfigs, error: configError } = await supabase
-              .from('ai_configurations')
-              .select('*')
-              .eq('scanner_type', 'scan_a')
-              .single();
-            
-            if (configError || !aiConfigs) {
-              console.warn('Failed to fetch AI configuration, using defaults');
-            }
-            
-            setScanProgress(90);
-            
-            // Phase 2: post-process flagged comments
-            console.log(`[BATCH] AI Config preferred_batch_size: ${aiConfigs?.preferred_batch_size || 'not set (using default 10)'}`);
-            
-            const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
-              body: {
-                comments: flaggedComments.map((c: any) => ({
-                  id: c.id,
-                  scannedIndex: c.scannedIndex,
-                  originalText: c.originalText || c.text,
-                  text: c.text,
-                  concerning: c.concerning,
-                  identifiable: c.identifiable,
-                  mode: c.mode, // Preserve the mode set by scan-comments
-                  scanAResult: c.scanAResult,
-                  adjudicationResult: c.adjudicationResult
-                })),
-                scanConfig: {
-                  provider: aiConfigs?.provider || 'openai',
-                  model: aiConfigs?.model || 'gpt-4o-mini',
-                  redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
-                  rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
-                  max_tokens: aiConfigs?.max_tokens || 4096,
-                  preferred_batch_size: aiConfigs?.preferred_batch_size || 10
-                },
-                defaultMode,
-                scanRunId // Pass the same run ID for log correlation
-              }
-            });
-
-            if (postProcessError) {
-              console.error(`Post-processing error:`, postProcessError);
-              toast.warning(`Post-processing failed for some comments: ${postProcessError.message}`);
-            } else if (postProcessData?.processedComments) {
-              console.log(`Post-processing completed:`, postProcessData);
-              console.log(`Post-processing response structure:`, {
-                hasProcessedComments: !!postProcessData.processedComments,
-                processedCommentsLength: postProcessData.processedComments?.length,
-                sampleProcessedComment: postProcessData.processedComments?.[0],
-                summary: postProcessData.summary
-              });
-              
-              // Create a map of processed comments by ID
-              const processedMap = new Map(
-                postProcessData.processedComments.map((c: any) => [c.id, c])
-              );
-              
-              console.log(`Created processedMap with ${processedMap.size} entries:`, Array.from(processedMap.keys()));
-              
-              // Merge post-processing results back into the scan data
-              const finalComments = data.comments.map((comment: any) => {
-                if (comment.needsPostProcessing) {
-                  const processed = processedMap.get(comment.id);
-                  console.log(`Looking for processed comment with ID ${comment.id}:`, processed);
-                  if (processed) {
-                    console.log(`[POSTPROCESS] Raw processed comment:`, {
-                      id: processed.id,
-                      mode: processed.mode,
-                      finalText: processed.finalText,
-                      redactedText: processed.redactedText,
-                      rephrasedText: processed.rephrasedText,
-                      hasRedacted: !!processed.redactedText,
-                      hasRephrased: !!processed.rephrasedText
-                    });
-                    
-                    // Determine the final text based on default mode preference
-                    let finalText = comment.text; // Keep original text as fallback
-                    let finalMode = defaultMode; // Use user's default mode preference
-                    
-                    console.log(`[MODE] Comment ${comment.id} - defaultMode: ${defaultMode}, hasRedacted: ${!!processed.redactedText}, hasRephrased: ${!!processed.rephrasedText}`);
-                    
-                    if (defaultMode === 'redact' && processed.redactedText) {
-                      finalText = processed.redactedText;
-                      finalMode = 'redact';
-                      console.log(`[MODE] Using redacted text for comment ${comment.id}`);
-                    } else if (defaultMode === 'rephrase' && processed.rephrasedText) {
-                      finalText = processed.rephrasedText;
-                      finalMode = 'rephrase';
-                      console.log(`[MODE] Using rephrased text for comment ${comment.id}`);
-                    } else if (defaultMode === 'redact' && processed.rephrasedText) {
-                      // Fallback: if redacted text not available, use rephrased
-                      finalText = processed.rephrasedText;
-                      finalMode = 'rephrase';
-                      console.log(`[MODE] Fallback to rephrased text for comment ${comment.id} (redacted not available)`);
-                    } else if (defaultMode === 'rephrase' && processed.redactedText) {
-                      // Fallback: if rephrased text not available, use redacted
-                      finalText = processed.redactedText;
-                      finalMode = 'redact';
-                      console.log(`[MODE] Fallback to redacted text for comment ${comment.id} (rephrased not available)`);
-                    }
-                    
-                    console.log(`[MODE] Final result for comment ${comment.id}: mode=${finalMode}, textLength=${finalText.length}`);
-                    
-                    return {
-                      ...comment,
-                      text: finalText,
-                      redactedText: processed.redactedText,
-                      rephrasedText: processed.rephrasedText,
-                      mode: finalMode, // Use the determined final mode
-                      needsPostProcessing: false, // Mark as processed
-                      isPostProcessed: true // Add flag to prevent re-processing
-                    };
-                  }
-                }
-                return comment;
-              });
-              
-              // Update processedComments with the merged results
-              processedComments = finalComments;
-              
-              // Show success message with post-processing summary
-              const summary = postProcessData.summary;
-              if (summary) {
-                toast.success(`Post-processing complete: ${summary.redacted} redacted, ${summary.rephrased} rephrased, ${summary.original} unchanged`);
-              }
-              
-              setScanProgress(95);
-            } else {
-              console.warn('Post-processing returned no data, using scan results with placeholders');
-              console.log('Full post-process response:', postProcessData);
-              processedComments = data.comments;
-            }
-          } catch (postProcessError) {
-            console.error('Post-processing failed:', postProcessError);
-            toast.warning('Post-processing failed, showing scan results with placeholders');
-            // Continue with scan results if post-processing fails
-            processedComments = data.comments;
-          }
-        } else {
-          // No flagged comments, use scan results directly
-          processedComments = data.comments;
-        }
-
-        // Normalize results to ensure UI flags match final decision
-        const normalizedComments = processedComments.map((c: any) => {
-          const fd = c?.debugInfo?.finalDecision;
-          const concerning = typeof fd?.concerning === 'boolean' ? fd.concerning : !!c.concerning;
-          const identifiable = typeof fd?.identifiable === 'boolean' ? fd.identifiable : !!c.identifiable;
-          if (!concerning && !identifiable) {
-            return {
-              ...c,
-              concerning: false,
-              identifiable: false,
-              mode: 'original',
-              text: c.originalText || c.text,
-              redactedText: undefined,
-              rephrasedText: undefined,
-            };
-          }
-          return { ...c, concerning, identifiable };
-        });
-
-        // Merge normalized results into the full comment list by id, preserving original order and length
-        const baseList = processedComments.length > 0 ? processedComments : comments;
-        const updatesById = new Map(normalizedComments.map((u: any) => [u.id, u]));
-        processedComments = baseList.map((c: any) => {
-          const update = updatesById.get(c.id);
-          return update && typeof update === 'object' ? { ...c, ...update } : c;
-        });
-
-        onCommentsUpdate(processedComments);
-        setHasScanRun(true);
-        setScanProgress(90);
-        toast.info(`Processed ${processedComments.length}/${comments.length} comments`);
-      } else {
+      if (!data?.comments) {
         throw new Error(`No comment data received`);
       }
+
+      setScanProgress(30);
+      toast.info('Phase 1 complete: Comments scanned and flagged');
+
+      // Phase 2: Adjudicate any disagreements between Scan A and Scan B
+      const needsAdjudication = data.comments.filter((c: any) => c.needsAdjudication);
       
+      if (needsAdjudication.length > 0) {
+        setScanProgress(40);
+        toast.info(`Phase 2: Adjudicating ${needsAdjudication.length} comments with disagreements...`);
+        
+        // Get adjudicator configuration
+        const { data: adjudicatorConfigs, error: configError } = await supabase
+          .from('ai_configurations')
+          .select('*')
+          .eq('scanner_type', 'adjudicator')
+          .eq('is_active', true)
+          .single();
+        
+        if (configError || !adjudicatorConfigs) {
+          console.warn('Failed to fetch adjudicator configuration, using defaults');
+        }
+
+        // Prepare comments for adjudication
+        const adjudicationComments = needsAdjudication.map((c: any) => ({
+          id: c.id,
+          originalText: c.originalText || c.text,
+          scanAResult: c.adjudicationData.scanAResult,
+          scanBResult: c.adjudicationData.scanBResult,
+          agreements: c.adjudicationData.agreements
+        }));
+
+        console.log(`Sending ${adjudicationComments.length} comments for adjudication...`);
+
+        const { data: adjudicationData, error: adjudicationError } = await supabase.functions.invoke('adjudicator', {
+          body: {
+            comments: adjudicationComments,
+            adjudicatorConfig: {
+              provider: adjudicatorConfigs?.provider || 'openai',
+              model: adjudicatorConfigs?.model || 'gpt-4o-mini',
+              prompt: adjudicatorConfigs?.scan_prompt || 'You are an AI adjudicator resolving disagreements between two AI scanners.',
+              max_tokens: adjudicatorConfigs?.max_tokens || 4096
+            },
+            scanRunId
+          }
+        });
+
+        if (adjudicationError) {
+          console.error(`Adjudication error:`, adjudicationError);
+          toast.warning(`Adjudication failed: ${adjudicationError.message}`);
+        } else if (adjudicationData?.adjudicatedComments) {
+          console.log(`Adjudication completed:`, adjudicationData);
+          
+          // Update scan results with adjudication outcomes
+          const adjudicatedMap = new Map(adjudicationData.adjudicatedComments.map((c: any) => [c.id, c]));
+          
+          data.comments = data.comments.map((comment: any) => {
+            if (comment.needsAdjudication) {
+              const adjudicated = adjudicatedMap.get(comment.id);
+              if (adjudicated) {
+                return {
+                  ...comment,
+                  concerning: adjudicated.concerning,
+                  identifiable: adjudicated.identifiable,
+                  aiReasoning: adjudicated.reasoning,
+                  needsAdjudication: false,
+                  isAdjudicated: true
+                };
+              }
+            }
+            return comment;
+          });
+
+          setScanProgress(60);
+          toast.success(`Phase 2 complete: ${adjudicationData.summary.resolved} disagreements resolved`);
+        }
+      } else {
+        setScanProgress(60);
+        toast.info('Phase 2: No adjudication needed - all scanners agreed');
+      }
+
+      // Phase 3: Post-process flagged comments
+      const flaggedComments = data.comments.filter((c: any) => c.concerning || c.identifiable);
+      
+      if (flaggedComments.length > 0) {
+        setScanProgress(70);
+        toast.info(`Phase 3: Post-processing ${flaggedComments.length} flagged comments...`);
+        
+        // Get AI configuration for post-processing
+        const { data: aiConfigs, error: configError } = await supabase
+          .from('ai_configurations')
+          .select('*')
+          .eq('scanner_type', 'scan_a')
+          .single();
+        
+        if (configError || !aiConfigs) {
+          console.warn('Failed to fetch AI configuration, using defaults');
+        }
+        
+        console.log(`[BATCH] AI Config preferred_batch_size: ${aiConfigs?.preferred_batch_size || 'not set (using default 10)'}`);
+        
+        const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
+          body: {
+            comments: flaggedComments.map((c: any) => ({
+              id: c.id,
+              scannedIndex: c.scannedIndex,
+              originalText: c.originalText || c.text,
+              text: c.text,
+              concerning: c.concerning,
+              identifiable: c.identifiable,
+              mode: c.mode, // Preserve the mode set by scan-comments
+              scanAResult: c.scanAResult,
+              adjudicationResult: c.adjudicationResult
+            })),
+            scanConfig: {
+              provider: aiConfigs?.provider || 'openai',
+              model: aiConfigs?.model || 'gpt-4o-mini',
+              redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+              rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+              max_tokens: aiConfigs?.max_tokens || 4096,
+              preferred_batch_size: aiConfigs?.preferred_batch_size || 10
+            },
+            defaultMode,
+            scanRunId
+          }
+        });
+
+        if (postProcessError) {
+          console.error(`Post-processing error:`, postProcessError);
+          toast.warning(`Post-processing failed for some comments: ${postProcessError.message}`);
+        } else if (postProcessData?.processedComments) {
+          console.log(`Post-processing completed:`, postProcessData);
+          
+          // Create a map of processed comments by ID
+          const processedMap = new Map(
+            postProcessData.processedComments.map((c: any) => [c.id, c])
+          );
+          
+          console.log(`Created processedMap with ${processedMap.size} entries:`, Array.from(processedMap.keys()));
+          
+          // Merge post-processing results back into the scan data
+          const finalComments = data.comments.map((comment: any) => {
+            if (comment.concerning || comment.identifiable) {
+              const processed = processedMap.get(comment.id);
+              if (processed) {
+                console.log(`[POSTPROCESS] Raw processed comment:`, {
+                  id: processed.id,
+                  mode: processed.mode,
+                  finalText: processed.finalText,
+                  redactedText: processed.redactedText,
+                  rephrasedText: processed.rephrasedText,
+                  hasRedacted: !!processed.redactedText,
+                  hasRephrased: !!processed.rephrasedText
+                });
+                
+                // Determine the final text based on default mode preference
+                let finalText = comment.text; // Keep original text as fallback
+                let finalMode = defaultMode; // Use user's default mode preference
+                
+                console.log(`[MODE] Comment ${comment.id} - defaultMode: ${defaultMode}, hasRedacted: ${!!processed.redactedText}, hasRephrased: ${!!processed.rephrasedText}`);
+                
+                if (defaultMode === 'redact' && processed.redactedText) {
+                  finalText = processed.redactedText;
+                  finalMode = 'redact';
+                  console.log(`[MODE] Using redacted text for comment ${comment.id}`);
+                } else if (defaultMode === 'rephrase' && processed.rephrasedText) {
+                  finalText = processed.rephrasedText;
+                  finalMode = 'rephrase';
+                  console.log(`[MODE] Using rephrased text for comment ${comment.id}`);
+                } else if (defaultMode === 'redact' && processed.rephrasedText) {
+                  // Fallback: if redacted text not available, use rephrased
+                  finalText = processed.rephrasedText;
+                  finalMode = 'rephrase';
+                  console.log(`[MODE] Fallback to rephrased text for comment ${comment.id} (redacted not available)`);
+                } else if (defaultMode === 'rephrase' && processed.redactedText) {
+                  // Fallback: if rephrased text not available, use redacted
+                  finalText = processed.redactedText;
+                  finalMode = 'redact';
+                  console.log(`[MODE] Fallback to redacted text for comment ${comment.id} (rephrased not available)`);
+                }
+                
+                console.log(`[MODE] Final result for comment ${comment.id}: mode=${finalMode}, textLength=${finalText.length}`);
+                
+                return {
+                  ...comment,
+                  text: finalText,
+                  redactedText: processed.redactedText,
+                  rephrasedText: processed.rephrasedText,
+                  mode: finalMode, // Use the determined final mode
+                  needsPostProcessing: false, // Mark as processed
+                  isPostProcessed: true // Add flag to prevent re-processing
+                };
+              }
+            }
+            return comment;
+          });
+          
+          // Update processedComments with the merged results
+          data.comments = finalComments;
+          
+          // Show success message with post-processing summary
+          const summary = postProcessData.summary;
+          if (summary) {
+            toast.success(`Post-processing complete: ${summary.redacted} redacted, ${summary.rephrased} rephrased, ${summary.original} unchanged`);
+          }
+          
+          setScanProgress(95);
+        } else {
+          console.warn('Post-processing returned no data, using scan results with placeholders');
+          console.log('Full post-process response:', postProcessData);
+        }
+      } else {
+        setScanProgress(95);
+        toast.info('Phase 3: No flagged comments to post-process');
+      }
+
       // Final update with all processed comments
       setScanProgress(100);
       setHasScanRun(true);
-      onCommentsUpdate(processedComments);
-      toast.success(`Scan complete: ${processedComments.length} comments processed`);
+      onCommentsUpdate(data.comments);
+      toast.success(`Scan complete: ${data.comments.length} comments processed`);
       
     } catch (error) {
       console.error('Scan failed:', error);
@@ -777,7 +781,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           {isScanning && <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/30">
               <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
               <span className="text-sm text-muted-foreground">
-                Processing comments... {Math.round(scanProgress)}%
+                {scanProgress < 30 && 'Phase 1: Scanning comments...'}
+                {scanProgress >= 30 && scanProgress < 60 && 'Phase 2: Adjudicating disagreements...'}
+                {scanProgress >= 60 && scanProgress < 100 && 'Phase 3: Post-processing flagged comments...'}
+                {scanProgress === 100 && 'Complete!'}
+                {' '}{Math.round(scanProgress)}%
               </span>
             </div>}
         </div>
