@@ -1061,6 +1061,7 @@ serve(async (req) => {
                   const postProcessPayload = {
                     comments: flaggedComments.map(c => ({
                       id: c.id || `comment_${c.scannedIndex}`,
+                      scannedIndex: c.scannedIndex, // Preserve the scannedIndex for later lookup
                       originalText: c.originalText || c.text,
                       text: c.text,
                       concerning: c.concerning,
@@ -1116,24 +1117,22 @@ serve(async (req) => {
                     console.log(`[POSTPROCESS] Flagged comment IDs: ${flaggedComments.map(c => c.id || `comment_${c.scannedIndex}`).join(', ')}`);
                     
                     for (const processedComment of postProcessResult.processedComments) {
-                      console.log(`[POSTPROCESS] Looking for comment with ID: ${processedComment.id}`);
-                      const originalComment = flaggedComments.find(c => 
-                        (c.id || `comment_${c.scannedIndex}`) === processedComment.id
-                      );
-                      if (originalComment) {
-                        const index = originalComment.scannedIndex;
-                        console.log(`[POSTPROCESS] Found comment ${processedComment.id} at index ${index}, updating...`);
+                      console.log(`[POSTPROCESS] Processing comment ${processedComment.id} with scannedIndex ${processedComment.scannedIndex}`);
+                      
+                      if (processedComment.scannedIndex !== undefined && processedComment.scannedIndex >= 0) {
+                        const index = processedComment.scannedIndex;
+                        console.log(`[POSTPROCESS] Updating comment at index ${index}...`);
                         if (scannedComments[index]) {
                           scannedComments[index].redactedText = processedComment.redactedText;
                           scannedComments[index].rephrasedText = processedComment.rephrasedText;
                           scannedComments[index].text = processedComment.finalText;
                           scannedComments[index].mode = processedComment.mode;
-                          console.log(`[POSTPROCESS] Updated comment ${processedComment.id} with mode ${processedComment.mode}`);
+                          console.log(`[POSTPROCESS] Successfully updated comment ${processedComment.id} at index ${index} with mode ${processedComment.mode}`);
                         } else {
-                          console.warn(`[POSTPROCESS] Index ${index} not found in scannedComments`);
+                          console.warn(`[POSTPROCESS] Index ${index} not found in scannedComments (array length: ${scannedComments.length})`);
                         }
                       } else {
-                        console.warn(`[POSTPROCESS] Could not find original comment with ID: ${processedComment.id}`);
+                        console.warn(`[POSTPROCESS] Comment ${processedComment.id} has no valid scannedIndex: ${processedComment.scannedIndex}`);
                       }
                     }
                   } else {

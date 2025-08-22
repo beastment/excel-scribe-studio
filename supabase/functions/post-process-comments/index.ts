@@ -184,6 +184,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
 interface PostProcessRequest {
   comments: Array<{
     id: string;
+    scannedIndex?: number; // Add scannedIndex for proper lookup
     originalText: string;
     text: string;
     concerning: boolean;
@@ -206,6 +207,7 @@ interface PostProcessResponse {
   success: boolean;
   processedComments: Array<{
     id: string;
+    scannedIndex?: number; // Preserve scannedIndex for proper lookup
     redactedText?: string;
     rephrasedText?: string;
     finalText: string;
@@ -409,6 +411,7 @@ serve(async (req) => {
 
           processedComments.push({
             id: comment.id,
+            scannedIndex: comment.scannedIndex, // Preserve scannedIndex
             redactedText,
             rephrasedText,
             finalText,
