@@ -226,6 +226,10 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  // Generate a unique run ID for this request
+  const runId = Math.floor(Math.random() * 10000);
+  const logPrefix = `[RUN ${runId}]`;
+
   try {
     const { comments, scanConfig, defaultMode }: PostProcessRequest = await req.json()
     
@@ -236,14 +240,14 @@ serve(async (req) => {
       )
     }
 
-    console.log(`[POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
+    console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
 
     // Filter comments that need post-processing
     const flaggedComments = comments.filter(c => c.concerning || c.identifiable)
     const needsProcessing = flaggedComments.length > 0
 
     if (!needsProcessing) {
-      console.log(`[POSTPROCESS] No comments need post-processing`)
+      console.log(`${logPrefix} [POSTPROCESS] No comments need post-processing`)
       return new Response(
         JSON.stringify({
           success: true,
@@ -274,19 +278,31 @@ serve(async (req) => {
       const preferredBatchSize = getPreferredBatchSize(scanConfig, 10);
       const chunks = chunkArray(flaggedComments, preferredBatchSize);
       
-      console.log(`[POSTPROCESS] Processing ${flaggedComments.length} comments in ${chunks.length} chunks of size ${preferredBatchSize}`);
+      console.log(`${logPrefix} [POSTPROCESS] Processing ${flaggedComments.length} comments in ${chunks.length} chunks of size ${preferredBatchSize}`);
       
       for (const chunk of chunks) {
-        console.log(`[POSTPROCESS] Processing chunk of ${chunk.length} comments`);
+        console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
         const chunkTexts = chunk.map(c => c.originalText || c.text);
         const sentinelInput = buildSentinelInput(chunkTexts);
         
         // Process redaction and rephrasing in parallel for each chunk
+        const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt + REDACTION_POLICY, chunk.length);
+        const rephrasePrompt = buildBatchTextPrompt(scanConfig.rephrase_prompt, chunk.length);
+        
+        console.log(`${logPrefix} [AI REQUEST] ${scanConfig.provider}/${scanConfig.model} type=batch_text phase=redaction`);
+        console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
+          provider: scanConfig.provider,
+          model: scanConfig.model,
+          prompt_length: redactPrompt.length,
+          input_length: sentinelInput.length,
+          chunk_size: chunk.length
+        }).substring(0, 500)}...`);
+        
         const [rawRedacted, rawRephrased] = await Promise.all([
           callAI(
             scanConfig.provider,
             scanConfig.model,
-            buildBatchTextPrompt(scanConfig.redact_prompt + REDACTION_POLICY, chunk.length),
+            redactPrompt,
             sentinelInput,
             'batch_text',
             getEffectiveMaxTokens(scanConfig)
@@ -294,18 +310,45 @@ serve(async (req) => {
           callAI(
             scanConfig.provider,
             scanConfig.model,
-            buildBatchTextPrompt(scanConfig.rephrase_prompt, chunk.length),
+            rephrasePrompt,
             sentinelInput,
             'batch_text',
             getEffectiveMaxTokens(scanConfig)
           )
         ]);
+        
+        console.log(`${logPrefix} [AI RESPONSE] ${scanConfig.provider}/${scanConfig.model} type=batch_text phase=redaction`);
+        console.log(`${logPrefix} [AI RESPONSE] rawRedacted=${JSON.stringify(rawRedacted).substring(0, 500)}...`);
+        console.log(`${logPrefix} [AI RESPONSE] ${scanConfig.provider}/${scanConfig.model} type=batch_text phase=rephrase`);
+        console.log(`${logPrefix} [AI RESPONSE] rawRephrased=${JSON.stringify(rawRephrased).substring(0, 500)}...`);
 
         // Parse and normalize the responses
+        console.log(`${logPrefix} [POSTPROCESS] Parsing AI responses...`);
+        
+        // Validate AI responses before parsing
+        if (!rawRedacted || !rawRephrased) {
+          console.error(`${logPrefix} [POSTPROCESS] ERROR: AI responses are empty or null`);
+          console.error(`${logPrefix} [POSTPROCESS] rawRedacted: ${rawRedacted}`);
+          console.error(`${logPrefix} [POSTPROCESS] rawRephrased: ${rawRephrased}`);
+          throw new Error('AI responses are empty or null');
+        }
+        
         let redactedTexts = normalizeBatchTextParsed(rawRedacted);
         let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
+        
+        console.log(`${logPrefix} [POSTPROCESS] Parsed redactedTexts: ${redactedTexts.length} items`);
+        console.log(`${logPrefix} [POSTPROCESS] Parsed rephrasedTexts: ${rephrasedTexts.length} items`);
+        
+        // Validate parsed results
+        if (redactedTexts.length === 0 || rephrasedTexts.length === 0) {
+          console.error(`${logPrefix} [POSTPROCESS] ERROR: Parsed results are empty`);
+          console.error(`${logPrefix} [POSTPROCESS] redactedTexts: ${JSON.stringify(redactedTexts)}`);
+          console.error(`${logPrefix} [POSTPROCESS] rephrasedTexts: ${JSON.stringify(rephrasedTexts)}`);
+          throw new Error('Parsed results are empty');
+        }
 
         // Handle ID-tagged responses and realign by index
+        console.log(`${logPrefix} [POSTPROCESS] Handling ID-tagged responses...`);
         const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
         const stripAndIndex = (arr: string[]) => arr.map(s => {
           const m = idTag.exec(s || '');
@@ -315,6 +358,8 @@ serve(async (req) => {
         const redIdx = stripAndIndex(redactedTexts);
         const rephIdx = stripAndIndex(rephrasedTexts);
         const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
+        
+        console.log(`${logPrefix} [POSTPROCESS] ID handling - allHaveIds: ${allHaveIds}, redIdx: ${redIdx.length}, rephIdx: ${rephIdx.length}`);
         
         if (allHaveIds) {
           const expected = chunk.length;
@@ -327,11 +372,14 @@ serve(async (req) => {
           };
           redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
           rephrasedTexts = byId(rephIdx);
+          console.log(`${logPrefix} [POSTPROCESS] Realigned by ID - redactedTexts: ${redactedTexts.length}, rephrasedTexts: ${rephrasedTexts.length}`);
         } else {
           redactedTexts = redactedTexts.map(enforceRedactionPolicy);
+          console.log(`${logPrefix} [POSTPROCESS] Using sequential alignment - redactedTexts: ${redactedTexts.length}`);
         }
 
         // Process each comment in the chunk
+        console.log(`${logPrefix} [POSTPROCESS] Processing ${chunk.length} comments in chunk...`);
         for (let i = 0; i < chunk.length; i++) {
           const comment = chunk[i];
           const redactedText = redactedTexts[i] || comment.text;
@@ -349,11 +397,14 @@ serve(async (req) => {
           if (mode === 'redact' && comment.concerning) {
             finalText = redactedText;
             redactedCount++;
+            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REDACTED: ${redactedText.substring(0, 100)}...`);
           } else if (mode === 'rephrase' && comment.identifiable) {
             finalText = rephrasedText;
             rephrasedCount++;
+            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REPHRASED: ${rephrasedText.substring(0, 100)}...`);
           } else {
             originalCount++;
+            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - ORIGINAL (mode: ${mode}, concerning: ${comment.concerning}, identifiable: ${comment.identifiable})`);
           }
 
           processedComments.push({
@@ -424,7 +475,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[POSTPROCESS] Completed: ${redactedCount} redacted, ${rephrasedCount} rephrased, ${originalCount} original`)
+    console.log(`${logPrefix} [POSTPROCESS] Completed: ${redactedCount} redacted, ${rephrasedCount} rephrased, ${originalCount} original`)
 
     return new Response(
       JSON.stringify(response),
