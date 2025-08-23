@@ -459,11 +459,15 @@ async function createAWSSignature(
   const { hostname, pathname, search } = new URL(url);
   const dateStamp = amzDate.substring(0, 8);
   
+  // For Bedrock, AWS expects the path to have double-encoded colons (%253A instead of %3A or :)
+  // This is specific to how Bedrock handles model names with colons
+  const canonicalPath = pathname.replace(/:/g, '%3A').replace(/%3A/g, '%253A');
+  
   // Create canonical request
   const canonicalHeaders = `content-type:application/json\nhost:${hostname}\nx-amz-date:${amzDate}\n`;
   const signedHeaders = 'content-type;host;x-amz-date';
   const payloadHash = await sha256(body);
-  const canonicalRequest = `${method}\n${pathname}${search}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const canonicalRequest = `${method}\n${canonicalPath}${search}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
   
   console.log(`[SIGNATURE] Canonical request:`, canonicalRequest);
   
