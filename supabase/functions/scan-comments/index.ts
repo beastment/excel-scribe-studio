@@ -20,6 +20,26 @@ serve(async (req) => {
     // Generate a per-request scanRunId for log correlation
     const scanRunId = requestBody.scanRunId || String(Math.floor(1000 + Math.random() * 9000));
     (globalThis as any).__scanRunId = scanRunId;
+
+    // Authenticate user first
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('No authorization header provided');
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_ANON_KEY') || ''
+    );
+
+    const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token);
+    if (userError || !userData.user) {
+      throw new Error('User not authenticated');
+    }
+
+    const user = userData.user;
+    console.log(`Processing request for user: ${user.email}`);
     
     // Global run-guards to prevent duplicate analysis batches for the same run id
     const gAny: any = globalThis as any;
@@ -132,6 +152,48 @@ serve(async (req) => {
     }
 
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
+
+    // Check user credits before processing (only for initial scan, not cached analysis)
+    if (!useCachedAnalysis) {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching user profile:', profileError);
+        throw new Error('Failed to fetch user profile');
+      }
+
+      const requiredCredits = inputComments.length;
+      console.log(`[CREDITS] User has ${profile.credits} credits, needs ${requiredCredits} credits`);
+
+      if (!profile || profile.credits < requiredCredits) {
+        console.warn(`[CREDITS] Insufficient credits: ${profile?.credits || 0} available, ${requiredCredits} required`);
+        return new Response(JSON.stringify({ 
+          error: 'Insufficient credits',
+          creditsNeeded: requiredCredits,
+          creditsAvailable: profile?.credits || 0
+        }), {
+          status: 402, // Payment Required
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Deduct credits using the secure function
+      const { data: deductResult, error: deductError } = await supabase.rpc('deduct_credits', {
+        user_uuid: user.id,
+        amount: requiredCredits
+      });
+
+      if (deductError || !deductResult) {
+        console.error('Error deducting credits:', deductError);
+        throw new Error('Failed to deduct credits');
+      }
+
+      console.log(`[CREDITS] Successfully deducted ${requiredCredits} credits from user ${user.email}`);
+    }
 
     // Process comments in batches - adjust batch size based on model capabilities
     let batchSize = 100; // Default batch size

@@ -21,11 +21,15 @@ interface CommentEditorProps {
   comments: CommentData[];
   onCommentsUpdate: (comments: CommentData[]) => void;
   onImportComments: (comments: CommentData[]) => void;
+  onCreditsError?: (needed: number, available: number) => void;
+  onCreditsRefresh?: () => void;
 }
-export const CommentEditor: React.FC<CommentEditorProps> = ({
-  comments,
-  onCommentsUpdate,
-  onImportComments
+export const CommentEditor: React.FC<CommentEditorProps> = ({ 
+  comments, 
+  onCommentsUpdate, 
+  onImportComments,
+  onCreditsError,
+  onCreditsRefresh 
 }) => {
   const {
     user

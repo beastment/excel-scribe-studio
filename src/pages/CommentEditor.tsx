@@ -4,13 +4,31 @@ import { CommentEditor } from '@/components/CommentEditor';
 import { Button } from '@/components/ui/button';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
+import { CreditsDisplay } from '@/components/CreditsDisplay';
+import { InsufficientCreditsDialog } from '@/components/InsufficientCreditsDialog';
+import { useUserCredits } from '@/hooks/useUserCredits';
+import { useAuth } from '@/contexts/AuthContext';
 const Index = () => {
   const [comments, setComments] = useState<CommentData[]>([]);
+  const [showInsufficientCreditsDialog, setShowInsufficientCreditsDialog] = useState(false);
+  const [creditsError, setCreditsError] = useState<{ needed: number; available: number } | null>(null);
+  
+  const { user } = useAuth();
+  const { credits, loading: creditsLoading, refreshCredits } = useUserCredits();
   const handleDataLoaded = (newComments: CommentData[]) => {
     setComments(newComments);
   };
   const handleCommentsUpdate = (updatedComments: CommentData[]) => {
     setComments(updatedComments);
+  };
+
+  const handleCreditsError = (needed: number, available: number) => {
+    setCreditsError({ needed, available });
+    setShowInsufficientCreditsDialog(true);
+  };
+
+  const handleCreditsRefresh = () => {
+    refreshCredits();
   };
   const loadDemoData = () => {
     const demoComments: CommentData[] = [{
@@ -218,6 +236,11 @@ const Index = () => {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-4xl mx-auto">
             
+            {user && (
+              <div className="flex justify-center mb-6">
+                <CreditsDisplay credits={credits} loading={creditsLoading} />
+              </div>
+            )}
             
             <h1 className="text-4xl lg:text-6xl font-bold text-foreground mb-6 leading-tight">
               Comment
@@ -250,11 +273,25 @@ const Index = () => {
               </div>
               <FileUpload onDataLoaded={handleDataLoaded} />
             </div> : <div className="animate-slide-up">
-              <CommentEditor comments={comments} onCommentsUpdate={handleCommentsUpdate} onImportComments={handleDataLoaded} />
+              <CommentEditor 
+                comments={comments} 
+                onCommentsUpdate={handleCommentsUpdate} 
+                onImportComments={handleDataLoaded}
+                onCreditsError={handleCreditsError}
+                onCreditsRefresh={handleCreditsRefresh}
+              />
             </div>}
           </div>
         </div>
       </section>
+
+      {/* Insufficient Credits Dialog */}
+      <InsufficientCreditsDialog
+        open={showInsufficientCreditsDialog}
+        onOpenChange={setShowInsufficientCreditsDialog}
+        creditsNeeded={creditsError?.needed || 0}
+        creditsAvailable={creditsError?.available || 0}
+      />
     </div>;
 };
 export default Index;

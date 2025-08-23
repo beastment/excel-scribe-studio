@@ -21,6 +21,7 @@ import { Users, Crown, User, Trash2, RefreshCw, ChevronDown, ChevronRight, Mail,
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SubscriptionManagement } from './SubscriptionManagement';
+import { CreditsManagement } from './CreditsManagement';
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -478,10 +479,14 @@ export const UserManagement: React.FC = () => {
                     </TableCell>
                   </TableRow>
                   
-                  {expandedUsers.has(user.user_id) && (
+                   {expandedUsers.has(user.user_id) && (
                     <TableRow>
                       <TableCell colSpan={7} className="p-0">
-                        <div className="p-4 bg-gray-50 border-t">
+                        <div className="p-4 bg-gray-50 border-t space-y-4">
+                          <CreditsManagement 
+                            userId={user.user_id} 
+                            userFullName={user.full_name || 'Unknown User'} 
+                          />
                           <SubscriptionManagement 
                             userId={user.user_id} 
                             userFullName={user.full_name || 'Unknown User'} 

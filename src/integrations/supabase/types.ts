@@ -288,6 +288,7 @@ export type Database = {
         Row: {
           avatar_url: string | null
           created_at: string
+          credits: number
           full_name: string | null
           id: string
           last_login_at: string | null
@@ -298,6 +299,7 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           created_at?: string
+          credits?: number
           full_name?: string | null
           id?: string
           last_login_at?: string | null
@@ -308,6 +310,7 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           created_at?: string
+          credits?: number
           full_name?: string | null
           id?: string
           last_login_at?: string | null
@@ -363,9 +366,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_credits: {
+        Args: { amount: number; user_uuid: string }
+        Returns: boolean
+      }
       cleanup_auth_rate_limits: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      deduct_credits: {
+        Args: { amount: number; user_uuid: string }
+        Returns: boolean
       }
       get_maintenance_status: {
         Args: Record<PropertyKey, never>
