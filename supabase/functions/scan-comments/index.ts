@@ -385,12 +385,14 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
 
     // Extract model identifier from provider:model format
-    const modelId = model.includes(':') ? model.split(':')[1] : model;
+    const modelId = model.includes('/') ? model.split('/')[1] : model;
     
     // Create AWS signature v4
     const host = `bedrock-runtime.${region}.amazonaws.com`;
     const endpoint = `https://${host}/model/${modelId}/invoke`;
     
+    console.log(`[BEDROCK] Original model string: ${model}`);
+    console.log(`[BEDROCK] Extracted model ID: ${modelId}`);
     console.log(`[BEDROCK] Using model: ${modelId}, region: ${region}, endpoint: ${endpoint}`);
     
     const bedrockPayload = {
@@ -463,7 +465,7 @@ async function createAWSSignature(
   
   // Create string to sign
   const algorithm = 'AWS4-HMAC-SHA256';
-  const credentialScope = `${dateStamp}/${region}/bedrock-runtime/aws4_request`;
+  const credentialScope = `${dateStamp}/${region}/bedrock/aws4_request`;
   const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${await sha256(canonicalRequest)}`;
   
   console.log(`[SIGNATURE] String to sign:`, stringToSign);
@@ -471,7 +473,7 @@ async function createAWSSignature(
   // Calculate signature
   const kDate = await hmacSha256(`AWS4${secretAccessKey}`, dateStamp);
   const kRegion = await hmacSha256(kDate, region);
-  const kService = await hmacSha256(kRegion, 'bedrock-runtime');
+  const kService = await hmacSha256(kRegion, 'bedrock');
   const kSigning = await hmacSha256(kService, 'aws4_request');
   const signature = await hmacSha256(kSigning, stringToSign);
   
