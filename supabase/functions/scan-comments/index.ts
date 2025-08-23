@@ -376,16 +376,24 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const accessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
     const secretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
     
+    console.log(`[BEDROCK] AWS Region: ${region}`);
+    console.log(`[BEDROCK] Access Key ID: ${accessKeyId ? '***' + accessKeyId.slice(-4) : 'NOT SET'}`);
+    console.log(`[BEDROCK] Secret Access Key: ${secretAccessKey ? '***' + secretAccessKey.slice(-4) : 'NOT SET'}`);
+    
     if (!accessKeyId || !secretAccessKey) {
       throw new Error('AWS credentials not configured');
     }
 
+    // Extract model identifier from provider:model format
+    const modelId = model.includes(':') ? model.split(':')[1] : model;
+    
     // Create AWS signature v4
     const host = `bedrock-runtime.${region}.amazonaws.com`;
-    const endpoint = `https://${host}/model/${model}/invoke`;
+    const endpoint = `https://${host}/model/${modelId}/invoke`;
+    
+    console.log(`[BEDROCK] Using model: ${modelId}, region: ${region}, endpoint: ${endpoint}`);
     
     const bedrockPayload = {
-      anthropic_version: "bedrock-2023-05-31",
       max_tokens: 4096,
       messages: payload.messages,
       temperature: payload.temperature
@@ -393,6 +401,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
     const date = new Date();
     const amzDate = date.toISOString().replace(/[:\-]|\.\d{3}/g, '');
+    
+    console.log(`[BEDROCK] Request timestamp: ${date.toISOString()}, AMZ date: ${amzDate}`);
+    
+    console.log(`[BEDROCK] Request payload:`, JSON.stringify(bedrockPayload, null, 2));
     
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -413,7 +425,11 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       body: JSON.stringify(bedrockPayload)
     });
 
+    console.log(`[BEDROCK] Response status: ${response.status} ${response.statusText}`);
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[BEDROCK] Error response:`, errorText);
       throw new Error(`Bedrock API error: ${response.status} ${response.statusText}`);
     }
 
@@ -434,29 +450,35 @@ async function createAWSSignature(
   region: string,
   amzDate: string
 ): Promise<string> {
-  const { hostname, pathname } = new URL(url);
+  const { hostname, pathname, search } = new URL(url);
   const dateStamp = amzDate.substring(0, 8);
   
   // Create canonical request
   const canonicalHeaders = `content-type:application/json\nhost:${hostname}\nx-amz-date:${amzDate}\n`;
   const signedHeaders = 'content-type;host;x-amz-date';
   const payloadHash = await sha256(body);
-  const canonicalRequest = `${method}\n${pathname}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const canonicalRequest = `${method}\n${pathname}${search}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  
+  console.log(`[SIGNATURE] Canonical request:`, canonicalRequest);
   
   // Create string to sign
   const algorithm = 'AWS4-HMAC-SHA256';
-  const credentialScope = `${dateStamp}/${region}/bedrock/aws4_request`;
+  const credentialScope = `${dateStamp}/${region}/bedrock-runtime/aws4_request`;
   const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${await sha256(canonicalRequest)}`;
+  
+  console.log(`[SIGNATURE] String to sign:`, stringToSign);
   
   // Calculate signature
   const kDate = await hmacSha256(`AWS4${secretAccessKey}`, dateStamp);
   const kRegion = await hmacSha256(kDate, region);
-  const kService = await hmacSha256(kRegion, 'bedrock');
+  const kService = await hmacSha256(kRegion, 'bedrock-runtime');
   const kSigning = await hmacSha256(kService, 'aws4_request');
   const signature = await hmacSha256(kSigning, stringToSign);
   
   // Create authorization header
   const authorization = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${arrayBufferToHex(signature)}`;
+  
+  console.log(`[SIGNATURE] Authorization header:`, authorization);
   
   return authorization;
 }
@@ -468,7 +490,13 @@ async function sha256(message: string): Promise<string> {
 }
 
 async function hmacSha256(key: string | ArrayBuffer, message: string): Promise<ArrayBuffer> {
-  const keyBuffer = typeof key === 'string' ? new TextEncoder().encode(key) : key;
+  let keyBuffer: ArrayBuffer;
+  if (typeof key === 'string') {
+    keyBuffer = new TextEncoder().encode(key);
+  } else {
+    keyBuffer = key;
+  }
+  
   const msgBuffer = new TextEncoder().encode(message);
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
