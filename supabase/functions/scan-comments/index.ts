@@ -350,7 +350,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
       identifiable: Boolean(item.identifiable),
       reasoning: String(item.reasoning || 'No reasoning provided')
     }));
-      } catch (error) {
+  } catch (error) {
     console.error(`Failed to parse ${source} results:`, error);
     console.error(`Raw ${source} response:`, response);
     throw new Error(`Failed to parse ${source} results: ${error.message}`);
