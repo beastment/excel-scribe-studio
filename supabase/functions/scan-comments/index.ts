@@ -330,6 +330,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
 
 async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string) {
   const payload = {
+    model: model, // Add the model parameter for OpenAI
     messages: [
       { role: 'system', content: prompt },
       { role: 'user', content: input }
