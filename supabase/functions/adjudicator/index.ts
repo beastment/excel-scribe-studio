@@ -56,6 +56,7 @@ interface AdjudicationResponse {
 // AI calling function
 async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number) {
   const payload = {
+    model: model, // Add the model parameter for OpenAI
     messages: [
       { role: 'system', content: prompt },
       { role: 'user', content: input }
