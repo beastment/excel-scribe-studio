@@ -401,6 +401,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const userMessage = payload.messages.find(msg => msg.role === 'user')?.content || '';
     
     const bedrockPayload = {
+      anthropic_version: "bedrock-2023-05-31",
       max_tokens: 4096,
       system: systemMessage,
       messages: [
