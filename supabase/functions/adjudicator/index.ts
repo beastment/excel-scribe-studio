@@ -255,7 +255,7 @@ serve(async (req) => {
     try {
       // Build prompt and input for adjudication
       const prompt = buildAdjudicationPrompt(needsAdjudication.length);
-      const input = buildAdjudicationInput(needsAdjudication.length);
+      const input = buildAdjudicationInput(needsAdjudication);
 
       console.log(`${logPrefix} [AI REQUEST] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
       console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
