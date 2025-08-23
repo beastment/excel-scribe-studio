@@ -338,7 +338,127 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
         const completeJson = partialJson.substring(0, lastCompleteObject) + ']';
         console.warn(`${source}: Response was truncated, extracted ${lastCompleteObject} characters of JSON`);
         console.log(`${source}: Extracted JSON preview: ${completeJson.substring(0, 200)}...`);
-        jsonMatch = [completeJson];
+        
+        // Validate the extracted JSON before using it
+        try {
+          JSON.parse(completeJson);
+          jsonMatch = [completeJson];
+        } catch (validationError) {
+          console.error(`${source}: JSON validation failed:`, validationError.message);
+          console.log(`${source}: Failed JSON:`, completeJson.substring(0, 500) + '...');
+          console.warn(`${source}: Extracted JSON is invalid, trying to find last valid object`);
+          
+          // Find the last complete object by looking for the last complete property
+          let lastValidPosition = 0;
+          
+          // Look for the last complete object by finding the last "}" that has a matching "{"
+          for (let i = partialJson.length - 1; i >= 0; i--) {
+            if (partialJson[i] === '}') {
+              // Find the matching opening brace
+              let tempBraceCount = 1;
+              let objectStart = -1;
+              
+              for (let j = i - 1; j >= 0; j--) {
+                if (partialJson[j] === '}') tempBraceCount++;
+                if (partialJson[j] === '{') {
+                  tempBraceCount--;
+                  if (tempBraceCount === 0) {
+                    objectStart = j;
+                    break;
+                  }
+                }
+              }
+              
+              if (objectStart !== -1) {
+                const objectJson = partialJson.substring(objectStart, i + 1);
+                try {
+                  JSON.parse(objectJson);
+                  lastValidPosition = i + 1;
+                  break;
+                } catch (e) {
+                  // This object is invalid, continue
+                }
+              }
+            }
+          }
+          
+          if (lastValidPosition > 0) {
+            const validJson = partialJson.substring(0, lastValidPosition) + ']';
+            console.warn(`${source}: Found last valid object at position ${lastValidPosition}`);
+            jsonMatch = [validJson];
+          } else {
+            // Last resort: try to extract individual valid objects
+            console.warn(`${source}: Attempting to extract individual valid objects`);
+            
+            const validObjects = [];
+            let currentObject = '';
+            let braceCount = 0;
+            let inString = false;
+            let escapeNext = false;
+            
+            for (let i = 0; i < partialJson.length; i++) {
+              const char = partialJson[i];
+              
+              if (escapeNext) {
+                escapeNext = false;
+                currentObject += char;
+                continue;
+              }
+              
+              if (char === '\\') {
+                escapeNext = true;
+                currentObject += char;
+                continue;
+              }
+              
+              if (char === '"' && !escapeNext) {
+                inString = !inString;
+                currentObject += char;
+                continue;
+              }
+              
+              if (!inString) {
+                if (char === '{') {
+                  if (braceCount === 0) {
+                    currentObject = char;
+                  } else {
+                    currentObject += char;
+                  }
+                  braceCount++;
+                } else if (char === '}') {
+                  currentObject += char;
+                  braceCount--;
+                  
+                  if (braceCount === 0) {
+                    // Try to parse this object
+                    try {
+                      JSON.parse(currentObject);
+                      validObjects.push(currentObject);
+                      currentObject = '';
+                    } catch (e) {
+                      // Object is invalid, skip it
+                      currentObject = '';
+                    }
+                  }
+                } else {
+                  currentObject += char;
+                }
+              } else {
+                currentObject += char;
+              }
+            }
+            
+            if (validObjects.length > 0) {
+              const reconstructedJson = '[' + validObjects.join(',') + ']';
+              console.warn(`${source}: Reconstructed JSON from ${validObjects.length} valid objects`);
+              console.log(`${source}: First object:`, validObjects[0].substring(0, 200) + '...');
+              console.log(`${source}: Last object:`, validObjects[validObjects.length - 1].substring(0, 200) + '...');
+              jsonMatch = [reconstructedJson];
+            } else {
+              throw new Error('Could not extract valid JSON from truncated response');
+            }
+          }
+        }
       } else {
         throw new Error('No complete JSON objects found in truncated response');
       }
