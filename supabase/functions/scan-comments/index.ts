@@ -438,8 +438,8 @@ async function createAWSSignature(
   const dateStamp = amzDate.substring(0, 8);
   
   // Create canonical request
-  const canonicalHeaders = `host:${hostname}\nx-amz-date:${amzDate}\n`;
-  const signedHeaders = 'host;x-amz-date';
+  const canonicalHeaders = `content-type:application/json\nhost:${hostname}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'content-type;host;x-amz-date';
   const payloadHash = await sha256(body);
   const canonicalRequest = `${method}\n${pathname}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
   
