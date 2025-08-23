@@ -300,13 +300,58 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
       throw new Error('Empty response');
     }
 
-    // Try to extract JSON from the response
-    const jsonMatch = response.match(/\[[\s\S]*\]/);
+    // Try to extract JSON from the response - handle truncated responses
+    let jsonMatch = response.match(/\[[\s\S]*\]/);
+    
+    // If no complete array found, try to extract partial JSON and complete it
     if (!jsonMatch) {
-      throw new Error('No JSON array found in response');
+      console.warn(`${source}: No complete JSON array found, attempting to extract partial response`);
+      console.log(`${source}: Response length: ${response.length} characters`);
+      console.log(`${source}: Response preview: ${response.substring(0, 200)}...`);
+      
+      // Look for the start of a JSON array
+      const arrayStart = response.indexOf('[');
+      if (arrayStart === -1) {
+        throw new Error('No JSON array found in response');
+      }
+      
+      // Extract from the start of the array to the end of the response
+      const partialJson = response.substring(arrayStart);
+      console.log(`${source}: Partial JSON from position ${arrayStart}: ${partialJson.substring(0, 200)}...`);
+      
+      // Try to find complete objects by looking for balanced braces
+      let braceCount = 0;
+      let lastCompleteObject = 0;
+      
+      for (let i = 0; i < partialJson.length; i++) {
+        if (partialJson[i] === '{') braceCount++;
+        if (partialJson[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            lastCompleteObject = i + 1;
+          }
+        }
+      }
+      
+      // If we found complete objects, extract them and close the array
+      if (lastCompleteObject > 0) {
+        const completeJson = partialJson.substring(0, lastCompleteObject) + ']';
+        console.warn(`${source}: Response was truncated, extracted ${lastCompleteObject} characters of JSON`);
+        console.log(`${source}: Extracted JSON preview: ${completeJson.substring(0, 200)}...`);
+        jsonMatch = [completeJson];
+      } else {
+        throw new Error('No complete JSON objects found in truncated response');
+      }
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.error(`${source}: JSON parse error:`, parseError);
+      console.error(`${source}: Attempted to parse:`, jsonMatch[0]);
+      throw new Error(`Invalid JSON in response: ${parseError.message}`);
+    }
     if (!Array.isArray(parsed)) {
       throw new Error('Response is not an array');
     }
@@ -365,7 +410,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       { role: 'user', content: input }
     ],
     temperature: 0.1,
-    max_tokens: 4096
+    max_tokens: 8192  // Increased from 4096 to handle larger responses
   };
 
   if (provider === 'azure') {
@@ -383,7 +428,12 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
 
     const result = await response.json();
-    return result.choices[0]?.message?.content || '';
+    const responseText = result.choices[0]?.message?.content || '';
+    console.log(`[AZURE] Response length: ${responseText.length} characters`);
+    if (responseText.length > 8000) {
+      console.warn(`[AZURE] Response is very long (${responseText.length} chars), may be approaching token limits`);
+    }
+    return responseText;
   } else if (provider === 'openai') {
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     console.log(`[OPENAI] API Key: ${openaiApiKey ? '***' + openaiApiKey.slice(-4) : 'NOT SET'}`);
@@ -407,7 +457,12 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
 
     const result = await response.json();
-    return result.choices[0]?.message?.content || '';
+    const responseText = result.choices[0]?.message?.content || '';
+    console.log(`[OPENAI] Response length: ${responseText.length} characters`);
+    if (responseText.length > 8000) {
+      console.warn(`[OPENAI] Response is very long (${responseText.length} chars), may be approaching token limits`);
+    }
+    return responseText;
   } else if (provider === 'bedrock') {
     // AWS Bedrock implementation
     const region = Deno.env.get('AWS_REGION') || 'us-east-1';
@@ -440,7 +495,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     const bedrockPayload = {
       anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 4096,
+      max_tokens: 8192,  // Increased from 4096 to handle larger responses
       system: systemMessage,
       messages: [
         {
@@ -489,7 +544,12 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
 
     const result = await response.json();
-    return result.content[0]?.text || '';
+    const responseText = result.content[0]?.text || '';
+    console.log(`[BEDROCK] Response length: ${responseText.length} characters`);
+    if (responseText.length > 8000) {
+      console.warn(`[BEDROCK] Response is very long (${responseText.length} chars), may be approaching token limits`);
+    }
+    return responseText;
       } else {
     throw new Error(`Unsupported provider: ${provider}`);
   }
