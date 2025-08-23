@@ -133,12 +133,28 @@ serve(async (req) => {
 
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
 
-    // Process comments in batches
-    const batch = inputComments.slice(batchStart, batchStart + 100); // Process up to 100 at a time
+    // Process comments in batches - adjust batch size based on model capabilities
+    let batchSize = 100; // Default batch size
+    
+    // Reduce batch size for models with lower token limits
+    if (scanA.model.includes('claude-3-haiku') || scanB.model.includes('claude-3-haiku')) {
+      batchSize = 20; // Claude 3 Haiku has lower token limits
+    } else if (scanA.model.includes('gpt-4o-mini') || scanB.model.includes('gpt-4o-mini')) {
+      batchSize = 50; // GPT-4o-mini can handle more
+    }
+    
+    // Use the smaller of the two models' preferred batch sizes
+    const preferredA = scanA.preferred_batch_size || batchSize;
+    const preferredB = scanB.preferred_batch_size || batchSize;
+    batchSize = Math.min(preferredA, preferredB, batchSize);
+    
+    console.log(`[BATCH] Model-based batch size: ${batchSize} (Scan A: ${scanA.model}, Scan B: ${scanB.model})`);
+    
+    const batch = inputComments.slice(batchStart, batchStart + batchSize);
     let summary = { total: batch.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     const scannedComments: any[] = [];
 
-    console.log(`[PROCESS] Batch ${batchStart + 1}-${batchStart + batch.length} of ${inputComments.length} (preferredA=${scanA.preferred_batch_size || 100}, preferredB=${scanB.preferred_batch_size || 100}, chosen=${batch.length})`);
+    console.log(`[PROCESS] Batch ${batchStart + 1}-${batchStart + batch.length} of ${inputComments.length} (preferredA=${scanA.preferred_batch_size || 100}, preferredB=${scanB.preferred_batch_size || 100}, chosen=${batchSize})`);
 
     // Process batch with Scan A and Scan B in parallel
     const [scanAResults, scanBResults] = await Promise.all([
@@ -453,7 +469,15 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
               console.warn(`${source}: Reconstructed JSON from ${validObjects.length} valid objects`);
               console.log(`${source}: First object:`, validObjects[0].substring(0, 200) + '...');
               console.log(`${source}: Last object:`, validObjects[validObjects.length - 1].substring(0, 200) + '...');
-              jsonMatch = [reconstructedJson];
+              
+              // Validate the reconstructed JSON
+              try {
+                JSON.parse(reconstructedJson);
+                jsonMatch = [reconstructedJson];
+              } catch (finalError) {
+                console.error(`${source}: Final JSON validation failed:`, finalError.message);
+                throw new Error(`Could not reconstruct valid JSON from truncated response. Extracted ${validObjects.length} objects but final JSON is invalid.`);
+              }
             } else {
               throw new Error('Could not extract valid JSON from truncated response');
             }
@@ -615,7 +639,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     const bedrockPayload = {
       anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 8192,  // Increased from 4096 to handle larger responses
+      max_tokens: 4096,  // Claude 3 Haiku maximum
       system: systemMessage,
       messages: [
         {
