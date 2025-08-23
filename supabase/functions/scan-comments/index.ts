@@ -389,10 +389,11 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Create AWS signature v4
     const host = `bedrock-runtime.${region}.amazonaws.com`;
-    const endpoint = `https://${host}/model/${modelId}/invoke`;
+    const endpoint = `https://${host}/model/${encodeURIComponent(modelId)}/invoke`;
     
     console.log(`[BEDROCK] Original model string: ${model}`);
     console.log(`[BEDROCK] Extracted model ID: ${modelId}`);
+    console.log(`[BEDROCK] Encoded model ID: ${encodeURIComponent(modelId)}`);
     console.log(`[BEDROCK] Using model: ${modelId}, region: ${region}, endpoint: ${endpoint}`);
     
     const bedrockPayload = {
