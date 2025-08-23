@@ -311,8 +311,37 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
       throw new Error('Response is not an array');
     }
 
-    if (parsed.length !== expectedCount) {
-      throw new Error(`Expected ${expectedCount} items, got ${parsed.length}`);
+    // Handle cases where AI returns fewer results than expected
+    if (parsed.length < expectedCount) {
+      console.warn(`${source}: Expected ${expectedCount} items, got ${parsed.length}. Padding with default results.`);
+      
+      // Create default results for missing items
+      const paddedResults = [];
+      for (let i = 0; i < expectedCount; i++) {
+        const existingResult = parsed[i];
+        if (existingResult) {
+          paddedResults.push({
+            index: existingResult.index || i + 1,
+            concerning: Boolean(existingResult.concerning),
+            identifiable: Boolean(existingResult.identifiable),
+            reasoning: String(existingResult.reasoning || 'No reasoning provided')
+          });
+        } else {
+          // Add default result for missing item
+          paddedResults.push({
+            index: i + 1,
+            concerning: false,
+            identifiable: false,
+            reasoning: `No analysis provided by ${source} for this comment`
+          });
+        }
+      }
+      return paddedResults;
+    }
+
+    if (parsed.length > expectedCount) {
+      console.warn(`${source}: Expected ${expectedCount} items, got ${parsed.length}. Truncating to expected count.`);
+      parsed = parsed.slice(0, expectedCount);
     }
 
     return parsed.map((item, i) => ({
