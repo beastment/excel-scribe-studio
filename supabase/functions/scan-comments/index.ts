@@ -396,9 +396,19 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     console.log(`[BEDROCK] Encoded model ID: ${encodeURIComponent(modelId)}`);
     console.log(`[BEDROCK] Using model: ${modelId}, region: ${region}, endpoint: ${endpoint}`);
     
+    // For Anthropic Claude models in Bedrock, system message should be top-level, not in messages array
+    const systemMessage = payload.messages.find(msg => msg.role === 'system')?.content || '';
+    const userMessage = payload.messages.find(msg => msg.role === 'user')?.content || '';
+    
     const bedrockPayload = {
       max_tokens: 4096,
-      messages: payload.messages,
+      system: systemMessage,
+      messages: [
+        {
+          role: 'user',
+          content: userMessage
+        }
+      ],
       temperature: payload.temperature
     };
 
