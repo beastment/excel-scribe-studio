@@ -150,108 +150,112 @@ serve(async (req) => {
     
     console.log(`[BATCH] Model-based batch size: ${batchSize} (Scan A: ${scanA.model}, Scan B: ${scanB.model})`);
     
-    const batch = inputComments.slice(batchStart, batchStart + batchSize);
-    let summary = { total: batch.length, concerning: 0, identifiable: 0, needsAdjudication: 0 };
-    const scannedComments: any[] = [];
+    // Process ALL comments in batches
+    let allScannedComments: any[] = [];
+    let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
+    
+    for (let currentBatchStart = 0; currentBatchStart < inputComments.length; currentBatchStart += batchSize) {
+      const batch = inputComments.slice(currentBatchStart, currentBatchStart + batchSize);
+      const batchEnd = Math.min(currentBatchStart + batchSize, inputComments.length);
+      
+      console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (preferredA=${scanA.preferred_batch_size || 100}, preferredB=${scanB.preferred_batch_size || 100}, chosen=${batchSize})`);
 
-    console.log(`[PROCESS] Batch ${batchStart + 1}-${batchStart + batch.length} of ${inputComments.length} (preferredA=${scanA.preferred_batch_size || 100}, preferredB=${scanB.preferred_batch_size || 100}, chosen=${batchSize})`);
+      // Process batch with Scan A and Scan B in parallel
+      const [scanAResults, scanBResults] = await Promise.all([
+        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis'),
+        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis')
+      ]);
 
-    // Process batch with Scan A and Scan B in parallel
-    const [scanAResults, scanBResults] = await Promise.all([
-      callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis'),
-      callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis')
-    ]);
+      console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
+      console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
 
-        console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
-        console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
+      // Parse and validate results
+      const scanAResultsArray = parseBatchResults(scanAResults, batch.length, 'Scan A');
+      const scanBResultsArray = parseBatchResults(scanBResults, batch.length, 'Scan B');
 
-    // Parse and validate results
-    const scanAResultsArray = parseBatchResults(scanAResults, batch.length, 'Scan A');
-    const scanBResultsArray = parseBatchResults(scanBResults, batch.length, 'Scan B');
+      // Process each comment in this batch
+      for (let i = 0; i < batch.length; i++) {
+        const comment = batch[i];
+        const scanAResult = scanAResultsArray[i];
+        const scanBResult = scanBResultsArray[i];
 
-    // Process each comment
-    for (let i = 0; i < batch.length; i++) {
-      const comment = batch[i];
-      const scanAResult = scanAResultsArray[i];
-      const scanBResult = scanBResultsArray[i];
-
-      if (!scanAResult || !scanBResult) {
-        console.warn(`Missing scan results for comment ${i + 1}, skipping`);
-        continue;
-      }
-
-      // Determine if adjudication is needed
-      const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
-      const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
-      const needsAdjudication = concerningDisagreement || identifiableDisagreement;
-
-      if (needsAdjudication) {
-        summary.needsAdjudication++;
-      }
-
-      // Set flags based on scan results (will be resolved by adjudicator later)
-      const concerning = scanAResult.concerning; // Use Scan A as default, will be updated by adjudicator
-      const identifiable = scanAResult.identifiable;
-
-      if (concerning) summary.concerning++;
-      if (identifiable) summary.identifiable++;
-
-      // Determine the mode based on content type
-      let mode: 'redact' | 'rephrase' | 'original';
-      if (concerning) {
-        mode = 'redact';
-      } else if (identifiable) {
-        mode = 'rephrase';
-      } else {
-        mode = 'original';
-      }
-
-      // Create comment result with adjudication flags
-            const processedComment = {
-              ...comment,
-        text: comment.originalText || comment.text,
-        concerning,
-        identifiable,
-        mode, // Add the mode field
-        aiReasoning: scanAResult.reasoning,
-                needsAdjudication,
-        adjudicationData: {
-          scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
-          scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
-          agreements: {
-            concerning: !concerningDisagreement ? scanAResult.concerning : null,
-            identifiable: !identifiableDisagreement ? scanAResult.identifiable : null
-          }
-        },
-        debugInfo: {
-          scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
-          scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
-          needsAdjudication,
-          scanRunId
+        if (!scanAResult || !scanBResult) {
+          console.warn(`Missing scan results for comment ${currentBatchStart + i + 1}, skipping`);
+          continue;
         }
-      };
 
-      scannedComments.push(processedComment);
+        // Determine if adjudication is needed
+        const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
+        const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
+        const needsAdjudication = concerningDisagreement || identifiableDisagreement;
+
+        if (needsAdjudication) {
+          totalSummary.needsAdjudication++;
+        }
+
+        // Set flags based on scan results (will be resolved by adjudicator later)
+        const concerning = scanAResult.concerning; // Use Scan A as default, will be updated by adjudicator
+        const identifiable = scanAResult.identifiable;
+
+        if (concerning) totalSummary.concerning++;
+        if (identifiable) totalSummary.identifiable++;
+
+        // Determine the mode based on content type
+        let mode: 'redact' | 'rephrase' | 'original';
+        if (concerning) {
+          mode = 'redact';
+        } else if (identifiable) {
+          mode = 'rephrase';
+        } else {
+          mode = 'original';
+        }
+
+        // Create comment result with adjudication flags
+        const processedComment = {
+          ...comment,
+          text: comment.originalText || comment.text,
+          concerning,
+          identifiable,
+          mode, // Add the mode field
+          aiReasoning: scanAResult.reasoning,
+          needsAdjudication,
+          adjudicationData: {
+            scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
+            scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
+            agreements: {
+              concerning: !concerningDisagreement ? scanAResult.concerning : null,
+              identifiable: !identifiableDisagreement ? scanBResult.identifiable : null
+            }
+          },
+          debugInfo: {
+            scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
+            scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
+            needsAdjudication,
+            scanRunId
+          }
+        };
+
+        allScannedComments.push(processedComment);
+      }
+      
+      console.log(`[BATCH] Completed batch ${currentBatchStart + 1}-${batchEnd}, processed ${batch.length} comments`);
     }
-
-    console.log(`Successfully scanned ${scannedComments.length} comments in batch`);
+    
+    totalSummary.total = allScannedComments.length;
+    console.log(`Successfully scanned ALL ${allScannedComments.length} comments across ${Math.ceil(inputComments.length / batchSize)} batches`);
     
     const response = { 
-      comments: scannedComments,
-      batchStart,
-      batchSize: scannedComments.length,
-      hasMore: batchStart + scannedComments.length < inputComments.length,
+      comments: allScannedComments,
+      batchStart: 0, // Always start from 0 since we process all
+      batchSize: allScannedComments.length, // Total processed
+      hasMore: false, // No more batches since we processed all
       totalComments: inputComments.length,
-      summary: {
-        total: scannedComments.length,
-        concerning: scannedComments.filter(c => c.concerning).length,
-        identifiable: scannedComments.filter(c => c.identifiable).length,
-        needsAdjudication: scannedComments.filter(c => c.needsAdjudication).length
-      }
+      summary: totalSummary
     };
     
     console.log('Returning response with comments count:', response.comments.length);
     console.log('Response summary:', response.summary);
+    console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / batchSize)} batches`);
     
     // Mark run as completed
     gAny.__runCompleted.add(scanRunId);
