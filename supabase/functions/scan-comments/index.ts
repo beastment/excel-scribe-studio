@@ -320,23 +320,51 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
       throw new Error('Empty response');
     }
 
-    // Try to extract JSON from the response - handle truncated responses
-    let jsonMatch = response.match(/\[[\s\S]*\]/);
+    // Decode HTML entities that might break JSON parsing
+    let decodedResponse = response;
+    if (typeof response === 'string') {
+      const originalResponse = response;
+      // Common HTML entities that can appear in AI responses
+      decodedResponse = response
+        .replace(/&#160;/g, ' ') // non-breaking space
+        .replace(/&nbsp;/g, ' ') // non-breaking space
+        .replace(/&amp;/g, '&') // ampersand
+        .replace(/&lt;/g, '<') // less than
+        .replace(/&gt;/g, '>') // greater than
+        .replace(/&quot;/g, '"') // quote
+        .replace(/&#39;/g, "'") // apostrophe
+        .replace(/&#x20;/g, ' ') // space (hex)
+        .replace(/&#x0A;/g, '\n') // newline (hex)
+        .replace(/&#x0D;/g, '\r') // carriage return (hex)
+        .replace(/&#x09;/g, '\t'); // tab (hex)
+      
+      // Log if HTML entities were found and decoded
+      if (decodedResponse !== originalResponse) {
+        console.log(`${source}: HTML entities detected and decoded in response`);
+        const entityMatches = originalResponse.match(/&[#\w]+;/g);
+        if (entityMatches) {
+          console.log(`${source}: Found HTML entities:`, entityMatches.slice(0, 10)); // Log first 10
+        }
+      }
+    }
+
+    // Try to extract JSON from the decoded response - handle truncated responses
+    let jsonMatch = decodedResponse.match(/\[[\s\S]*\]/);
     
     // If no complete array found, try to extract partial JSON and complete it
     if (!jsonMatch) {
       console.warn(`${source}: No complete JSON array found, attempting to extract partial response`);
-      console.log(`${source}: Response length: ${response.length} characters`);
-      console.log(`${source}: Response preview: ${response.substring(0, 200)}...`);
+      console.log(`${source}: Response length: ${decodedResponse.length} characters`);
+      console.log(`${source}: Response preview: ${decodedResponse.substring(0, 200)}...`);
       
       // Look for the start of a JSON array
-      const arrayStart = response.indexOf('[');
+      const arrayStart = decodedResponse.indexOf('[');
       if (arrayStart === -1) {
         throw new Error('No JSON array found in response');
       }
       
       // Extract from the start of the array to the end of the response
-      const partialJson = response.substring(arrayStart);
+      const partialJson = decodedResponse.substring(arrayStart);
       console.log(`${source}: Partial JSON from position ${arrayStart}: ${partialJson.substring(0, 200)}...`);
       
       // Try to find complete objects by looking for balanced braces
