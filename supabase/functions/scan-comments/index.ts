@@ -355,16 +355,24 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const result = await response.json();
     return result.choices[0]?.message?.content || '';
   } else if (provider === 'openai') {
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    console.log(`[OPENAI] API Key: ${openaiApiKey ? '***' + openaiApiKey.slice(-4) : 'NOT SET'}`);
+    console.log(`[OPENAI] Request payload:`, JSON.stringify(payload, null, 2));
+    
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Authorization': `Bearer ${openaiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload)
     });
 
+    console.log(`[OPENAI] Response status: ${response.status} ${response.statusText}`);
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[OPENAI] Error response:`, errorText);
       throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
     }
 
