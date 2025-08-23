@@ -409,6 +409,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     console.log(`[BEDROCK] Request payload:`, JSON.stringify(bedrockPayload, null, 2));
     
+    // Create signature using raw endpoint (without encoding) for canonical request
+    const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
+    
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -417,7 +420,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
         'X-Amz-Date': amzDate,
         'Authorization': await createAWSSignature(
           'POST',
-          endpoint,
+          rawEndpoint, // Use raw endpoint for signature calculation
           JSON.stringify(bedrockPayload),
           accessKeyId,
           secretAccessKey,
