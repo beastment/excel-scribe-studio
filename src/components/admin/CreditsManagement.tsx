@@ -7,51 +7,51 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Minus } from 'lucide-react';
+import { Plus, Minus, RefreshCw } from 'lucide-react';
 
 interface CreditsManagementProps {
   userId: string;
   userFullName: string;
 }
 
-interface UserProfile {
+interface UserCredits {
   id: string;
   user_id: string;
-  full_name: string | null;
-  credits: number;
+  available_credits: number;
+  total_credits_used: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, userFullName }) => {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [userCredits, setUserCredits] = useState<UserCredits | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [creditAmount, setCreditAmount] = useState<number>(0);
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchUserProfile();
+    fetchUserCredits();
   }, [userId]);
 
-  const fetchUserProfile = async () => {
+  const fetchUserCredits = async () => {
     try {
       setLoading(true);
+      // Get or create user credits using the RPC function
       const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+        .rpc('get_or_create_user_credits', { user_uuid: userId });
 
       if (error) {
-        console.error('Error fetching user profile:', error);
+        console.error('Error fetching user credits:', error);
         toast({
           title: "Error",
-          description: "Failed to fetch user profile",
+          description: "Failed to fetch user credits",
           variant: "destructive",
         });
         return;
       }
 
-      setProfile(data);
+      setUserCredits(data);
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -65,16 +65,16 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   };
 
   const updateCredits = async (operation: 'add' | 'subtract') => {
-    if (!profile || creditAmount <= 0) return;
+    if (!userCredits || creditAmount <= 0) return;
 
     try {
       setUpdating(true);
       
       const finalAmount = operation === 'add' ? creditAmount : -creditAmount;
       
-      const { error } = await supabase.rpc('add_credits', {
+      const { error } = await supabase.rpc('add_user_credits', {
         user_uuid: userId,
-        amount: finalAmount
+        credits_to_add: finalAmount
       });
 
       if (error) {
@@ -92,8 +92,8 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
         description: `${operation === 'add' ? 'Added' : 'Subtracted'} ${creditAmount} credits`,
       });
 
-      // Refresh the profile data
-      await fetchUserProfile();
+      // Refresh the credits data
+      await fetchUserCredits();
       setCreditAmount(0);
     } catch (error) {
       console.error('Error:', error);
@@ -108,24 +108,30 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   };
 
   const setCreditsDirectly = async (newAmount: number) => {
-    if (!profile || newAmount < 0) return;
+    if (!userCredits || newAmount < 0) return;
 
     try {
       setUpdating(true);
       
-      const { error } = await supabase
-        .from('profiles')
-        .update({ credits: newAmount })
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error setting credits:', error);
-        toast({
-          title: "Error",
-          description: "Failed to set credits",
-          variant: "destructive",
+      // First, get current credits to calculate the difference
+      const currentCredits = userCredits.available_credits;
+      const difference = newAmount - currentCredits;
+      
+      if (difference !== 0) {
+        const { error } = await supabase.rpc('add_user_credits', {
+          user_uuid: userId,
+          credits_to_add: difference
         });
-        return;
+
+        if (error) {
+          console.error('Error setting credits:', error);
+          toast({
+            title: "Error",
+            description: "Failed to set credits",
+            variant: "destructive",
+          });
+          return;
+        }
       }
 
       toast({
@@ -133,8 +139,8 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
         description: `Set credits to ${newAmount}`,
       });
 
-      // Refresh the profile data
-      await fetchUserProfile();
+      // Refresh the credits data
+      await fetchUserCredits();
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -161,13 +167,18 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-2/3" />
           </div>
-        ) : profile ? (
+        ) : userCredits ? (
           <>
             <div className="flex items-center justify-between">
               <Label>Current Credits</Label>
-              <Badge variant={profile.credits > 10 ? "default" : profile.credits > 0 ? "secondary" : "destructive"}>
-                {profile.credits} credits
-              </Badge>
+              <div className="flex items-center space-x-2">
+                <Badge variant={userCredits.available_credits > 10 ? "default" : userCredits.available_credits > 0 ? "secondary" : "destructive"}>
+                  {userCredits.available_credits} available
+                </Badge>
+                <Badge variant="outline">
+                  {userCredits.total_credits_used} used
+                </Badge>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -196,7 +207,7 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
                 </Button>
                 <Button
                   onClick={() => updateCredits('subtract')}
-                  disabled={updating || creditAmount <= 0 || (profile.credits - creditAmount) < 0}
+                  disabled={updating || creditAmount <= 0 || (userCredits.available_credits - creditAmount) < 0}
                   variant="secondary"
                   size="sm"
                   className="flex-1"
@@ -235,11 +246,24 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
                   </Button>
                 </div>
               </div>
+
+              <div className="pt-2 border-t">
+                <Button
+                  onClick={fetchUserCredits}
+                  disabled={updating}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh Credits
+                </Button>
+              </div>
             </div>
           </>
         ) : (
           <div className="text-center text-muted-foreground">
-            Failed to load user profile
+            Failed to load user credits
           </div>
         )}
       </CardContent>
