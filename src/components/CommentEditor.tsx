@@ -221,7 +221,68 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
       if (error) {
         console.error(`Scan error:`, error);
-        throw new Error(error.message || JSON.stringify(error));
+        
+        // Check if this is an insufficient credits error
+        // Supabase functions return errors in different formats, so check multiple properties
+        const errorMessage = error.message || error.error || JSON.stringify(error);
+        const isInsufficientCredits = errorMessage.includes('Insufficient credits') || 
+                                    errorMessage.includes('insufficient credits') ||
+                                    error.status === 402 ||
+                                    error.statusCode === 402;
+        
+        if (isInsufficientCredits) {
+          // Extract credit information from error message
+          let creditsNeeded = comments.length; // Default: 1 credit per comment
+          let creditsAvailable = 0;
+          
+          try {
+            // Try to parse error message for credit details
+            const match = errorMessage.match(/You have (\d+) credits available, but need (\d+) credits/);
+            if (match) {
+              creditsAvailable = parseInt(match[1]);
+              creditsNeeded = parseInt(match[2]);
+            } else {
+              // Fallback: try to extract from different error formats
+              const availableMatch = errorMessage.match(/(\d+) credits available/);
+              const neededMatch = errorMessage.match(/need (\d+) credits/);
+              if (availableMatch) creditsAvailable = parseInt(availableMatch[1]);
+              if (neededMatch) creditsNeeded = parseInt(neededMatch[1]);
+            }
+          } catch (parseError) {
+            console.warn('Could not parse credit information from error:', parseError);
+          }
+          
+          // Show insufficient credits dialog
+          if (onCreditsError) {
+            onCreditsError(creditsNeeded, creditsAvailable);
+          }
+          
+          // Reset scanning state
+          setIsScanning(false);
+          setScanProgress(0);
+          scanInFlightRef.current = false;
+          
+          return; // Don't throw error, just return early
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      // Also check if data contains error information (sometimes Supabase returns both)
+      if (data && data.error && data.insufficientCredits) {
+        console.log('Received insufficient credits response in data:', data);
+        
+        // Show insufficient credits dialog with data from response
+        if (onCreditsError) {
+          onCreditsError(data.requiredCredits || comments.length, data.availableCredits || 0);
+        }
+        
+        // Reset scanning state
+        setIsScanning(false);
+        setScanProgress(0);
+        scanInFlightRef.current = false;
+        
+        return; // Don't proceed with scan
       }
 
       if (!data?.comments) {

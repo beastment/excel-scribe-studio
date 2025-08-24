@@ -62,12 +62,22 @@ export const InsufficientCreditsDialog: React.FC<InsufficientCreditsDialogProps>
             <ul className="list-disc list-inside space-y-1 text-xs">
               <li>Each comment row scanned costs 1 credit</li>
               <li>Credits are deducted when you start a scan</li>
-              <li>New users receive 20 free credits</li>
+              <li>New users receive 100 free credits</li>
+              <li>Demo files are free to use</li>
             </ul>
+            
+            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-blue-800 text-xs">
+                <strong>Tip:</strong> You can reduce the number of comments to scan by:
+                <br />• Removing some comments from your file
+                <br />• Splitting your file into smaller batches
+                <br />• Using the demo file to test the system first
+              </p>
+            </div>
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
@@ -75,14 +85,25 @@ export const InsufficientCreditsDialog: React.FC<InsufficientCreditsDialogProps>
             Cancel
           </Button>
           <Button
+            variant="secondary"
             onClick={() => {
-              // TODO: Implement buy credits functionality
+              // Close dialog and suggest trying demo file
+              onOpenChange(false);
+              alert('Try loading the demo file first to test the system without using credits!');
+            }}
+          >
+            Try Demo File
+          </Button>
+          <Button
+            onClick={() => {
+              // For now, show information about contacting admin
+              alert(`To purchase additional credits, please contact your administrator.\n\nYou need ${creditsNeeded - creditsAvailable} more credits to scan ${creditsNeeded} comments.\n\nCurrent balance: ${creditsAvailable} credits`);
               onOpenChange(false);
             }}
             className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
           >
             <Coins className="h-4 w-4 mr-2" />
-            Buy Credits
+            Contact Admin for Credits
           </Button>
         </DialogFooter>
       </DialogContent>
