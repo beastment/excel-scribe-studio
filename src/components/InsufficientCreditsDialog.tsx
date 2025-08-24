@@ -16,6 +16,7 @@ interface InsufficientCreditsDialogProps {
   onOpenChange: (open: boolean) => void;
   creditsNeeded: number;
   creditsAvailable: number;
+  onTryDemoFile?: () => void;
 }
 
 export const InsufficientCreditsDialog: React.FC<InsufficientCreditsDialogProps> = ({
@@ -23,10 +24,11 @@ export const InsufficientCreditsDialog: React.FC<InsufficientCreditsDialogProps>
   onOpenChange,
   creditsNeeded,
   creditsAvailable,
+  onTryDemoFile,
 }) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-center space-x-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
@@ -40,17 +42,17 @@ export const InsufficientCreditsDialog: React.FC<InsufficientCreditsDialogProps>
         <div className="space-y-4">
           <div className="bg-gray-50 rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Credits needed:</span>
+              <span className="text-sm font-medium truncate mr-2">Credits needed:</span>
               <Badge variant="secondary">{creditsNeeded}</Badge>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Credits available:</span>
+              <span className="text-sm font-medium truncate mr-2">Credits available:</span>
               <Badge variant={creditsAvailable > 0 ? "default" : "destructive"}>
                 {creditsAvailable}
               </Badge>
             </div>
             <div className="flex items-center justify-between border-t pt-3">
-              <span className="text-sm font-medium">Credits needed:</span>
+              <span className="text-sm font-medium truncate mr-2">Additional credits needed:</span>
               <Badge variant="destructive">{creditsNeeded - creditsAvailable}</Badge>
             </div>
           </div>
@@ -87,9 +89,11 @@ export const InsufficientCreditsDialog: React.FC<InsufficientCreditsDialogProps>
           <Button
             variant="secondary"
             onClick={() => {
-              // Close dialog and suggest trying demo file
+              // Close dialog and navigate to demo file
               onOpenChange(false);
-              alert('Try loading the demo file first to test the system without using credits!');
+              if (onTryDemoFile) {
+                onTryDemoFile();
+              }
             }}
           >
             Try Demo File
