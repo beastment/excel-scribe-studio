@@ -440,6 +440,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       onCommentsUpdate(data.comments);
       toast.success(`Scan complete: ${data.comments.length} comments processed`);
       
+      // Refresh credits after successful scan completion
+      if (onCreditsRefresh) {
+        onCreditsRefresh();
+      }
+      
     } catch (error) {
       console.error('Scan failed:', error);
       toast.error(`Scan failed: ${error instanceof Error ? error.message : 'Unknown error'}`);

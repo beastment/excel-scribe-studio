@@ -2,16 +2,23 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
+interface UserCredits {
+  available_credits: number;
+  total_credits_used: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export const useUserCredits = () => {
   const { user } = useAuth();
-  const [credits, setCredits] = useState<number>(0);
+  const [userCredits, setUserCredits] = useState<UserCredits | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
       fetchCredits();
     } else {
-      setCredits(0);
+      setUserCredits(null);
       setLoading(false);
     }
   }, [user]);
@@ -21,18 +28,16 @@ export const useUserCredits = () => {
 
     try {
       setLoading(true);
+      // Get or create user credits using the RPC function
       const { data, error } = await supabase
-        .from('profiles')
-        .select('credits')
-        .eq('user_id', user.id)
-        .single();
+        .rpc('get_or_create_user_credits', { user_uuid: user.id });
 
       if (error) {
         console.error('Error fetching credits:', error);
         return;
       }
 
-      setCredits(data?.credits || 0);
+      setUserCredits(data);
     } catch (error) {
       console.error('Error fetching credits:', error);
     } finally {
@@ -45,7 +50,9 @@ export const useUserCredits = () => {
   };
 
   return {
-    credits,
+    credits: userCredits?.available_credits || 0,
+    totalUsed: userCredits?.total_credits_used || 0,
+    userCredits,
     loading,
     refreshCredits,
   };
