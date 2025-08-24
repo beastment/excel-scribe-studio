@@ -279,6 +279,7 @@ const Index = () => {
                 onImportComments={handleDataLoaded}
                 onCreditsError={handleCreditsError}
                 onCreditsRefresh={handleCreditsRefresh}
+                isDemoData={true}
               />
             </div>}
           </div>

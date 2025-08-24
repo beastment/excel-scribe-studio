@@ -23,13 +23,15 @@ interface CommentEditorProps {
   onImportComments: (comments: CommentData[]) => void;
   onCreditsError?: (needed: number, available: number) => void;
   onCreditsRefresh?: () => void;
+  isDemoData?: boolean;
 }
 export const CommentEditor: React.FC<CommentEditorProps> = ({ 
   comments, 
   onCommentsUpdate, 
   onImportComments,
   onCreditsError,
-  onCreditsRefresh 
+  onCreditsRefresh,
+  isDemoData = false
 }) => {
   const {
     user
@@ -200,13 +202,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     try {
       // Phase 1: Scan comments with Scan A and Scan B
       setScanProgress(10);
-      toast.info('Phase 1: Scanning comments for concerning/identifiable content...');
+      if (isDemoData) {
+        toast.info('Phase 1: Scanning demo comments (FREE - no credits deducted)...');
+      } else {
+        toast.info('Phase 1: Scanning comments for concerning/identifiable content...');
+      }
       
       const { data, error } = await supabase.functions.invoke('scan-comments', {
         body: {
           comments,
           defaultMode,
-          scanRunId
+          scanRunId,
+          isDemoScan
         }
       });
 

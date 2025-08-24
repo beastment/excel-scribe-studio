@@ -194,7 +194,7 @@ const CreditManagement: React.FC = () => {
               {recentUsage.map((usage) => (
                 <div key={usage.id} className="flex justify-between items-center border-b pb-2">
                   <div>
-                    <div className="font-medium">{usage.scan_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
+                    <div className="font-medium">Comment Scan</div>
                     <div className="text-sm text-muted-foreground">
                       {usage.comments_scanned} comments • {new Date(usage.created_at).toLocaleDateString()}
                     </div>
@@ -222,10 +222,8 @@ const CreditManagement: React.FC = () => {
         <CardContent>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>• You start with 100 free credits when you join</p>
-            <p>• <strong>Scan A (initial AI analysis):</strong> 1 credit per comment</p>
-            <p>• <strong>Scan B (secondary AI analysis):</strong> Free</p>
-            <p>• <strong>Adjudication (conflict resolution):</strong> Free</p>
-            <p>• <strong>Post-processing (redaction/rephrasing):</strong> Free</p>
+            <p>• <strong>Comment Scan:</strong> 1 credit per comment</p>
+            <p>• <strong>Demo File:</strong> Free (no credits deducted)</p>
             <p>• Credits are deducted automatically when you run scans</p>
             <p>• Contact your administrator to get more credits</p>
           </div>
