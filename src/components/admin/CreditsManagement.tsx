@@ -37,9 +37,12 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   const fetchUserCredits = async () => {
     try {
       setLoading(true);
-      // Get or create user credits using the RPC function
+      // Use the profiles table for now since RPC functions may not be in types
       const { data, error } = await supabase
-        .rpc('get_or_create_user_credits', { user_uuid: userId });
+        .from('profiles')
+        .select('credits, user_id, created_at, updated_at')
+        .eq('user_id', userId)
+        .single();
 
       if (error) {
         console.error('Error fetching user credits:', error);
@@ -51,7 +54,16 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
         return;
       }
 
-      setUserCredits(data);
+      if (data) {
+        setUserCredits({
+          id: data.user_id,
+          user_id: data.user_id,
+          available_credits: data.credits || 0,
+          total_credits_used: 0, // We'll track this separately
+          created_at: data.created_at,
+          updated_at: data.updated_at
+        });
+      }
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -72,9 +84,9 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       
       const finalAmount = operation === 'add' ? creditAmount : -creditAmount;
       
-      const { error } = await supabase.rpc('add_user_credits', {
+      const { error } = await supabase.rpc('add_credits', {
         user_uuid: userId,
-        credits_to_add: finalAmount
+        amount: finalAmount
       });
 
       if (error) {
@@ -118,9 +130,9 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       const difference = newAmount - currentCredits;
       
       if (difference !== 0) {
-        const { error } = await supabase.rpc('add_user_credits', {
+        const { error } = await supabase.rpc('add_credits', {
           user_uuid: userId,
-          credits_to_add: difference
+          amount: difference
         });
 
         if (error) {

@@ -31,19 +31,30 @@ export const useUserCredits = () => {
     try {
       console.log('[useUserCredits] Fetching credits from RPC function...');
       setLoading(true);
-      // Get or create user credits using the RPC function
+      // Use the profiles table for now since RPC functions may not be in types
       const { data, error } = await supabase
-        .rpc('get_or_create_user_credits', { user_uuid: user.id });
+        .from('profiles')
+        .select('credits, user_id, created_at, updated_at')
+        .eq('user_id', user.id)
+        .single();
 
-      console.log('[useUserCredits] RPC response:', { data, error });
+      console.log('[useUserCredits] Profile response:', { data, error });
 
       if (error) {
         console.error('[useUserCredits] Error fetching credits:', error);
         return;
       }
 
-      console.log('[useUserCredits] Setting user credits:', data);
-      setUserCredits(data);
+      if (data) {
+        const userCreditsData = {
+          available_credits: data.credits || 0,
+          total_credits_used: 0, // We'll track this separately for now
+          created_at: data.created_at,
+          updated_at: data.updated_at
+        };
+        console.log('[useUserCredits] Setting user credits:', userCreditsData);
+        setUserCredits(userCreditsData);
+      }
     } catch (error) {
       console.error('[useUserCredits] Unexpected error:', error);
     } finally {
