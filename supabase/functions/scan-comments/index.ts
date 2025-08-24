@@ -208,14 +208,16 @@ serve(async (req) => {
           availableCredits,
           requiredCredits: totalCreditsNeeded,
           commentsCount: inputComments.length,
-          status: 402
+          status: 402,
+          success: false
         };
         
         console.log(`[CREDITS] Returning insufficient credits response:`, errorResponse);
         
+        // Return 200 status but include error info in body for better Supabase compatibility
         return new Response(JSON.stringify(errorResponse), { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
-          status: 402 // Payment Required
+          status: 200
         });
       }
       

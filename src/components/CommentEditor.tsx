@@ -222,57 +222,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
       console.log(`[DEBUG] Error keys:`, error ? Object.keys(error) : 'null');
 
-      // Check for insufficient credits in multiple places
-      let insufficientCreditsDetected = false;
-      let creditsNeeded = comments.length; // Default: 1 credit per comment
-      let creditsAvailable = 0;
-
-      // Method 1: Check error object
-      if (error) {
-        console.error(`Scan error:`, error);
+      // Check for insufficient credits in the response data
+      if (data && (data.error || data.insufficientCredits || data.success === false)) {
+        console.log('[FRONTEND] Checking response for insufficient credits:', data);
         
-        const errorMessage = error.message || error.error || JSON.stringify(error);
-        const isInsufficientCredits = errorMessage.includes('Insufficient credits') || 
-                                    errorMessage.includes('insufficient credits') ||
-                                    error.status === 402 ||
-                                    error.statusCode === 402;
-        
-        if (isInsufficientCredits) {
-          insufficientCreditsDetected = true;
+        // Check if this is an insufficient credits error
+        if (data.insufficientCredits || (data.error && data.error.includes('Insufficient credits'))) {
+          console.log('[FRONTEND] Insufficient credits detected in response data');
           
-          try {
-            // Try to parse error message for credit details
-            const match = errorMessage.match(/You have (\d+) credits available, but need (\d+) credits/);
-            if (match) {
-              creditsAvailable = parseInt(match[1]);
-              creditsNeeded = parseInt(match[2]);
-            } else {
-              // Fallback: try to extract from different error formats
-              const availableMatch = errorMessage.match(/(\d+) credits available/);
-              const neededMatch = errorMessage.match(/need (\d+) credits/);
-              if (availableMatch) creditsAvailable = parseInt(availableMatch[1]);
-              if (neededMatch) creditsNeeded = parseInt(neededMatch[1]);
-            }
-          } catch (parseError) {
-            console.warn('Could not parse credit information from error:', parseError);
-          }
-        } else {
-          throw new Error(errorMessage);
-        }
-      }
-
-      // Method 2: Check data object for error information (Supabase sometimes returns errors in data)
-      if (data && !insufficientCreditsDetected) {
-        if (data.error || data.insufficientCredits || data.status === 402) {
-          console.log('Received insufficient credits response in data:', data);
-          insufficientCreditsDetected = true;
+          // Extract credit information from response
+          let creditsNeeded = data.requiredCredits || comments.length;
+          let creditsAvailable = data.availableCredits || 0;
           
-          // Extract credit information from data
-          if (data.requiredCredits) creditsNeeded = data.requiredCredits;
-          if (data.availableCredits) creditsAvailable = data.availableCredits;
-          
-          // Also try to parse error message if available
-          if (data.error && !creditsNeeded && !creditsAvailable) {
+          // If we don't have the structured data, try to parse the error message
+          if (!data.requiredCredits || !data.availableCredits) {
             try {
               const match = data.error.match(/You have (\d+) credits available, but need (\d+) credits/);
               if (match) {
@@ -280,30 +243,39 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 creditsNeeded = parseInt(match[2]);
               }
             } catch (parseError) {
-              console.warn('Could not parse credit information from data.error:', parseError);
+              console.warn('Could not parse credit information from error message:', parseError);
             }
           }
+          
+          console.log(`[FRONTEND] Credits needed: ${creditsNeeded}, available: ${creditsAvailable}`);
+          
+          // Show insufficient credits dialog
+          if (onCreditsError) {
+            onCreditsError(creditsNeeded, creditsAvailable);
+          }
+          
+          // Reset scanning state
+          setIsScanning(false);
+          setScanProgress(0);
+          scanInFlightRef.current = false;
+          
+          return; // Don't proceed with scan
         }
       }
 
-      // Handle insufficient credits if detected
-      if (insufficientCreditsDetected) {
-        console.log(`[FRONTEND] Insufficient credits detected: ${creditsAvailable} available, ${creditsNeeded} needed`);
-        
-        // Show insufficient credits dialog
-        if (onCreditsError) {
-          onCreditsError(creditsNeeded, creditsAvailable);
-        }
-        
-        // Reset scanning state
-        setIsScanning(false);
-        setScanProgress(0);
-        scanInFlightRef.current = false;
-        
-        return; // Don't proceed with scan
+      // Handle other errors
+      if (error) {
+        console.error(`Scan error:`, error);
+        throw new Error(error.message || error.error || JSON.stringify(error));
       }
 
       if (!data?.comments) {
+        // Check if this is because of insufficient credits
+        if (data?.insufficientCredits || data?.error) {
+          console.log('[FRONTEND] No comments in response, but insufficient credits detected');
+          // This should have been handled above, but just in case
+          return;
+        }
         throw new Error(`No comment data received`);
       }
 
