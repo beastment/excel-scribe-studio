@@ -233,7 +233,7 @@ const Index = () => {
       approved: false,
       hideAiResponse: false
     }));
-    handleDataLoaded(cleanDemoComments);
+    setComments(cleanDemoComments); // Directly set comments for demo data
     toast.success('Demo data loaded successfully! 20 employee survey comments imported.');
   };
   return <div className="pt-20">
@@ -289,7 +289,6 @@ const Index = () => {
                   Clear & Start Over
                 </Button>
               </div>
-              {console.log('[DEBUG] isDemoData value:', isDemoData)}
               <CommentEditor 
                 comments={comments} 
                 onCommentsUpdate={handleCommentsUpdate} 
