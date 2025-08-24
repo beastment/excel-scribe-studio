@@ -165,6 +165,31 @@ serve(async (req) => {
     // Check user credits before processing (only for Scan A, unless it's a demo scan)
     const creditsPerComment = 1; // 1 credit per comment for Scan A
     
+    // Always fetch user credits for display purposes (even for demo scans)
+    let userCredits: any = null;
+    try {
+      const { data: creditsData, error: creditsError } = await supabase
+        .from('user_credits')
+        .select('available_credits, total_credits_used')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (creditsError && creditsError.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Error fetching user credits:', creditsError);
+        // Don't fail for demo scans, just log the error
+        if (!isDemoScan) {
+          throw new Error(`Failed to check user credits: ${creditsError.message}`);
+        }
+      } else {
+        userCredits = creditsData;
+      }
+    } catch (error) {
+      if (!isDemoScan) {
+        throw error;
+      }
+      console.warn('[CREDITS] Could not fetch user credits for demo scan:', error);
+    }
+    
     if (isDemoScan) {
       console.log(`[CREDITS] Demo scan detected - no credits required`);
     } else {
@@ -172,18 +197,6 @@ serve(async (req) => {
       
       // Calculate credits needed for Scan A only (1 credit per comment)
       const totalCreditsNeeded = inputComments.length * creditsPerComment;
-      
-      // Check if user has enough credits for Scan A
-      const { data: userCredits, error: creditsError } = await supabase
-        .from('user_credits')
-        .select('available_credits')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (creditsError && creditsError.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('Error fetching user credits:', creditsError);
-        throw new Error(`Failed to check user credits: ${creditsError.message}`);
-      }
       
       const availableCredits = userCredits?.available_credits || 100; // Default 100 if no record exists
       
