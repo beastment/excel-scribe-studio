@@ -29,6 +29,16 @@ const CreditManagement: React.FC = () => {
   const [recentUsage, setRecentUsage] = useState<CreditUsage[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Debug logging
+  useEffect(() => {
+    console.log('[CreditManagement] Component rendered with:', {
+      userCredits,
+      totalUsed,
+      loading,
+      userId: user?.id
+    });
+  }, [userCredits, totalUsed, loading, user?.id]);
+
   const fetchCreditPackages = async () => {
     try {
       const { data, error } = await supabase
