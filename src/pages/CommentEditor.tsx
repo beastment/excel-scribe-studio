@@ -10,12 +10,14 @@ import { useUserCredits } from '@/hooks/useUserCredits';
 import { useAuth } from '@/contexts/AuthContext';
 const Index = () => {
   const [comments, setComments] = useState<CommentData[]>([]);
+  const [isDemoData, setIsDemoData] = useState(false);
   const [showInsufficientCreditsDialog, setShowInsufficientCreditsDialog] = useState(false);
   const [creditsError, setCreditsError] = useState<{ needed: number; available: number } | null>(null);
   
   const { user } = useAuth();
   const { credits, loading: creditsLoading, refreshCredits } = useUserCredits();
   const handleDataLoaded = (newComments: CommentData[]) => {
+    setIsDemoData(false); // Regular file upload, not demo data
     setComments(newComments);
   };
   const handleCommentsUpdate = (updatedComments: CommentData[]) => {
@@ -30,7 +32,13 @@ const Index = () => {
   const handleCreditsRefresh = () => {
     refreshCredits();
   };
+
+  const clearComments = () => {
+    setComments([]);
+    setIsDemoData(false);
+  };
   const loadDemoData = () => {
+    setIsDemoData(true);
     const demoComments: CommentData[] = [{
       id: '1',
       originalText: 'The management team really needs to improve their communication skills. John Smith in HR is particularly difficult to work with.',
@@ -273,13 +281,22 @@ const Index = () => {
               </div>
               <FileUpload onDataLoaded={handleDataLoaded} />
             </div> : <div className="animate-slide-up">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold">
+                  {isDemoData ? 'Demo Data' : 'Comment Analysis'}
+                </h2>
+                <Button onClick={clearComments} variant="outline" size="sm">
+                  Clear & Start Over
+                </Button>
+              </div>
+              {console.log('[DEBUG] isDemoData value:', isDemoData)}
               <CommentEditor 
                 comments={comments} 
                 onCommentsUpdate={handleCommentsUpdate} 
                 onImportComments={handleDataLoaded}
                 onCreditsError={handleCreditsError}
                 onCreditsRefresh={handleCreditsRefresh}
-                isDemoData={true}
+                isDemoData={isDemoData}
               />
             </div>}
           </div>
