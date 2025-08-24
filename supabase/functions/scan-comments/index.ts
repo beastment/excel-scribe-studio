@@ -154,18 +154,6 @@ serve(async (req) => {
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
 
     // Check user credits before processing
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      throw new Error('Authorization header required for credit checking');
-    }
-    
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
-    if (authError || !user) {
-      throw new Error('Invalid authentication token');
-    }
-    
     console.log(`[CREDITS] Checking credits for user: ${user.id}`);
     
     // Calculate credits needed for this scan
