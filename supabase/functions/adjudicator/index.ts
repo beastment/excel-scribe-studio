@@ -224,10 +224,75 @@ serve(async (req) => {
 
     console.log(`${logPrefix} [ADJUDICATOR] Processing ${comments.length} comments with ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
 
-    // Filter comments that need adjudication (where agreements are null)
+    // Check user credits before processing adjudication
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Authorization header required for credit checking' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+    
+    const token = authHeader.replace('Bearer ', '');
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+    );
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid authentication token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+    
+    console.log(`${logPrefix} [CREDITS] Checking credits for user: ${user.id}`);
+    
+    // Calculate credits needed for adjudication (1 credit per comment that needs adjudication)
+    const creditsPerComment = 1;
     const needsAdjudication = comments.filter(c => 
       c.agreements.concerning === null || c.agreements.identifiable === null
     );
+    
+    const totalCreditsNeeded = needsAdjudication.length * creditsPerComment;
+    
+    // Check if user has enough credits
+    const { data: userCredits, error: creditsError } = await supabase
+      .from('user_credits')
+      .select('available_credits')
+      .eq('user_id', user.id)
+      .single();
+    
+    if (creditsError && creditsError.code !== 'PGRST116') { // PGRST116 = no rows returned
+      console.error(`${logPrefix} [CREDITS] Error fetching user credits:`, creditsError);
+      return new Response(
+        JSON.stringify({ success: false, error: `Failed to check user credits: ${creditsError.message}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+    
+    const availableCredits = userCredits?.available_credits || 100; // Default 100 if no record exists
+    
+    if (availableCredits < totalCreditsNeeded) {
+      console.warn(`${logPrefix} [CREDITS] Insufficient credits: ${availableCredits} available, ${totalCreditsNeeded} needed`);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Insufficient credits. You have ${availableCredits} credits available, but need ${totalCreditsNeeded} credits to adjudicate ${needsAdjudication.length} comments.`,
+          insufficientCredits: true,
+          availableCredits,
+          requiredCredits: totalCreditsNeeded,
+          commentsCount: needsAdjudication.length
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 402 }
+      );
+    }
+    
+    console.log(`${logPrefix} [CREDITS] Sufficient credits available: ${availableCredits} >= ${totalCreditsNeeded}`);
+
+    // Filter comments that need adjudication (where agreements are null)
 
     if (needsAdjudication.length === 0) {
       console.log(`${logPrefix} [ADJUDICATOR] No comments need adjudication`);
@@ -320,6 +385,42 @@ serve(async (req) => {
       };
 
       console.log(`${logPrefix} [ADJUDICATOR] Completed: ${summary.resolved} resolved, ${summary.total - summary.resolved} already agreed`);
+
+      // Deduct credits after successful adjudication
+      try {
+        const creditsToDeduct = needsAdjudication.length * creditsPerComment;
+        console.log(`${logPrefix} [CREDITS] Deducting ${creditsToDeduct} credits for successful adjudication of ${needsAdjudication.length} comments`);
+        
+        const { data: deductionResult, error: deductionError } = await supabase
+          .rpc('deduct_user_credits', {
+            user_uuid: user.id,
+            credits_to_deduct: creditsToDeduct,
+            scan_run_id: runId.toString(),
+            comments_scanned: needsAdjudication.length,
+            scan_type: 'adjudication'
+          });
+        
+        if (deductionError) {
+          console.error(`${logPrefix} [CREDITS] Error deducting credits:`, deductionError);
+          // Don't fail the adjudication if credit deduction fails, just log it
+        } else {
+          console.log(`${logPrefix} [CREDITS] Successfully deducted ${creditsToDeduct} credits. Result:`, deductionResult);
+          
+          // Get updated credit balance
+          const { data: updatedCredits, error: updateError } = await supabase
+            .from('user_credits')
+            .select('available_credits, total_credits_used')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (!updateError && updatedCredits) {
+            console.log(`${logPrefix} [CREDITS] Updated balance: ${updatedCredits.available_credits} available, ${updatedCredits.total_credits_used} total used`);
+          }
+        }
+      } catch (creditError) {
+        console.error(`${logPrefix} [CREDITS] Unexpected error during credit deduction:`, creditError);
+        // Don't fail the adjudication if credit deduction fails
+      }
 
       return new Response(
         JSON.stringify({

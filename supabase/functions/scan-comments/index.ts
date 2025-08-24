@@ -153,47 +153,54 @@ serve(async (req) => {
 
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
 
-    // Check user credits before processing (only for initial scan, not cached analysis)
-    if (!useCachedAnalysis) {
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('credits')
-        .eq('user_id', user.id)
-        .single();
-
-      if (profileError) {
-        console.error('Error fetching user profile:', profileError);
-        throw new Error('Failed to fetch user profile');
-      }
-
-      const requiredCredits = inputComments.length;
-      console.log(`[CREDITS] User has ${profile.credits} credits, needs ${requiredCredits} credits`);
-
-      if (!profile || profile.credits < requiredCredits) {
-        console.warn(`[CREDITS] Insufficient credits: ${profile?.credits || 0} available, ${requiredCredits} required`);
-        return new Response(JSON.stringify({ 
-          error: 'Insufficient credits',
-          creditsNeeded: requiredCredits,
-          creditsAvailable: profile?.credits || 0
-        }), {
-          status: 402, // Payment Required
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // Deduct credits using the secure function
-      const { data: deductResult, error: deductError } = await supabase.rpc('deduct_credits', {
-        user_uuid: user.id,
-        amount: requiredCredits
-      });
-
-      if (deductError || !deductResult) {
-        console.error('Error deducting credits:', deductError);
-        throw new Error('Failed to deduct credits');
-      }
-
-      console.log(`[CREDITS] Successfully deducted ${requiredCredits} credits from user ${user.email}`);
+    // Check user credits before processing
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      throw new Error('Authorization header required for credit checking');
     }
+    
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      throw new Error('Invalid authentication token');
+    }
+    
+    console.log(`[CREDITS] Checking credits for user: ${user.id}`);
+    
+    // Calculate credits needed for this scan
+    const creditsPerComment = 1; // 1 credit per comment scanned
+    const totalCreditsNeeded = inputComments.length * creditsPerComment;
+    
+    // Check if user has enough credits
+    const { data: userCredits, error: creditsError } = await supabase
+      .from('user_credits')
+      .select('available_credits')
+      .eq('user_id', user.id)
+      .single();
+    
+    if (creditsError && creditsError.code !== 'PGRST116') { // PGRST116 = no rows returned
+      console.error('Error fetching user credits:', creditsError);
+      throw new Error(`Failed to check user credits: ${creditsError.message}`);
+    }
+    
+    const availableCredits = userCredits?.available_credits || 100; // Default 100 if no record exists
+    
+    if (availableCredits < totalCreditsNeeded) {
+      console.warn(`[CREDITS] Insufficient credits: ${availableCredits} available, ${totalCreditsNeeded} needed`);
+      return new Response(JSON.stringify({ 
+        error: `Insufficient credits. You have ${availableCredits} credits available, but need ${totalCreditsNeeded} credits to scan ${inputComments.length} comments.`,
+        insufficientCredits: true,
+        availableCredits,
+        requiredCredits: totalCreditsNeeded,
+        commentsCount: inputComments.length
+      }), { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+        status: 402 // Payment Required
+      });
+    }
+    
+    console.log(`[CREDITS] Sufficient credits available: ${availableCredits} >= ${totalCreditsNeeded}`);
 
     // Process comments in batches - adjust batch size based on model capabilities
     let batchSize = 100; // Default batch size
@@ -318,6 +325,49 @@ serve(async (req) => {
     console.log('Returning response with comments count:', response.comments.length);
     console.log('Response summary:', response.summary);
     console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / batchSize)} batches`);
+    
+    // Deduct credits after successful scan completion
+    try {
+      const creditsToDeduct = allScannedComments.length * creditsPerComment;
+      console.log(`[CREDITS] Deducting ${creditsToDeduct} credits for successful scan of ${allScannedComments.length} comments`);
+      
+      const { data: deductionResult, error: deductionError } = await supabase
+        .rpc('deduct_user_credits', {
+          user_uuid: user.id,
+          credits_to_deduct: creditsToDeduct,
+          scan_run_id: scanRunId,
+          comments_scanned: allScannedComments.length,
+          scan_type: 'comment_scan'
+        });
+      
+      if (deductionError) {
+        console.error('[CREDITS] Error deducting credits:', deductionError);
+        // Don't fail the scan if credit deduction fails, just log it
+      } else {
+        console.log(`[CREDITS] Successfully deducted ${creditsToDeduct} credits. Result:`, deductionResult);
+        
+        // Get updated credit balance
+        const { data: updatedCredits, error: updateError } = await supabase
+          .from('user_credits')
+          .select('available_credits, total_credits_used')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (!updateError && updatedCredits) {
+          console.log(`[CREDITS] Updated balance: ${updatedCredits.available_credits} available, ${updatedCredits.total_credits_used} total used`);
+          
+          // Add credit information to response
+          response.creditInfo = {
+            creditsDeducted: creditsToDeduct,
+            remainingCredits: updatedCredits.available_credits,
+            totalCreditsUsed: updatedCredits.total_credits_used
+          };
+        }
+      }
+    } catch (creditError) {
+      console.error('[CREDITS] Unexpected error during credit deduction:', creditError);
+      // Don't fail the scan if credit deduction fails
+    }
     
     // Mark run as completed
     gAny.__runCompleted.add(scanRunId);

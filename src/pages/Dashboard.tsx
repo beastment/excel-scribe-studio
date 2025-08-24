@@ -19,6 +19,7 @@ import { MaintenanceToggle } from '@/components/admin/MaintenanceToggle';
 import { UserManagement } from '@/components/admin/UserManagement';
 import { AppManagement } from '@/components/admin/AppManagement';
 import { AIConfigurationManagement } from '@/components/admin/AIConfigurationManagement';
+import CreditManagement from '@/components/CreditManagement';
 
 interface UserProfile {
   id: string;
@@ -171,6 +172,11 @@ const Dashboard = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Credit Management */}
+          <div className="col-span-full">
+            <CreditManagement />
+          </div>
 
           <Card>
             <CardContent className="p-6">
