@@ -222,7 +222,10 @@ const CreditManagement: React.FC = () => {
         <CardContent>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>• You start with 100 free credits when you join</p>
-            <p>• Each comment scan costs 1 credit</p>
+            <p>• <strong>Scan A (initial AI analysis):</strong> 1 credit per comment</p>
+            <p>• <strong>Scan B (secondary AI analysis):</strong> Free</p>
+            <p>• <strong>Adjudication (conflict resolution):</strong> Free</p>
+            <p>• <strong>Post-processing (redaction/rephrasing):</strong> Free</p>
             <p>• Credits are deducted automatically when you run scans</p>
             <p>• Contact your administrator to get more credits</p>
           </div>

@@ -153,14 +153,14 @@ serve(async (req) => {
 
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
 
-    // Check user credits before processing
-    console.log(`[CREDITS] Checking credits for user: ${user.id}`);
+    // Check user credits before processing (only for Scan A)
+    console.log(`[CREDITS] Checking credits for user: ${user.id} (Scan A only)`);
     
-    // Calculate credits needed for this scan
-    const creditsPerComment = 1; // 1 credit per comment scanned
+    // Calculate credits needed for Scan A only (1 credit per comment)
+    const creditsPerComment = 1; // 1 credit per comment for Scan A
     const totalCreditsNeeded = inputComments.length * creditsPerComment;
     
-    // Check if user has enough credits
+    // Check if user has enough credits for Scan A
     const { data: userCredits, error: creditsError } = await supabase
       .from('user_credits')
       .select('available_credits')
@@ -175,9 +175,9 @@ serve(async (req) => {
     const availableCredits = userCredits?.available_credits || 100; // Default 100 if no record exists
     
     if (availableCredits < totalCreditsNeeded) {
-      console.warn(`[CREDITS] Insufficient credits: ${availableCredits} available, ${totalCreditsNeeded} needed`);
+      console.warn(`[CREDITS] Insufficient credits for Scan A: ${availableCredits} available, ${totalCreditsNeeded} needed`);
       return new Response(JSON.stringify({ 
-        error: `Insufficient credits. You have ${availableCredits} credits available, but need ${totalCreditsNeeded} credits to scan ${inputComments.length} comments.`,
+        error: `Insufficient credits. You have ${availableCredits} credits available, but need ${totalCreditsNeeded} credits to scan ${inputComments.length} comments with Scan A.`,
         insufficientCredits: true,
         availableCredits,
         requiredCredits: totalCreditsNeeded,
@@ -188,7 +188,7 @@ serve(async (req) => {
       });
     }
     
-    console.log(`[CREDITS] Sufficient credits available: ${availableCredits} >= ${totalCreditsNeeded}`);
+    console.log(`[CREDITS] Sufficient credits available for Scan A: ${availableCredits} >= ${totalCreditsNeeded}`);
 
     // Process comments in batches - adjust batch size based on model capabilities
     let batchSize = 100; // Default batch size
@@ -314,10 +314,10 @@ serve(async (req) => {
     console.log('Response summary:', response.summary);
     console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / batchSize)} batches`);
     
-    // Deduct credits after successful scan completion
+    // Deduct credits after successful scan completion (only for Scan A)
     try {
       const creditsToDeduct = allScannedComments.length * creditsPerComment;
-      console.log(`[CREDITS] Deducting ${creditsToDeduct} credits for successful scan of ${allScannedComments.length} comments`);
+      console.log(`[CREDITS] Deducting ${creditsToDeduct} credits for Scan A processing of ${allScannedComments.length} comments`);
       
       const { data: deductionResult, error: deductionError } = await supabase
         .rpc('deduct_user_credits', {
@@ -325,14 +325,14 @@ serve(async (req) => {
           credits_to_deduct: creditsToDeduct,
           scan_run_id: scanRunId,
           comments_scanned: allScannedComments.length,
-          scan_type: 'comment_scan'
+          scan_type: 'scan_a_only'
         });
       
       if (deductionError) {
-        console.error('[CREDITS] Error deducting credits:', deductionError);
+        console.error('[CREDITS] Error deducting credits for Scan A:', deductionError);
         // Don't fail the scan if credit deduction fails, just log it
       } else {
-        console.log(`[CREDITS] Successfully deducted ${creditsToDeduct} credits. Result:`, deductionResult);
+        console.log(`[CREDITS] Successfully deducted ${creditsToDeduct} credits for Scan A. Result:`, deductionResult);
         
         // Get updated credit balance
         const { data: updatedCredits, error: updateError } = await supabase
@@ -348,12 +348,13 @@ serve(async (req) => {
           response.creditInfo = {
             creditsDeducted: creditsToDeduct,
             remainingCredits: updatedCredits.available_credits,
-            totalCreditsUsed: updatedCredits.total_credits_used
+            totalCreditsUsed: updatedCredits.total_credits_used,
+            note: 'Credits charged only for Scan A. Scan B, adjudication, and post-processing are free.'
           };
         }
       }
     } catch (creditError) {
-      console.error('[CREDITS] Unexpected error during credit deduction:', creditError);
+      console.error('[CREDITS] Unexpected error during credit deduction for Scan A:', creditError);
       // Don't fail the scan if credit deduction fails
     }
     
