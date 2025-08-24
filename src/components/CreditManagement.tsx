@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { CreditCard, RefreshCw, Package, History } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserCredits } from '@/hooks/useUserCredits';
+import { usePaymentVerification } from '@/hooks/usePaymentVerification';
 import { supabase } from '@/integrations/supabase/client';
 
 interface CreditPackage {
@@ -25,9 +26,13 @@ interface CreditUsage {
 const CreditManagement: React.FC = () => {
   const { user } = useAuth();
   const { userCredits, totalUsed, refreshCredits, loading } = useUserCredits();
+  
+  // Handle payment verification and refresh credits when payment is successful
+  usePaymentVerification(refreshCredits);
   const [creditPackages, setCreditPackages] = useState<CreditPackage[]>([]);
   const [recentUsage, setRecentUsage] = useState<CreditUsage[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [purchasing, setPurchasing] = useState<string | null>(null);
 
   // Debug logging
   useEffect(() => {
@@ -41,28 +46,55 @@ const CreditManagement: React.FC = () => {
 
   const fetchCreditPackages = async () => {
     try {
-      // For now, show static credit packages since the table might not be in types yet
       setCreditPackages([
         {
-          id: '1',
-          name: 'Basic Credits',
+          id: '100-credits',
+          name: '100 Credits',
           credits: 100,
-          price_usd: 9.99,
+          price_usd: 100,
           description: '100 credits for comment scanning'
         },
         {
-          id: '2', 
-          name: 'Professional Credits',
+          id: '500-credits', 
+          name: '500 Credits',
           credits: 500,
-          price_usd: 39.99,
+          price_usd: 500,
           description: '500 credits for comment scanning'
         },
         {
-          id: '3',
-          name: 'Enterprise Credits', 
+          id: '1000-credits',
+          name: '1,000 Credits', 
           credits: 1000,
-          price_usd: 69.99,
-          description: '1000 credits for comment scanning'
+          price_usd: 1000,
+          description: '1,000 credits for comment scanning'
+        },
+        {
+          id: '3000-credits',
+          name: '3,000 Credits', 
+          credits: 3000,
+          price_usd: 2000,
+          description: '3,000 credits for comment scanning'
+        },
+        {
+          id: '5000-credits',
+          name: '5,000 Credits', 
+          credits: 5000,
+          price_usd: 3000,
+          description: '5,000 credits for comment scanning'
+        },
+        {
+          id: '10000-credits',
+          name: '10,000 Credits', 
+          credits: 10000,
+          price_usd: 5500,
+          description: '10,000 credits for comment scanning'
+        },
+        {
+          id: '20000-credits',
+          name: '20,000 Credits', 
+          credits: 20000,
+          price_usd: 8000,
+          description: '20,000 credits for comment scanning'
         }
       ]);
     } catch (error) {
@@ -78,6 +110,26 @@ const CreditManagement: React.FC = () => {
       setRecentUsage([]);
     } catch (error) {
       console.error('Error fetching usage history:', error);
+    }
+  };
+
+  const handlePurchase = async (packageId: string) => {
+    if (!user) return;
+    
+    setPurchasing(packageId);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: { packageId }
+      });
+      
+      if (error) throw error;
+      
+      // Open Stripe checkout in a new tab
+      window.open(data.url, '_blank');
+    } catch (error) {
+      console.error('Purchase error:', error);
+    } finally {
+      setPurchasing(null);
     }
   };
 
@@ -159,21 +211,21 @@ const CreditManagement: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {creditPackages.map((pkg) => (
               <div key={pkg.id} className="border rounded-lg p-4">
                 <div className="font-semibold">{pkg.name}</div>
-                <div className="text-2xl font-bold text-primary">{pkg.credits} Credits</div>
+                <div className="text-2xl font-bold text-primary">{pkg.credits.toLocaleString()} Credits</div>
                 <div className="text-sm text-muted-foreground mb-2">{pkg.description}</div>
                 <div className="text-lg font-semibold">
-                  ${pkg.price_usd === 0 ? 'Free' : pkg.price_usd}
+                  ${pkg.price_usd.toLocaleString()}
                 </div>
                 <Button 
                   className="w-full mt-2" 
-                  variant={pkg.price_usd === 0 ? "outline" : "default"}
-                  disabled
+                  onClick={() => handlePurchase(pkg.id)}
+                  disabled={purchasing === pkg.id}
                 >
-                  {pkg.price_usd === 0 ? 'Included' : 'Purchase'}
+                  {purchasing === pkg.id ? 'Processing...' : 'Purchase'}
                 </Button>
               </div>
             ))}
