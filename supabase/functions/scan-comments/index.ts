@@ -114,6 +114,14 @@ serve(async (req) => {
       isDemoScan = false
     } = requestBody;
 
+    console.log(`[REQUEST] Received request body:`, {
+      commentsCount: inputComments?.length,
+      defaultMode,
+      batchStart,
+      useCachedAnalysis,
+      isDemoScan
+    });
+
     console.log(`[REQUEST_DETAILS] phase=${useCachedAnalysis ? 'followup' : 'initial'} cached=${useCachedAnalysis} comments=${inputComments?.length} batchStart=${batchStart}`);
 
     if (!inputComments || !Array.isArray(inputComments) || inputComments.length === 0) {

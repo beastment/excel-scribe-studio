@@ -213,7 +213,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           comments,
           defaultMode,
           scanRunId,
-          isDemoScan
+          isDemoScan: isDemoData
         }
       });
 
