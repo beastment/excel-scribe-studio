@@ -202,13 +202,18 @@ serve(async (req) => {
       
       if (availableCredits < totalCreditsNeeded) {
         console.warn(`[CREDITS] Insufficient credits for Scan A: ${availableCredits} available, ${totalCreditsNeeded} needed`);
-        return new Response(JSON.stringify({ 
+        const errorResponse = { 
           error: `Insufficient credits. You have ${availableCredits} credits available, but need ${totalCreditsNeeded} credits to scan ${inputComments.length} comments with Scan A.`,
           insufficientCredits: true,
           availableCredits,
           requiredCredits: totalCreditsNeeded,
-          commentsCount: inputComments.length
-        }), { 
+          commentsCount: inputComments.length,
+          status: 402
+        };
+        
+        console.log(`[CREDITS] Returning insufficient credits response:`, errorResponse);
+        
+        return new Response(JSON.stringify(errorResponse), { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
           status: 402 // Payment Required
         });

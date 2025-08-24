@@ -218,12 +218,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       });
 
       console.log(`Scan response:`, { data, error });
+      console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
+      console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
+      console.log(`[DEBUG] Error keys:`, error ? Object.keys(error) : 'null');
 
+      // Check for insufficient credits in multiple places
+      let insufficientCreditsDetected = false;
+      let creditsNeeded = comments.length; // Default: 1 credit per comment
+      let creditsAvailable = 0;
+
+      // Method 1: Check error object
       if (error) {
         console.error(`Scan error:`, error);
         
-        // Check if this is an insufficient credits error
-        // Supabase functions return errors in different formats, so check multiple properties
         const errorMessage = error.message || error.error || JSON.stringify(error);
         const isInsufficientCredits = errorMessage.includes('Insufficient credits') || 
                                     errorMessage.includes('insufficient credits') ||
@@ -231,9 +238,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                                     error.statusCode === 402;
         
         if (isInsufficientCredits) {
-          // Extract credit information from error message
-          let creditsNeeded = comments.length; // Default: 1 credit per comment
-          let creditsAvailable = 0;
+          insufficientCreditsDetected = true;
           
           try {
             // Try to parse error message for credit details
@@ -251,30 +256,43 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           } catch (parseError) {
             console.warn('Could not parse credit information from error:', parseError);
           }
-          
-          // Show insufficient credits dialog
-          if (onCreditsError) {
-            onCreditsError(creditsNeeded, creditsAvailable);
-          }
-          
-          // Reset scanning state
-          setIsScanning(false);
-          setScanProgress(0);
-          scanInFlightRef.current = false;
-          
-          return; // Don't throw error, just return early
+        } else {
+          throw new Error(errorMessage);
         }
-        
-        throw new Error(errorMessage);
       }
 
-      // Also check if data contains error information (sometimes Supabase returns both)
-      if (data && data.error && data.insufficientCredits) {
-        console.log('Received insufficient credits response in data:', data);
+      // Method 2: Check data object for error information (Supabase sometimes returns errors in data)
+      if (data && !insufficientCreditsDetected) {
+        if (data.error || data.insufficientCredits || data.status === 402) {
+          console.log('Received insufficient credits response in data:', data);
+          insufficientCreditsDetected = true;
+          
+          // Extract credit information from data
+          if (data.requiredCredits) creditsNeeded = data.requiredCredits;
+          if (data.availableCredits) creditsAvailable = data.availableCredits;
+          
+          // Also try to parse error message if available
+          if (data.error && !creditsNeeded && !creditsAvailable) {
+            try {
+              const match = data.error.match(/You have (\d+) credits available, but need (\d+) credits/);
+              if (match) {
+                creditsAvailable = parseInt(match[1]);
+                creditsNeeded = parseInt(match[2]);
+              }
+            } catch (parseError) {
+              console.warn('Could not parse credit information from data.error:', parseError);
+            }
+          }
+        }
+      }
+
+      // Handle insufficient credits if detected
+      if (insufficientCreditsDetected) {
+        console.log(`[FRONTEND] Insufficient credits detected: ${creditsAvailable} available, ${creditsNeeded} needed`);
         
-        // Show insufficient credits dialog with data from response
+        // Show insufficient credits dialog
         if (onCreditsError) {
-          onCreditsError(data.requiredCredits || comments.length, data.availableCredits || 0);
+          onCreditsError(creditsNeeded, creditsAvailable);
         }
         
         // Reset scanning state
