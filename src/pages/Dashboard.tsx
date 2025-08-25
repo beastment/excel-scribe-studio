@@ -173,11 +173,6 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Credit Management */}
-          <div className="col-span-full">
-            <CreditManagement />
-          </div>
-
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center space-x-3">
@@ -191,6 +186,11 @@ const Dashboard = () => {
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Credit Management */}
+        <div className="mb-8">
+          <CreditManagement />
         </div>
 
         {/* Admin Controls */}
