@@ -39,8 +39,8 @@ const CreditManagement: React.FC = () => {
   const [recentUsage, setRecentUsage] = useState<CreditUsage[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
-  const [customCredits, setCustomCredits] = useState<number>(0);
-  const [customCreditsInput, setCustomCreditsInput] = useState<string>('0');
+  const [customCredits, setCustomCredits] = useState<number>(2000);
+  const [customCreditsInput, setCustomCreditsInput] = useState<string>('2000');
 
   // Debug logging
   useEffect(() => {
