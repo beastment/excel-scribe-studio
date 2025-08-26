@@ -29,35 +29,30 @@ export const useUserCredits = () => {
     if (!user) return;
 
     try {
-      console.log('[useUserCredits] Fetching credits from user_credits table...');
+      console.log('[useUserCredits] Fetching credits using database function...');
       setLoading(true);
-      // Read from user_credits table to match what the backend functions use
-      const { data, error } = await supabase
-        .from('user_credits')
-        .select('available_credits, total_credits_used, created_at, updated_at')
-        .eq('user_id', user.id)
-        .single();
+      
+      // Use the database function to get or create user credits
+      // Type assertion since the function exists but isn't in types
+      const { data, error } = await (supabase.rpc as any)('get_or_create_user_credits', {
+        user_uuid: user.id
+      });
 
-      console.log('[useUserCredits] user_credits response:', { data, error });
+      console.log('[useUserCredits] get_or_create_user_credits response:', { data, error });
 
       if (error) {
-        if (error.code === 'PGRST116') { // No rows returned
-          console.log('[useUserCredits] No user_credits record found, user may not have been initialized yet');
-          // Set default credits for new users
-          const defaultCredits = {
-            available_credits: 100,
-            total_credits_used: 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-          setUserCredits(defaultCredits);
-        } else {
-          console.error('[useUserCredits] Error fetching credits:', error);
-          return;
-        }
-      } else if (data) {
+        console.error('[useUserCredits] Error fetching credits:', error);
+        return;
+      } 
+      
+      if (data) {
         console.log('[useUserCredits] Setting user credits:', data);
-        setUserCredits(data);
+        setUserCredits({
+          available_credits: data.available_credits,
+          total_credits_used: data.total_credits_used,
+          created_at: data.created_at,
+          updated_at: data.updated_at
+        });
       }
     } catch (error) {
       console.error('[useUserCredits] Unexpected error:', error);
