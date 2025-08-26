@@ -77,6 +77,7 @@ serve(async (req) => {
         },
       ],
       mode: "payment",
+      locale: "auto",
       success_url: `${req.headers.get("origin")}/dashboard?payment=success&credits=${creditPackage.credits}`,
       cancel_url: `${req.headers.get("origin")}/dashboard?payment=cancelled`,
       metadata: {
@@ -86,7 +87,7 @@ serve(async (req) => {
       },
     });
 
-    console.log(`Created payment session for user ${user.id}: ${session.id}`);
+    console.log(`Created AUD payment session for user ${user.id}: ${session.id}, amount: ${creditPackage.price} cents AUD`);
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
