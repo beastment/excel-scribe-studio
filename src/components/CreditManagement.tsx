@@ -196,9 +196,9 @@ const CreditManagement: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {creditPackages.map((pkg) => (
-              <div key={pkg.id} className="border rounded-lg p-4">
+              <div key={pkg.id} className="border rounded-lg p-3">
                 <div className="font-semibold">{pkg.name}</div>
                 <div className="text-2xl font-bold text-primary">{pkg.credits.toLocaleString()} Credits</div>
                 <div className="text-sm text-muted-foreground mb-2">{pkg.description}</div>
@@ -216,7 +216,7 @@ const CreditManagement: React.FC = () => {
             ))}
             
             {/* Custom Amount Option */}
-            <div className="border rounded-lg p-4 bg-muted/20">
+            <div className="border rounded-lg p-3 bg-muted/20">
               <div className="font-semibold">Custom Amount</div>
               <div className="text-sm text-muted-foreground mb-3">Choose your own credit amount</div>
               <div className="space-y-3">
