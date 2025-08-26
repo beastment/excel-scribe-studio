@@ -36,6 +36,7 @@ const CreditManagement: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [customCredits, setCustomCredits] = useState<number>(0);
+  const [customCreditsInput, setCustomCreditsInput] = useState<string>('0');
 
   // Debug logging
   useEffect(() => {
@@ -131,6 +132,11 @@ const CreditManagement: React.FC = () => {
     }
   }, [user]);
 
+  // Sync input display with numeric value
+  useEffect(() => {
+    setCustomCreditsInput(customCredits.toString());
+  }, [customCredits]);
+
   if (loading) {
     return (
       <Card>
@@ -219,9 +225,11 @@ const CreditManagement: React.FC = () => {
                   <Input
                     id="custom-credits"
                     type="number"
-                    value={customCredits}
+                    value={customCreditsInput}
                     onChange={(e) => {
                       const value = e.target.value;
+                      setCustomCreditsInput(value);
+                      
                       if (value === '') {
                         setCustomCredits(0);
                       } else {
