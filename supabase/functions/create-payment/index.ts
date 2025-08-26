@@ -8,13 +8,9 @@ const corsHeaders = {
 };
 
 const creditPackages = [
-  { id: "100-credits", name: "100 Credits", credits: 100, price: 10000 }, // $100.00
-  { id: "500-credits", name: "500 Credits", credits: 500, price: 50000 }, // $500.00
-  { id: "1000-credits", name: "1,000 Credits", credits: 1000, price: 100000 }, // $1,000.00
-  { id: "3000-credits", name: "3,000 Credits", credits: 3000, price: 200000 }, // $2,000.00
-  { id: "5000-credits", name: "5,000 Credits", credits: 5000, price: 300000 }, // $3,000.00
-  { id: "10000-credits", name: "10,000 Credits", credits: 10000, price: 550000 }, // $5,500.00
-  { id: "20000-credits", name: "20,000 Credits", credits: 20000, price: 800000 }, // $8,000.00
+  { id: "100-credits", name: "100 Credits", credits: 100, price: 10000 }, // $100.00 AUD
+  { id: "500-credits", name: "500 Credits", credits: 500, price: 50000 }, // $500.00 AUD
+  { id: "1000-credits", name: "1,000 Credits", credits: 1000, price: 100000 }, // $1,000.00 AUD
 ];
 
 serve(async (req) => {
@@ -39,12 +35,28 @@ serve(async (req) => {
 
     // Get request body
     const body = await req.json();
-    const { packageId } = body;
+    const { packageId, customCredits } = body;
 
-    // Find the credit package
-    const creditPackage = creditPackages.find(pkg => pkg.id === packageId);
-    if (!creditPackage) {
-      throw new Error("Invalid credit package selected");
+    let creditPackage;
+    
+    if (packageId === "custom-credits") {
+      // Handle custom credit amount
+      if (!customCredits || customCredits < 10 || customCredits > 50000) {
+        throw new Error("Custom credit amount must be between 10 and 50,000 credits");
+      }
+      // Price is $1 AUD per credit
+      creditPackage = {
+        id: "custom-credits",
+        name: `${customCredits} Custom Credits`,
+        credits: customCredits,
+        price: customCredits * 100, // $1 AUD per credit in cents
+      };
+    } else {
+      // Find the predefined credit package
+      creditPackage = creditPackages.find(pkg => pkg.id === packageId);
+      if (!creditPackage) {
+        throw new Error("Invalid credit package selected");
+      }
     }
 
     // Initialize Stripe

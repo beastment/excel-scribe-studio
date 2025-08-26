@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { CreditCard, RefreshCw, Package, History } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserCredits } from '@/hooks/useUserCredits';
@@ -33,6 +35,7 @@ const CreditManagement: React.FC = () => {
   const [recentUsage, setRecentUsage] = useState<CreditUsage[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [customCredits, setCustomCredits] = useState<number>(100);
 
   // Debug logging
   useEffect(() => {
@@ -67,34 +70,6 @@ const CreditManagement: React.FC = () => {
           credits: 1000,
           price_usd: 1000,
           description: '1,000 credits for comment scanning'
-        },
-        {
-          id: '3000-credits',
-          name: '3,000 Credits', 
-          credits: 3000,
-          price_usd: 2000,
-          description: '3,000 credits for comment scanning'
-        },
-        {
-          id: '5000-credits',
-          name: '5,000 Credits', 
-          credits: 5000,
-          price_usd: 3000,
-          description: '5,000 credits for comment scanning'
-        },
-        {
-          id: '10000-credits',
-          name: '10,000 Credits', 
-          credits: 10000,
-          price_usd: 5500,
-          description: '10,000 credits for comment scanning'
-        },
-        {
-          id: '20000-credits',
-          name: '20,000 Credits', 
-          credits: 20000,
-          price_usd: 8000,
-          description: '20,000 credits for comment scanning'
         }
       ]);
     } catch (error) {
@@ -113,13 +88,17 @@ const CreditManagement: React.FC = () => {
     }
   };
 
-  const handlePurchase = async (packageId: string) => {
+  const handlePurchase = async (packageId: string, credits?: number) => {
     if (!user) return;
     
     setPurchasing(packageId);
     try {
+      const body = packageId === 'custom-credits' 
+        ? { packageId, customCredits: credits }
+        : { packageId };
+        
       const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: { packageId }
+        body
       });
       
       if (error) throw error;
@@ -218,7 +197,7 @@ const CreditManagement: React.FC = () => {
                 <div className="text-2xl font-bold text-primary">{pkg.credits.toLocaleString()} Credits</div>
                 <div className="text-sm text-muted-foreground mb-2">{pkg.description}</div>
                 <div className="text-lg font-semibold">
-                  ${pkg.price_usd.toLocaleString()}
+                  ${pkg.price_usd.toLocaleString()} AUD
                 </div>
                 <Button 
                   className="w-full mt-2" 
@@ -229,6 +208,39 @@ const CreditManagement: React.FC = () => {
                 </Button>
               </div>
             ))}
+            
+            {/* Custom Amount Option */}
+            <div className="border rounded-lg p-4 bg-muted/20">
+              <div className="font-semibold">Custom Amount</div>
+              <div className="text-sm text-muted-foreground mb-3">Choose your own credit amount</div>
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="custom-credits">Number of Credits (10-50,000)</Label>
+                  <Input
+                    id="custom-credits"
+                    type="number"
+                    value={customCredits}
+                    onChange={(e) => setCustomCredits(Math.max(10, Math.min(50000, parseInt(e.target.value) || 10)))}
+                    min="10"
+                    max="50000"
+                    className="mt-1"
+                  />
+                </div>
+                <div className="text-lg font-semibold">
+                  ${customCredits.toLocaleString()} AUD
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  $1 AUD per credit
+                </div>
+                <Button 
+                  className="w-full" 
+                  onClick={() => handlePurchase('custom-credits', customCredits)}
+                  disabled={purchasing === 'custom-credits' || customCredits < 10 || customCredits > 50000}
+                >
+                  {purchasing === 'custom-credits' ? 'Processing...' : 'Purchase Custom Amount'}
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
