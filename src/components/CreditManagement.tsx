@@ -8,7 +8,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserCredits } from '@/hooks/useUserCredits';
 import { usePaymentVerification } from '@/hooks/usePaymentVerification';
 import { supabase } from '@/integrations/supabase/client';
-
 interface CreditPackage {
   id: string;
   name: string;
@@ -16,7 +15,6 @@ interface CreditPackage {
   price_usd: number;
   description: string;
 }
-
 interface CreditUsage {
   id: string;
   credits_used: number;
@@ -24,11 +22,17 @@ interface CreditUsage {
   scan_type: string;
   created_at: string;
 }
-
 const CreditManagement: React.FC = () => {
-  const { user } = useAuth();
-  const { userCredits, totalUsed, refreshCredits, loading } = useUserCredits();
-  
+  const {
+    user
+  } = useAuth();
+  const {
+    userCredits,
+    totalUsed,
+    refreshCredits,
+    loading
+  } = useUserCredits();
+
   // Handle payment verification and refresh credits when payment is successful
   usePaymentVerification(refreshCredits);
   const [creditPackages, setCreditPackages] = useState<CreditPackage[]>([]);
@@ -47,40 +51,33 @@ const CreditManagement: React.FC = () => {
       userId: user?.id
     });
   }, [userCredits, totalUsed, loading, user?.id]);
-
   const fetchCreditPackages = async () => {
     try {
-      setCreditPackages([
-        {
-          id: '100-credits',
-          name: '100 Credits',
-          credits: 100,
-          price_usd: 100,
-          description: '100 credits for comment scanning'
-        },
-        {
-          id: '500-credits', 
-          name: '500 Credits',
-          credits: 500,
-          price_usd: 500,
-          description: '500 credits for comment scanning'
-        },
-        {
-          id: '1000-credits',
-          name: '1,000 Credits', 
-          credits: 1000,
-          price_usd: 1000,
-          description: '1,000 credits for comment scanning'
-        }
-      ]);
+      setCreditPackages([{
+        id: '100-credits',
+        name: '100 Credits',
+        credits: 100,
+        price_usd: 100,
+        description: '100 credits for comment scanning'
+      }, {
+        id: '500-credits',
+        name: '500 Credits',
+        credits: 500,
+        price_usd: 500,
+        description: '500 credits for comment scanning'
+      }, {
+        id: '1000-credits',
+        name: '1,000 Credits',
+        credits: 1000,
+        price_usd: 1000,
+        description: '1,000 credits for comment scanning'
+      }]);
     } catch (error) {
       console.error('Error fetching credit packages:', error);
     }
   };
-
   const fetchRecentUsage = async () => {
     if (!user?.id) return;
-    
     try {
       // For now, show empty usage since the table might not be in types yet
       setRecentUsage([]);
@@ -88,22 +85,24 @@ const CreditManagement: React.FC = () => {
       console.error('Error fetching usage history:', error);
     }
   };
-
   const handlePurchase = async (packageId: string, credits?: number) => {
     if (!user) return;
-    
     setPurchasing(packageId);
     try {
-      const body = packageId === 'custom-credits' 
-        ? { packageId, customCredits: credits }
-        : { packageId };
-        
-      const { data, error } = await supabase.functions.invoke('create-payment', {
+      const body = packageId === 'custom-credits' ? {
+        packageId,
+        customCredits: credits
+      } : {
+        packageId
+      };
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('create-payment', {
         body
       });
-      
       if (error) throw error;
-      
+
       // Open Stripe checkout in a new tab
       window.open(data.url, '_blank');
     } catch (error) {
@@ -112,23 +111,14 @@ const CreditManagement: React.FC = () => {
       setPurchasing(null);
     }
   };
-
   const refreshAll = async () => {
     setRefreshing(true);
-    await Promise.all([
-      refreshCredits(),
-      fetchCreditPackages(),
-      fetchRecentUsage()
-    ]);
+    await Promise.all([refreshCredits(), fetchCreditPackages(), fetchRecentUsage()]);
     setRefreshing(false);
   };
-
   useEffect(() => {
     if (user) {
-      Promise.all([
-        fetchCreditPackages(),
-        fetchRecentUsage()
-      ]);
+      Promise.all([fetchCreditPackages(), fetchRecentUsage()]);
     }
   }, [user]);
 
@@ -136,22 +126,17 @@ const CreditManagement: React.FC = () => {
   useEffect(() => {
     setCustomCreditsInput(customCredits.toString());
   }, [customCredits]);
-
   if (loading) {
-    return (
-      <Card>
+    return <Card>
         <CardContent className="p-6">
           <div className="flex items-center justify-center">
             <RefreshCw className="w-6 h-6 animate-spin" />
             <span className="ml-2">Loading credits...</span>
           </div>
         </CardContent>
-      </Card>
-    );
+      </Card>;
   }
-
-  return (
-    <div className="space-y-6">
+  return <div className="space-y-6">
       {/* Current Credits */}
       <Card>
         <CardHeader>
@@ -174,12 +159,7 @@ const CreditManagement: React.FC = () => {
             </div>
           </div>
           <div className="mt-4 flex justify-center">
-            <Button 
-              onClick={refreshAll} 
-              variant="outline" 
-              size="sm"
-              disabled={refreshing}
-            >
+            <Button onClick={refreshAll} variant="outline" size="sm" disabled={refreshing}>
               <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
@@ -197,68 +177,49 @@ const CreditManagement: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            {creditPackages.map((pkg) => (
-              <div key={pkg.id} className="border rounded-lg p-3">
-                <div className="font-semibold">{pkg.name}</div>
+            {creditPackages.map(pkg => <div key={pkg.id} className="border rounded-lg p-3">
+                
                 <div className="text-2xl font-bold text-primary">{pkg.credits.toLocaleString()} Credits</div>
-                <div className="text-sm text-muted-foreground mb-2">{pkg.description}</div>
+                
                 <div className="text-lg font-semibold">
                   ${pkg.price_usd.toLocaleString()} AUD
                 </div>
-                <Button 
-                  className="w-full mt-2" 
-                  onClick={() => handlePurchase(pkg.id)}
-                  disabled={purchasing === pkg.id}
-                >
+                <Button className="w-full mt-2" onClick={() => handlePurchase(pkg.id)} disabled={purchasing === pkg.id}>
                   {purchasing === pkg.id ? 'Processing...' : 'Purchase'}
                 </Button>
-              </div>
-            ))}
+              </div>)}
             
             {/* Custom Amount Option */}
             <div className="border rounded-lg p-3 bg-muted/20">
               <div className="font-semibold">Custom Amount</div>
-              <div className="text-sm text-muted-foreground mb-3">Choose your own credit amount</div>
+              
               <div className="space-y-3">
                 <div>
                   <Label htmlFor="custom-credits">Number of Credits (0-50,000)</Label>
-                  <Input
-                    id="custom-credits"
-                    type="number"
-                    value={customCreditsInput}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setCustomCreditsInput(value);
-                      
-                      if (value === '') {
-                        setCustomCredits(0);
-                      } else {
-                        const numValue = parseInt(value);
-                        if (!isNaN(numValue)) {
-                          setCustomCredits(Math.max(0, Math.min(50000, numValue)));
-                        }
-                      }
-                    }}
-                    min="0"
-                    max="50000"
-                    className="mt-1"
-                  />
+                  <Input id="custom-credits" type="number" value={customCreditsInput} onChange={e => {
+                  const value = e.target.value;
+                  setCustomCreditsInput(value);
+                  if (value === '') {
+                    setCustomCredits(0);
+                  } else {
+                    const numValue = parseInt(value);
+                    if (!isNaN(numValue)) {
+                      setCustomCredits(Math.max(0, Math.min(50000, numValue)));
+                    }
+                  }
+                }} min="0" max="50000" className="mt-1" />
                 </div>
                 <div className="text-lg font-semibold">
                   ${(() => {
-                    if (customCredits <= 1000) return customCredits;
-                    if (customCredits <= 10000) return 1000 + ((customCredits - 1000) * 0.5);
-                    return 5500 + ((customCredits - 10000) * 0.25);
-                  })().toLocaleString()} AUD
+                  if (customCredits <= 1000) return customCredits;
+                  if (customCredits <= 10000) return 1000 + (customCredits - 1000) * 0.5;
+                  return 5500 + (customCredits - 10000) * 0.25;
+                })().toLocaleString()} AUD
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Tiered: ≤1K: $1 each | 1K-10K: $1K + $0.50 each | 10K+: $5.5K + $0.25 each
                 </div>
-                <Button 
-                  className="w-full" 
-                  onClick={() => handlePurchase('custom-credits', customCredits)}
-                  disabled={purchasing === 'custom-credits' || customCredits <= 0 || customCredits > 50000}
-                >
+                <Button className="w-full" onClick={() => handlePurchase('custom-credits', customCredits)} disabled={purchasing === 'custom-credits' || customCredits <= 0 || customCredits > 50000}>
                   {purchasing === 'custom-credits' ? 'Processing...' : 'Purchase Custom Amount'}
                 </Button>
               </div>
@@ -276,10 +237,8 @@ const CreditManagement: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {recentUsage.length > 0 ? (
-            <div className="space-y-3">
-              {recentUsage.map((usage) => (
-                <div key={usage.id} className="flex justify-between items-center border-b pb-2">
+          {recentUsage.length > 0 ? <div className="space-y-3">
+              {recentUsage.map(usage => <div key={usage.id} className="flex justify-between items-center border-b pb-2">
                   <div>
                     <div className="font-medium">Comment Scan</div>
                     <div className="text-sm text-muted-foreground">
@@ -290,14 +249,10 @@ const CreditManagement: React.FC = () => {
                     <div className="font-semibold text-red-600">-{usage.credits_used}</div>
                     <div className="text-xs text-muted-foreground">credits</div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center text-muted-foreground py-4">
+                </div>)}
+            </div> : <div className="text-center text-muted-foreground py-4">
               No usage history yet
-            </div>
-          )}
+            </div>}
         </CardContent>
       </Card>
 
@@ -316,8 +271,6 @@ const CreditManagement: React.FC = () => {
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
+    </div>;
 };
-
 export default CreditManagement;
