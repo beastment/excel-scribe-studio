@@ -394,7 +394,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       
       if (commentsToProcess.length > 0) {
         setScanProgress(70);
-        toast.info(`Phase 3: Post-processing ${commentsToProcess.length} flagged comments (concerning AND identifiable)...`);
+        toast.info(`Phase 3: Post-processing ${commentsToProcess.length} flagged comments (identifiable)...`);
         
         // Get AI configuration for post-processing
         const { data: aiConfigs, error: configError } = await supabase
