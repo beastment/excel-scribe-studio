@@ -168,8 +168,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     } : c);
     onCommentsUpdate(updatedComments);
 
-    // Only reprocess if we don't have the required text for the mode AND the comment is BOTH concerning AND identifiable
-    if (comment.concerning && comment.identifiable) {
+    // Only reprocess if we don't have the required text for the mode AND the comment is identifiable
+    if (comment.identifiable) {
       if (mode === 'redact' && !comment.redactedText) {
         console.log(`[TOGGLE] Need to reprocess for redact mode - no redactedText available`);
         // If switching to redact mode but no redacted text exists, reprocess
@@ -370,9 +370,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
 
       // Phase 3: Post-process flagged comments
-      // Only process comments that are BOTH concerning AND identifiable
+      // Process comments that are identifiable (with or without concerning)
       // Comments that are only concerning (but not identifiable) should be set to revert mode
-      const commentsToProcess = data.comments.filter((c: any) => c.concerning && c.identifiable);
+      const commentsToProcess = data.comments.filter((c: any) => c.identifiable);
       const commentsToRevert = data.comments.filter((c: any) => c.concerning && !c.identifiable);
       
       // Set comments that are only concerning to revert mode
@@ -450,8 +450,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           
           // Merge post-processing results back into the scan data
           const finalComments = data.comments.map((comment: any) => {
-            // Only process comments that are BOTH concerning AND identifiable
-            if (comment.concerning && comment.identifiable) {
+            // Process comments that are identifiable (with or without concerning)
+            if (comment.identifiable) {
               const processed = processedMap.get(comment.id) as any;
               if (processed) {
                 console.log(`[POSTPROCESS] Raw processed comment:`, {
@@ -672,6 +672,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     if (comment.concerning && !comment.identifiable) {
       console.log(`[REPROCESS] Comment ${commentId} is only concerning (not identifiable) - should not be reprocessed`);
       toast.warning('Comments that are only concerning (not identifiable) should remain in revert mode');
+      return;
+    }
+    
+    // Allow processing of comments that are identifiable (with or without concerning)
+    if (!comment.identifiable) {
+      console.log(`[REPROCESS] Comment ${commentId} is not identifiable - no processing needed`);
+      toast.warning('Comments that are not identifiable do not need processing');
       return;
     }
     
@@ -1172,8 +1179,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                              </Button> : getCommentStatus(comment) === 'Revert' ? <Button variant="default" size="sm" disabled className="h-6 text-xs px-2">
                                Already Reverted
                              </Button> : <>
-                               {/* Only show Redact/Rephrase buttons for comments that are BOTH concerning AND identifiable */}
-                               {(comment.concerning && comment.identifiable) && <>
+                               {/* Show Redact/Rephrase buttons for comments that are identifiable (with or without concerning) */}
+                               {comment.identifiable && <>
                                  <Button variant={comment.mode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'redact')} className="h-6 text-xs px-2">
                                    Redact
                                  </Button>
@@ -1198,9 +1205,45 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       setFocusedCommentId(null);
                     }} autoFocus={focusedCommentId === comment.id} className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0" placeholder="Edit your comment..." />
                      </div> : <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors" onClick={() => setFocusedCommentId(comment.id)}>
-                        <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                          {comment.text}
-                        </p>
+                        {/* Show the appropriate text based on mode and available processed text */}
+                        {comment.mode === 'redact' && comment.redactedText ? (
+                          <div>
+                            <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                              {comment.redactedText}
+                            </p>
+                            <div className="mt-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
+                              <p className="text-xs text-blue-700 dark:text-blue-300">
+                                <strong>Redacted Version</strong> - Personally identifiable information has been removed
+                              </p>
+                            </div>
+                          </div>
+                        ) : comment.mode === 'rephrase' && comment.rephrasedText ? (
+                          <div>
+                            <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                              {comment.rephrasedText}
+                            </p>
+                            <div className="mt-2 p-2 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50">
+                              <p className="text-xs text-green-700 dark:text-green-300">
+                                <strong>Rephrased Version</strong> - Personally identifiable information has been anonymized
+                              </p>
+                            </div>
+                          </div>
+                        ) : comment.concerning && comment.identifiable && (comment.redactedText || comment.rephrasedText) ? (
+                          <div>
+                            <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                              {comment.redactedText || comment.rephrasedText}
+                            </p>
+                            <div className="mt-2 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800/50">
+                              <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                                <strong>Processed Text Available</strong> - Click Redact or Rephrase to apply
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                            {comment.text}
+                          </p>
+                        )}
                       </div>}
                  </div>
                 </div>
