@@ -23,7 +23,10 @@ interface CommentEditorProps {
   onImportComments: (comments: CommentData[]) => void;
   onCreditsError?: (needed: number, available: number) => void;
   onCreditsRefresh?: () => void;
+  onResetScanState?: () => void;
   isDemoData?: boolean;
+  hasScanRun?: boolean;
+  setHasScanRun?: (value: boolean) => void;
 }
 export const CommentEditor: React.FC<CommentEditorProps> = ({ 
   comments, 
@@ -31,7 +34,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   onImportComments,
   onCreditsError,
   onCreditsRefresh,
-  isDemoData = false
+  onResetScanState,
+  isDemoData = false,
+  hasScanRun: externalHasScanRun,
+  setHasScanRun: externalSetHasScanRun
 }) => {
   const {
     user
@@ -58,7 +64,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [defaultMode, setDefaultMode] = useState<'redact' | 'rephrase'>('redact');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
-  const [hasScanRun, setHasScanRun] = useState(false);
+  const [localHasScanRun, setLocalHasScanRun] = useState(false);
+  
+  // Use external state if provided, otherwise use local state
+  const hasScanRun = externalHasScanRun !== undefined ? externalHasScanRun : localHasScanRun;
+  const setHasScanRun = externalSetHasScanRun || setLocalHasScanRun;
   const [selectedDemographic, setSelectedDemographic] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const scanInFlightRef = useRef(false);
@@ -111,7 +121,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       text: newText,
       // Automatically switch to edit mode when user starts typing something different
       mode: newText !== c.originalText && newText !== c.redactedText && newText !== c.rephrasedText ? 'edit' : c.mode,
-      // Hide AI response when user starts editing and the comment originally had "No Changes Needed" status
+      // Hide AI response when user starts editing and the comment originally had "AI: No Changes" status
       hideAiResponse: c.hideAiResponse || newText !== c.originalText && c.aiReasoning && !c.concerning && !c.identifiable
     } : c);
     onCommentsUpdate(updatedComments);
@@ -597,14 +607,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     return acc;
   }, {} as Record<string, number>);
   const getCommentStatus = (comment: CommentData) => {
-    // If no scan has been run yet, show "Scan Required"
+    // If no scan has been run yet, show "Scan Needed"
     if (!hasScanRun) {
-      return 'Scan Required';
+      return 'Scan Needed';
     }
 
-    // If the comment was never processed by AI (no aiReasoning), keep it as "No Changes Needed"
+    // If the comment was never processed by AI (no aiReasoning), keep it as "AI: No Changes"
     if (!comment.aiReasoning) {
-      return 'No Changes Needed';
+      return 'AI: No Changes';
     }
 
     // Check if comment has been manually edited and differs from both original AND AI suggestions
@@ -612,14 +622,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       return 'Edited';
     }
     if (comment.concerning || comment.identifiable) return 'AI: Flagged';
-    if (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning) return 'Scan Required';
-    return 'No Changes Needed';
+    if (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning) return 'Scan Needed';
+    return 'AI: No Changes';
   };
 
-  // Get the initial mode for comments with "No Changes Needed" status
+  // Get the initial mode for comments with "AI: No Changes" status
   const getInitialMode = (comment: CommentData) => {
     const status = getCommentStatus(comment);
-    if (status === 'No Changes Needed' && !comment.mode) {
+    if (status === 'AI: No Changes' && !comment.mode) {
       return 'revert';
     }
     return comment.mode;
@@ -896,6 +906,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             <h3 className="text-lg font-semibold mb-4">Import New Comments</h3>
             <FileUpload onDataLoaded={newComments => {
             onImportComments(newComments);
+            // Reset scan state when new comments are imported
+            if (onResetScanState) {
+              onResetScanState();
+            }
             setShowImportDialog(false);
           }} />
           </Card>
@@ -969,7 +983,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     </p>
                   </div>
                      <div className="space-y-3 mt-4">
-                     {comment.aiReasoning && !comment.hideAiResponse && getCommentStatus(comment) !== 'No Changes Needed' && <div className="p-2 rounded-lg bg-muted/50 border">
+                     {comment.aiReasoning && !comment.hideAiResponse && getCommentStatus(comment) !== 'AI: No Changes' && <div className="p-2 rounded-lg bg-muted/50 border">
                          <p className="text-xs text-muted-foreground">
                            <strong>AI:</strong> {comment.aiReasoning}
                          </p>
@@ -1115,8 +1129,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   
                    {/* Mode Controls */}
                    <div className="flex items-center gap-1 flex-wrap h-8">
-                       {getCommentStatus(comment) !== 'Scan Required' && <>
-                            {getCommentStatus(comment) === 'No Changes Needed' ? <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
+                       {getCommentStatus(comment) !== 'Scan Needed' && <>
+                            {getCommentStatus(comment) === 'AI: No Changes' ? <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
                                Revert
                              </Button> : <>
                                {/* Only show Redact/Rephrase buttons for comments flagged as concerning or identifiable */}

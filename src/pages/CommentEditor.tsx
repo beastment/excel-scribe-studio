@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 const Index = () => {
   const [comments, setComments] = useState<CommentData[]>([]);
   const [isDemoData, setIsDemoData] = useState(false);
+  const [hasScanRun, setHasScanRun] = useState(false);
   const [showInsufficientCreditsDialog, setShowInsufficientCreditsDialog] = useState(false);
   const [creditsError, setCreditsError] = useState<{ needed: number; available: number } | null>(null);
   
@@ -18,7 +19,27 @@ const Index = () => {
   const { credits, loading: creditsLoading, refreshCredits } = useUserCredits();
   const handleDataLoaded = (newComments: CommentData[]) => {
     setIsDemoData(false); // Regular file upload, not demo data
-    setComments(newComments);
+    
+    // Reset all comments to clean state - clear AI processing results and set status to "Scan Needed"
+    const cleanComments = newComments.map(comment => ({
+      ...comment,
+      concerning: false,
+      identifiable: false,
+      aiReasoning: undefined,
+      redactedText: undefined,
+      rephrasedText: undefined,
+      mode: undefined,
+      approved: false,
+      hideAiResponse: false,
+      needsAdjudication: false,
+      isAdjudicated: false,
+      needsPostProcessing: false,
+      isPostProcessed: false,
+      debugInfo: undefined
+    }));
+    
+    setComments(cleanComments);
+    setHasScanRun(false); // Reset scan state when new data is imported
   };
   const handleCommentsUpdate = (updatedComments: CommentData[]) => {
     setComments(updatedComments);
@@ -36,6 +57,7 @@ const Index = () => {
   const clearComments = () => {
     setComments([]);
     setIsDemoData(false);
+    setHasScanRun(false);
   };
   const loadDemoData = () => {
     setIsDemoData(true);
@@ -234,6 +256,7 @@ const Index = () => {
       hideAiResponse: false
     }));
     setComments(cleanDemoComments); // Directly set comments for demo data
+    setHasScanRun(false); // Reset scan state for demo data
     toast.success('Demo data loaded successfully! 20 employee survey comments imported.');
   };
   return <div className="pt-20">
@@ -295,7 +318,10 @@ const Index = () => {
                 onImportComments={handleDataLoaded}
                 onCreditsError={handleCreditsError}
                 onCreditsRefresh={handleCreditsRefresh}
+                onResetScanState={() => setHasScanRun(false)}
                 isDemoData={isDemoData}
+                hasScanRun={hasScanRun}
+                setHasScanRun={setHasScanRun}
               />
             </div>}
           </div>
