@@ -611,7 +611,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     if (comment.mode === 'edit' || comment.text !== comment.originalText && comment.text !== comment.redactedText && comment.text !== comment.rephrasedText) {
       return 'Edited';
     }
-    if (comment.concerning || comment.identifiable) return 'AI Processed';
+    if (comment.concerning || comment.identifiable) return 'AI: Flagged';
     if (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning) return 'Scan Required';
     return 'No Changes Needed';
   };
