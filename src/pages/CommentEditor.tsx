@@ -309,6 +309,7 @@ const Index = () => {
         creditsNeeded={creditsError?.needed || 0}
         creditsAvailable={creditsError?.available || 0}
         onTryDemoFile={clearComments}
+        onRefreshCredits={handleCreditsRefresh}
       />
     </div>;
 };

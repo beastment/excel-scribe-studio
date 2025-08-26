@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,8 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Coins, CreditCard } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { AlertTriangle, Coins } from 'lucide-react';
 
 interface InsufficientCreditsDialogProps {
   open: boolean;
@@ -18,6 +17,7 @@ interface InsufficientCreditsDialogProps {
   creditsNeeded: number;
   creditsAvailable: number;
   onTryDemoFile?: () => void;
+  onRefreshCredits?: () => void;
 }
 
 export const InsufficientCreditsDialog: React.FC<InsufficientCreditsDialogProps> = ({
@@ -27,29 +27,6 @@ export const InsufficientCreditsDialog: React.FC<InsufficientCreditsDialogProps>
   creditsAvailable,
   onTryDemoFile,
 }) => {
-  const [purchasing, setPurchasing] = useState(false);
-
-  const handlePurchaseCredits = async () => {
-    setPurchasing(true);
-    try {
-      // Default to 100 credits package for quick purchase
-      const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: { packageId: '100-credits' }
-      });
-      
-      if (error) throw error;
-      
-      // Open Stripe checkout in a new tab
-      window.open(data.url, '_blank');
-      
-      // Close dialog after opening checkout
-      onOpenChange(false);
-    } catch (error) {
-      console.error('Purchase error:', error);
-    } finally {
-      setPurchasing(false);
-    }
-  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -123,12 +100,16 @@ export const InsufficientCreditsDialog: React.FC<InsufficientCreditsDialogProps>
             Try Demo File
           </Button>
           <Button
-            onClick={handlePurchaseCredits}
-            disabled={purchasing}
+            onClick={() => {
+              // Show information about purchasing exact credits needed
+              const additionalCreditsNeeded = creditsNeeded - creditsAvailable;
+              alert(`To purchase additional credits, please contact your administrator.\n\nYou need exactly ${additionalCreditsNeeded} more credits to scan ${creditsNeeded} comments.\n\nCurrent balance: ${creditsAvailable} credits\nAdditional credits needed: ${additionalCreditsNeeded} credits`);
+              onOpenChange(false);
+            }}
             className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
           >
-            <CreditCard className="h-4 w-4 mr-2" />
-            {purchasing ? 'Processing...' : 'Buy 100 Credits ($100)'}
+            <Coins className="h-4 w-4 mr-2" />
+            Purchase {creditsNeeded - creditsAvailable} Credits
           </Button>
         </DialogFooter>
       </DialogContent>

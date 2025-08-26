@@ -168,11 +168,14 @@ serve(async (req) => {
     // Always fetch user credits for display purposes (even for demo scans)
     let userCredits: any = null;
     try {
+      console.log(`[CREDITS] Fetching credits for user: ${user.id}`);
       const { data: creditsData, error: creditsError } = await supabase
         .from('user_credits')
         .select('available_credits, total_credits_used')
         .eq('user_id', user.id)
         .single();
+      
+      console.log(`[CREDITS] Raw credits query result:`, { creditsData, creditsError });
       
       if (creditsError && creditsError.code !== 'PGRST116') { // PGRST116 = no rows returned
         console.error('Error fetching user credits:', creditsError);
@@ -182,6 +185,7 @@ serve(async (req) => {
         }
       } else {
         userCredits = creditsData;
+        console.log(`[CREDITS] Successfully fetched user credits:`, userCredits);
       }
     } catch (error) {
       if (!isDemoScan) {
