@@ -200,6 +200,99 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_packages: {
+        Row: {
+          created_at: string
+          credits: number
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          price_usd: number
+        }
+        Insert: {
+          created_at?: string
+          credits: number
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          price_usd: number
+        }
+        Update: {
+          created_at?: string
+          credits?: number
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          price_usd?: number
+        }
+        Relationships: []
+      }
+      credit_pricing_tiers: {
+        Row: {
+          base_cost_cents: number
+          created_at: string
+          id: string
+          max_credits: number | null
+          min_credits: number
+          price_per_credit_cents: number
+          tier_name: string
+          updated_at: string
+        }
+        Insert: {
+          base_cost_cents?: number
+          created_at?: string
+          id?: string
+          max_credits?: number | null
+          min_credits: number
+          price_per_credit_cents: number
+          tier_name: string
+          updated_at?: string
+        }
+        Update: {
+          base_cost_cents?: number
+          created_at?: string
+          id?: string
+          max_credits?: number | null
+          min_credits?: number
+          price_per_credit_cents?: number
+          tier_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      credit_usage: {
+        Row: {
+          comments_scanned: number
+          created_at: string
+          credits_used: number
+          id: string
+          scan_run_id: string
+          scan_type: string
+          user_id: string
+        }
+        Insert: {
+          comments_scanned: number
+          created_at?: string
+          credits_used: number
+          id?: string
+          scan_run_id: string
+          scan_type?: string
+          user_id: string
+        }
+        Update: {
+          comments_scanned?: number
+          created_at?: string
+          credits_used?: number
+          id?: string
+          scan_run_id?: string
+          scan_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       maintenance_mode: {
         Row: {
           id: string
@@ -320,6 +413,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_credits: {
+        Row: {
+          available_credits: number
+          created_at: string
+          id: string
+          total_credits_used: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          available_credits?: number
+          created_at?: string
+          id?: string
+          total_credits_used?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          available_credits?: number
+          created_at?: string
+          id?: string
+          total_credits_used?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_subscriptions: {
         Row: {
           created_at: string
@@ -370,6 +490,10 @@ export type Database = {
         Args: { amount: number; user_uuid: string }
         Returns: boolean
       }
+      add_user_credits: {
+        Args: { credits_to_add: number; user_uuid: string }
+        Returns: boolean
+      }
       cleanup_auth_rate_limits: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -378,12 +502,33 @@ export type Database = {
         Args: { amount: number; user_uuid: string }
         Returns: boolean
       }
+      deduct_user_credits: {
+        Args: {
+          comments_scanned: number
+          credits_to_deduct: number
+          scan_run_id: string
+          scan_type?: string
+          user_uuid: string
+        }
+        Returns: boolean
+      }
       get_maintenance_status: {
         Args: Record<PropertyKey, never>
         Returns: {
           is_enabled: boolean
           message: string
         }[]
+      }
+      get_or_create_user_credits: {
+        Args: { user_uuid: string }
+        Returns: {
+          available_credits: number
+          created_at: string
+          id: string
+          total_credits_used: number
+          updated_at: string
+          user_id: string
+        }
       }
       has_role: {
         Args: {

@@ -35,7 +35,7 @@ const CreditManagement: React.FC = () => {
   const [recentUsage, setRecentUsage] = useState<CreditUsage[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
-  const [customCredits, setCustomCredits] = useState<number>(100);
+  const [customCredits, setCustomCredits] = useState<number>(1);
 
   // Debug logging
   useEffect(() => {
@@ -215,27 +215,31 @@ const CreditManagement: React.FC = () => {
               <div className="text-sm text-muted-foreground mb-3">Choose your own credit amount</div>
               <div className="space-y-3">
                 <div>
-                  <Label htmlFor="custom-credits">Number of Credits (10-50,000)</Label>
+                  <Label htmlFor="custom-credits">Number of Credits (1-50,000)</Label>
                   <Input
                     id="custom-credits"
                     type="number"
                     value={customCredits}
-                    onChange={(e) => setCustomCredits(Math.max(10, Math.min(50000, parseInt(e.target.value) || 10)))}
-                    min="10"
+                    onChange={(e) => setCustomCredits(Math.max(1, Math.min(50000, parseInt(e.target.value) || 1)))}
+                    min="1"
                     max="50000"
                     className="mt-1"
                   />
                 </div>
                 <div className="text-lg font-semibold">
-                  ${customCredits.toLocaleString()} AUD
+                  ${(() => {
+                    if (customCredits <= 1000) return customCredits;
+                    if (customCredits <= 10000) return 1000 + ((customCredits - 1000) * 0.5);
+                    return 5500 + ((customCredits - 10000) * 0.25);
+                  })().toLocaleString()} AUD
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  $1 AUD per credit
+                  Tiered: ≤1K: $1 each | 1K-10K: $1K + $0.50 each | 10K+: $5.5K + $0.25 each
                 </div>
                 <Button 
                   className="w-full" 
                   onClick={() => handlePurchase('custom-credits', customCredits)}
-                  disabled={purchasing === 'custom-credits' || customCredits < 10 || customCredits > 50000}
+                  disabled={purchasing === 'custom-credits' || customCredits < 1 || customCredits > 50000}
                 >
                   {purchasing === 'custom-credits' ? 'Processing...' : 'Purchase Custom Amount'}
                 </Button>

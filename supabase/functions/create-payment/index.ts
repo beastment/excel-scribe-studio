@@ -41,15 +41,29 @@ serve(async (req) => {
     
     if (packageId === "custom-credits") {
       // Handle custom credit amount
-      if (!customCredits || customCredits < 10 || customCredits > 50000) {
-        throw new Error("Custom credit amount must be between 10 and 50,000 credits");
+      if (!customCredits || customCredits < 1 || customCredits > 50000) {
+        throw new Error("Custom credit amount must be between 1 and 50,000 credits");
       }
-      // Price is $1 AUD per credit
+      
+      // Calculate tiered pricing
+      let totalPrice = 0;
+      
+      if (customCredits <= 1000) {
+        // Tier 1: $1.00 per credit
+        totalPrice = customCredits * 100;
+      } else if (customCredits <= 10000) {
+        // Tier 2: $1000 + $0.50 per credit above 1000
+        totalPrice = 100000 + ((customCredits - 1000) * 50);
+      } else {
+        // Tier 3: $5500 + $0.25 per credit above 10000
+        totalPrice = 550000 + ((customCredits - 10000) * 25);
+      }
+      
       creditPackage = {
         id: "custom-credits",
         name: `${customCredits} Custom Credits`,
         credits: customCredits,
-        price: customCredits * 100, // $1 AUD per credit in cents
+        price: totalPrice, // Calculated tiered pricing in cents
       };
     } else {
       // Find the predefined credit package
