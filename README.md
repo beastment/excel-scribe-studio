@@ -1,3 +1,5 @@
+Remember: Cursor → GitHub, Lovable deploy, no local commands
+
 # Welcome to your Lovable project
 
 ## Project info
