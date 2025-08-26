@@ -168,8 +168,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     } : c);
     onCommentsUpdate(updatedComments);
 
-    // Only reprocess if we don't have the required text for the mode AND the comment is flagged
-    if (comment.concerning || comment.identifiable) {
+    // Only reprocess if we don't have the required text for the mode AND the comment is BOTH concerning AND identifiable
+    if (comment.concerning && comment.identifiable) {
       if (mode === 'redact' && !comment.redactedText) {
         console.log(`[TOGGLE] Need to reprocess for redact mode - no redactedText available`);
         // If switching to redact mode but no redacted text exists, reprocess
@@ -181,6 +181,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       } else {
         console.log(`[TOGGLE] No reprocessing needed - text already available for mode: ${mode}`);
       }
+    } else if (comment.concerning && !comment.identifiable) {
+      console.log(`[TOGGLE] Comment is only concerning (not identifiable) - no reprocessing needed, should stay in revert mode`);
     } else {
       console.log(`[TOGGLE] Comment not flagged (concerning: ${comment.concerning}, identifiable: ${comment.identifiable}) - no reprocessing needed`);
     }
@@ -368,11 +370,31 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
 
       // Phase 3: Post-process flagged comments
-      const flaggedComments = data.comments.filter((c: any) => c.concerning || c.identifiable);
+      // Only process comments that are BOTH concerning AND identifiable
+      // Comments that are only concerning (but not identifiable) should be set to revert mode
+      const commentsToProcess = data.comments.filter((c: any) => c.concerning && c.identifiable);
+      const commentsToRevert = data.comments.filter((c: any) => c.concerning && !c.identifiable);
       
-      if (flaggedComments.length > 0) {
+      // Set comments that are only concerning to revert mode
+      if (commentsToRevert.length > 0) {
+        console.log(`Setting ${commentsToRevert.length} comments to revert mode (concerning but not identifiable)`);
+        data.comments = data.comments.map((comment: any) => {
+          if (comment.concerning && !comment.identifiable) {
+            return {
+              ...comment,
+              mode: 'revert',
+              text: comment.originalText || comment.text,
+              needsPostProcessing: false,
+              isPostProcessed: true
+            };
+          }
+          return comment;
+        });
+      }
+      
+      if (commentsToProcess.length > 0) {
         setScanProgress(70);
-        toast.info(`Phase 3: Post-processing ${flaggedComments.length} flagged comments...`);
+        toast.info(`Phase 3: Post-processing ${commentsToProcess.length} flagged comments (concerning AND identifiable)...`);
         
         // Get AI configuration for post-processing
         const { data: aiConfigs, error: configError } = await supabase
@@ -389,7 +411,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         
         const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
           body: {
-            comments: flaggedComments.map((c: any) => ({
+            comments: commentsToProcess.map((c: any) => ({
               id: c.id,
               scannedIndex: c.scannedIndex,
               originalText: c.originalText || c.text,
@@ -428,7 +450,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           
           // Merge post-processing results back into the scan data
           const finalComments = data.comments.map((comment: any) => {
-            if (comment.concerning || comment.identifiable) {
+            // Only process comments that are BOTH concerning AND identifiable
+            if (comment.concerning && comment.identifiable) {
               const processed = processedMap.get(comment.id) as any;
               if (processed) {
                 console.log(`[POSTPROCESS] Raw processed comment:`, {
@@ -499,7 +522,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
       } else {
         setScanProgress(95);
-        toast.info('Phase 3: No flagged comments to post-process');
+        if (commentsToRevert.length > 0) {
+          toast.info(`Phase 3: ${commentsToRevert.length} comments set to revert mode (concerning but not identifiable), no post-processing needed`);
+        } else {
+          toast.info('Phase 3: No flagged comments to post-process');
+        }
       }
 
       // Final update with all processed comments
@@ -621,7 +648,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     if (comment.mode === 'edit' || comment.text !== comment.originalText && comment.text !== comment.redactedText && comment.text !== comment.rephrasedText) {
       return 'Edited';
     }
-    if (comment.concerning || comment.identifiable) return 'AI: Flagged';
+    // Comments that are only concerning (but not identifiable) should show as "Revert" since they don't need processing
+    if (comment.concerning && comment.identifiable) return 'AI: Flagged';
+    if (comment.concerning && !comment.identifiable) return 'Revert';
+    if (comment.identifiable && !comment.concerning) return 'AI: Flagged';
     if (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning) return 'Scan Needed';
     return 'AI: No Changes';
   };
@@ -637,6 +667,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const reprocessComment = async (commentId: string, mode: 'redact' | 'rephrase' | 'revert') => {
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
+    
+    // Prevent reprocessing comments that are only concerning (not identifiable)
+    if (comment.concerning && !comment.identifiable) {
+      console.log(`[REPROCESS] Comment ${commentId} is only concerning (not identifiable) - should not be reprocessed`);
+      toast.warning('Comments that are only concerning (not identifiable) should remain in revert mode');
+      return;
+    }
     
     try {
       // Get AI configuration for post-processing
@@ -1132,9 +1169,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                        {getCommentStatus(comment) !== 'Scan Needed' && <>
                             {getCommentStatus(comment) === 'AI: No Changes' ? <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
                                Revert
+                             </Button> : getCommentStatus(comment) === 'Revert' ? <Button variant="default" size="sm" disabled className="h-6 text-xs px-2">
+                               Already Reverted
                              </Button> : <>
-                               {/* Only show Redact/Rephrase buttons for comments flagged as concerning or identifiable */}
-                               {(comment.concerning || comment.identifiable) && <>
+                               {/* Only show Redact/Rephrase buttons for comments that are BOTH concerning AND identifiable */}
+                               {(comment.concerning && comment.identifiable) && <>
                                  <Button variant={comment.mode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'redact')} className="h-6 text-xs px-2">
                                    Redact
                                  </Button>
