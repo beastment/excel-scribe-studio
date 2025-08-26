@@ -29,31 +29,35 @@ export const useUserCredits = () => {
     if (!user) return;
 
     try {
-      console.log('[useUserCredits] Fetching credits from RPC function...');
+      console.log('[useUserCredits] Fetching credits from user_credits table...');
       setLoading(true);
-      // Use the profiles table for now since RPC functions may not be in types
+      // Read from user_credits table to match what the backend functions use
       const { data, error } = await supabase
-        .from('profiles')
-        .select('credits, user_id, created_at, updated_at')
+        .from('user_credits')
+        .select('available_credits, total_credits_used, created_at, updated_at')
         .eq('user_id', user.id)
         .single();
 
-      console.log('[useUserCredits] Profile response:', { data, error });
+      console.log('[useUserCredits] user_credits response:', { data, error });
 
       if (error) {
-        console.error('[useUserCredits] Error fetching credits:', error);
-        return;
-      }
-
-      if (data) {
-        const userCreditsData = {
-          available_credits: data.credits || 0,
-          total_credits_used: 0, // We'll track this separately for now
-          created_at: data.created_at,
-          updated_at: data.updated_at
-        };
-        console.log('[useUserCredits] Setting user credits:', userCreditsData);
-        setUserCredits(userCreditsData);
+        if (error.code === 'PGRST116') { // No rows returned
+          console.log('[useUserCredits] No user_credits record found, user may not have been initialized yet');
+          // Set default credits for new users
+          const defaultCredits = {
+            available_credits: 100,
+            total_credits_used: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          setUserCredits(defaultCredits);
+        } else {
+          console.error('[useUserCredits] Error fetching credits:', error);
+          return;
+        }
+      } else if (data) {
+        console.log('[useUserCredits] Setting user credits:', data);
+        setUserCredits(data);
       }
     } catch (error) {
       console.error('[useUserCredits] Unexpected error:', error);

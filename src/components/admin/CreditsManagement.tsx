@@ -37,29 +37,60 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   const fetchUserCredits = async () => {
     try {
       setLoading(true);
-      // Use the profiles table for now since RPC functions may not be in types
+      // Read from user_credits table to match what the backend functions use
       const { data, error } = await supabase
-        .from('profiles')
-        .select('credits, user_id, created_at, updated_at')
+        .from('user_credits')
+        .select('available_credits, total_credits_used, created_at, updated_at')
         .eq('user_id', userId)
         .single();
 
       if (error) {
-        console.error('Error fetching user credits:', error);
-        toast({
-          title: "Error",
-          description: "Failed to fetch user credits",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (data) {
+        if (error.code === 'PGRST116') { // No rows returned
+          console.log('No user_credits record found, creating default record');
+          // Create default record for new users
+          const { data: newRecord, error: createError } = await supabase
+            .from('user_credits')
+            .insert({
+              user_id: userId,
+              available_credits: 100,
+              total_credits_used: 0
+            })
+            .select()
+            .single();
+          
+          if (createError) {
+            console.error('Error creating user_credits record:', createError);
+            toast({
+              title: "Error",
+              description: "Failed to create user credits record",
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          setUserCredits({
+            id: newRecord.id,
+            user_id: newRecord.user_id,
+            available_credits: newRecord.available_credits,
+            total_credits_used: newRecord.total_credits_used,
+            created_at: newRecord.created_at,
+            updated_at: newRecord.updated_at
+          });
+        } else {
+          console.error('Error fetching user credits:', error);
+          toast({
+            title: "Error",
+            description: "Failed to fetch user credits",
+            variant: "destructive",
+          });
+          return;
+        }
+      } else if (data) {
         setUserCredits({
-          id: data.user_id,
-          user_id: data.user_id,
-          available_credits: data.credits || 0,
-          total_credits_used: 0, // We'll track this separately
+          id: data.id || userId,
+          user_id: userId,
+          available_credits: data.available_credits || 0,
+          total_credits_used: data.total_credits_used || 0,
           created_at: data.created_at,
           updated_at: data.updated_at
         });
@@ -84,9 +115,9 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       
       const finalAmount = operation === 'add' ? creditAmount : -creditAmount;
       
-      const { error } = await supabase.rpc('add_credits', {
+      const { error } = await supabase.rpc('add_user_credits', {
         user_uuid: userId,
-        amount: finalAmount
+        credits_to_add: finalAmount
       });
 
       if (error) {
@@ -130,9 +161,9 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       const difference = newAmount - currentCredits;
       
       if (difference !== 0) {
-        const { error } = await supabase.rpc('add_credits', {
+        const { error } = await supabase.rpc('add_user_credits', {
           user_uuid: userId,
-          amount: difference
+          credits_to_add: difference
         });
 
         if (error) {

@@ -53,9 +53,9 @@ serve(async (req) => {
     }
 
     // Add credits to user account using RPC function
-    const { data, error } = await supabaseService.rpc('add_credits', {
+    const { data, error } = await supabaseService.rpc('add_user_credits', {
       user_uuid: userId,
-      amount: credits
+      credits_to_add: credits
     });
 
     if (error) {
