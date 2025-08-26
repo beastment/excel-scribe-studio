@@ -220,7 +220,17 @@ const CreditManagement: React.FC = () => {
                     id="custom-credits"
                     type="number"
                     value={customCredits}
-                    onChange={(e) => setCustomCredits(Math.max(0, Math.min(50000, parseInt(e.target.value) || 0)))}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === '') {
+                        setCustomCredits(0);
+                      } else {
+                        const numValue = parseInt(value);
+                        if (!isNaN(numValue)) {
+                          setCustomCredits(Math.max(0, Math.min(50000, numValue)));
+                        }
+                      }
+                    }}
                     min="0"
                     max="50000"
                     className="mt-1"
