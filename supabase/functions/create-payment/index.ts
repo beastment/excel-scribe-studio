@@ -66,7 +66,7 @@ serve(async (req) => {
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "aud",
             product_data: { 
               name: creditPackage.name,
               description: `Purchase ${creditPackage.credits} credits for comment scanning`
