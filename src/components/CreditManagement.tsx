@@ -35,7 +35,7 @@ const CreditManagement: React.FC = () => {
   const [recentUsage, setRecentUsage] = useState<CreditUsage[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
-  const [customCredits, setCustomCredits] = useState<number>(1);
+  const [customCredits, setCustomCredits] = useState<number>(0);
 
   // Debug logging
   useEffect(() => {
@@ -215,13 +215,13 @@ const CreditManagement: React.FC = () => {
               <div className="text-sm text-muted-foreground mb-3">Choose your own credit amount</div>
               <div className="space-y-3">
                 <div>
-                  <Label htmlFor="custom-credits">Number of Credits (1-50,000)</Label>
+                  <Label htmlFor="custom-credits">Number of Credits (0-50,000)</Label>
                   <Input
                     id="custom-credits"
                     type="number"
                     value={customCredits}
-                    onChange={(e) => setCustomCredits(Math.max(1, Math.min(50000, parseInt(e.target.value) || 1)))}
-                    min="1"
+                    onChange={(e) => setCustomCredits(Math.max(0, Math.min(50000, parseInt(e.target.value) || 0)))}
+                    min="0"
                     max="50000"
                     className="mt-1"
                   />
@@ -239,7 +239,7 @@ const CreditManagement: React.FC = () => {
                 <Button 
                   className="w-full" 
                   onClick={() => handlePurchase('custom-credits', customCredits)}
-                  disabled={purchasing === 'custom-credits' || customCredits < 1 || customCredits > 50000}
+                  disabled={purchasing === 'custom-credits' || customCredits <= 0 || customCredits > 50000}
                 >
                   {purchasing === 'custom-credits' ? 'Processing...' : 'Purchase Custom Amount'}
                 </Button>

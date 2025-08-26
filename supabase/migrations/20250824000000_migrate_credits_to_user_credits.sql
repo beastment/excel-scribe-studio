@@ -39,3 +39,4 @@ DROP FUNCTION public.migrate_credits_from_profiles();
 
 -- Add a comment to the profiles table indicating credits are deprecated
 COMMENT ON COLUMN public.profiles.credits IS 'DEPRECATED: Credits are now managed in the user_credits table. This column will be removed in a future migration.';
+
