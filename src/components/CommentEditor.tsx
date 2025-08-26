@@ -1228,7 +1228,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                               </p>
                             </div>
                           </div>
-                        ) : comment.concerning && comment.identifiable && (comment.redactedText || comment.rephrasedText) ? (
+                        ) : comment.identifiable && (comment.redactedText || comment.rephrasedText) ? (
                           <div>
                             <p className="text-foreground leading-relaxed text-sm sm:text-base">
                               {comment.redactedText || comment.rephrasedText}
