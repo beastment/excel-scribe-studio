@@ -130,7 +130,7 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
     try {
       // First, get all logs to find the most recent run ID
       const { data: allLogs, error: allLogsError } = await supabase
-        .from('ai_logs')
+        .from('ai_logs' as any)
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
@@ -141,8 +141,17 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
         return;
       }
 
+      if (!allLogs) {
+        setLogs([]);
+        setMostRecentRunId(null);
+        setRunStats(null);
+        return;
+      }
+
+      const typedLogs = allLogs as unknown as AILog[];
+      
       // Find the most recent run ID (non-null scan_run_id)
-      const logsWithRunId = allLogs?.filter(log => log.scan_run_id) || [];
+      const logsWithRunId = typedLogs.filter(log => log.scan_run_id) || [];
       if (logsWithRunId.length > 0) {
         // Group by scan_run_id and find the most recent one
         const runGroups = logsWithRunId.reduce((groups, log) => {
@@ -168,16 +177,16 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
         setMostRecentRunId(mostRecentRun);
         
         // Filter logs to only show the most recent run
-        const filteredLogs = allLogs?.filter(log => log.scan_run_id === mostRecentRun) || [];
+        const filteredLogs = typedLogs.filter(log => log.scan_run_id === mostRecentRun) || [];
         setLogs(filteredLogs);
         
         // Calculate run statistics
         calculateRunStats(filteredLogs);
       } else {
         // If no logs with run ID, show all logs
-        setLogs(allLogs || []);
+        setLogs(typedLogs || []);
         setMostRecentRunId(null);
-        calculateRunStats(allLogs || []);
+        calculateRunStats(typedLogs || []);
       }
     } catch (error) {
       console.error('Error fetching AI logs:', error);
@@ -250,10 +259,12 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
     return tokens.toString();
   };
 
-  const formatProcessingTime = (ms?: number) => {
+  const formatProcessingTime = (ms?: number): string => {
     if (!ms) return 'N/A';
     if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
+    return `${(ms / 3600000).toFixed(1)}h`;
   };
 
   const formatTimeDuration = (startTime?: string, endTime?: string) => {
@@ -269,21 +280,6 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
     } catch (error) {
       return 'N/A';
     }
-  };
-
-  const formatProcessingTime = (ms?: number): string => {
-    if (!ms) return 'N/A';
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
-    return `${(ms / 3600000).toFixed(1)}h`;
-  };
-
-  const formatTokenCount = (count?: number): string => {
-    if (!count) return '0';
-    if (count < 1000) return count.toString();
-    if (count < 1000000) return `${(count / 1000).toFixed(1)}K`;
-    return `${(count / 1000000).toFixed(1)}M`;
   };
 
   const truncateText = (text: string, maxLength: number = 100) => {
@@ -321,15 +317,10 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
           </CardTitle>
           <div className="flex items-center gap-2">
             {runStats && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setActiveTab('summary')}
-                className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-              >
-                <BarChart3 className="h-4 w-4" />
-                Run Summary
-              </Button>
+              <Badge variant="outline" className="bg-green-50 border-green-200 text-green-700">
+                <BarChart3 className="h-4 w-4 mr-1" />
+                Run Summary Available
+              </Badge>
             )}
             <Button
               variant="outline"
