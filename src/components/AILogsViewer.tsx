@@ -13,7 +13,10 @@ import {
   Download,
   Clock,
   Hash,
-  Zap
+  Zap,
+  Timer,
+  Activity,
+  BarChart3
 } from 'lucide-react';
 
 interface AILog {
@@ -53,12 +56,72 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
   const [selectedLog, setSelectedLog] = useState<AILog | null>(null);
   const [mostRecentRunId, setMostRecentRunId] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [runStats, setRunStats] = useState<{
+    totalRequests: number;
+    totalTokens: number;
+    totalProcessingTime: number;
+    totalRunTime: number;
+    averageEfficiency: number;
+    functions: { [key: string]: number };
+  } | null>(null);
 
   useEffect(() => {
     if (user) {
       fetchLogs();
     }
   }, [user]);
+
+  const calculateRunStats = (logs: AILog[]) => {
+    if (logs.length === 0) {
+      setRunStats(null);
+      return;
+    }
+
+    const stats = {
+      totalRequests: logs.length,
+      totalTokens: 0,
+      totalProcessingTime: 0,
+      totalRunTime: 0,
+      averageEfficiency: 0,
+      functions: {} as { [key: string]: number }
+    };
+
+    let totalEfficiency = 0;
+    let efficiencyCount = 0;
+
+    logs.forEach(log => {
+      // Count tokens
+      stats.totalTokens += (log.request_tokens || 0) + (log.response_tokens || 0);
+      
+      // Count processing time
+      if (log.processing_time_ms) {
+        stats.totalProcessingTime += log.processing_time_ms;
+      }
+      
+      // Count total run time (use the maximum for the run)
+      if (log.total_run_time_ms) {
+        stats.totalRunTime = Math.max(stats.totalRunTime, log.total_run_time_ms);
+      }
+      
+      // Count functions
+      if (log.function_name) {
+        stats.functions[log.function_name] = (stats.functions[log.function_name] || 0) + 1;
+      }
+      
+      // Calculate efficiency
+      if (log.processing_time_ms && log.total_run_time_ms) {
+        const efficiency = (log.processing_time_ms / log.total_run_time_ms) * 100;
+        totalEfficiency += efficiency;
+        efficiencyCount++;
+      }
+    });
+
+    if (efficiencyCount > 0) {
+      stats.averageEfficiency = totalEfficiency / efficiencyCount;
+    }
+
+    setRunStats(stats);
+  };
 
   const fetchLogs = async () => {
     if (!user) return;
@@ -107,10 +170,14 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
         // Filter logs to only show the most recent run
         const filteredLogs = allLogs?.filter(log => log.scan_run_id === mostRecentRun) || [];
         setLogs(filteredLogs);
+        
+        // Calculate run statistics
+        calculateRunStats(filteredLogs);
       } else {
         // If no logs with run ID, show all logs
         setLogs(allLogs || []);
         setMostRecentRunId(null);
+        calculateRunStats(allLogs || []);
       }
     } catch (error) {
       console.error('Error fetching AI logs:', error);
@@ -121,7 +188,22 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
   };
 
   const exportLogs = () => {
-    const csvContent = [
+    let csvContent = '';
+    
+    // Add run summary if available
+    if (runStats && mostRecentRunId) {
+      csvContent += `Run Summary for ${mostRecentRunId}\n`;
+      csvContent += `Total Requests,${runStats.totalRequests}\n`;
+      csvContent += `Total Tokens,${runStats.totalTokens}\n`;
+      csvContent += `Total Processing Time (ms),${runStats.totalProcessingTime}\n`;
+      csvContent += `Total Run Time (ms),${runStats.totalRunTime}\n`;
+      csvContent += `Average Efficiency (%),${runStats.averageEfficiency.toFixed(1)}\n`;
+      csvContent += `Functions Used,${Object.keys(runStats.functions).join('; ')}\n`;
+      csvContent += '\n';
+    }
+    
+    // Add detailed logs
+    csvContent += [
       ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)', 'Time Started', 'Time Finished', 'Duration', 'Total Run Time (ms)', 'Efficiency (%)'],
       ...logs.map(log => [
         new Date(log.created_at).toLocaleString(),
@@ -181,10 +263,27 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
       const end = new Date(endTime);
       const duration = end.getTime() - start.getTime();
       if (duration < 1000) return `${duration}ms`;
-      return `${(duration / 1000).toFixed(1)}s`;
+      if (duration < 60000) return `${(duration / 1000).toFixed(1)}s`;
+      if (duration < 3600000) return `${(duration / 60000).toFixed(1)}m`;
+      return `${(duration / 3600000).toFixed(1)}h`;
     } catch (error) {
       return 'N/A';
     }
+  };
+
+  const formatProcessingTime = (ms?: number): string => {
+    if (!ms) return 'N/A';
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
+    return `${(ms / 3600000).toFixed(1)}h`;
+  };
+
+  const formatTokenCount = (count?: number): string => {
+    if (!count) return '0';
+    if (count < 1000) return count.toString();
+    if (count < 1000000) return `${(count / 1000).toFixed(1)}K`;
+    return `${(count / 1000000).toFixed(1)}M`;
   };
 
   const truncateText = (text: string, maxLength: number = 100) => {
@@ -221,6 +320,17 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
             </Badge>
           </CardTitle>
           <div className="flex items-center gap-2">
+            {runStats && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveTab('summary')}
+                className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Run Summary
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -332,6 +442,114 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                   </CardContent>
                 </Card>
               </div>
+
+              {runStats && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-2">
+                          <Timer className="h-4 w-4 text-orange-500" />
+                          <span className="text-sm font-medium">Total Run Time</span>
+                        </div>
+                        <p className="text-2xl font-bold text-orange-600">
+                          {formatProcessingTime(runStats.totalRunTime)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          End-to-end process
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-2">
+                          <Activity className="h-4 w-4 text-emerald-500" />
+                          <span className="text-sm font-medium">Avg Efficiency</span>
+                        </div>
+                        <p className="text-2xl font-bold text-emerald-600">
+                          {runStats.averageEfficiency.toFixed(1)}%
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          AI processing / Total time
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-2">
+                          <BarChart3 className="h-4 w-4 text-indigo-500" />
+                          <span className="text-sm font-medium">Functions Used</span>
+                        </div>
+                        <p className="text-2xl font-bold text-indigo-600">
+                          {Object.keys(runStats.functions).length}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Different Edge Functions
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">Function Breakdown</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {Object.entries(runStats.functions).map(([funcName, count]) => (
+                          <div key={funcName} className="flex justify-between items-center p-3 border rounded-lg">
+                            <span className="text-sm font-medium capitalize">
+                              {funcName.replace(/-/g, ' ')}
+                            </span>
+                            <Badge variant="secondary" className="text-lg px-3 py-1">
+                              {count}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">Performance Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Total AI Requests:</span>
+                          <span className="font-medium">{runStats.totalRequests}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Token Usage:</span>
+                          <span className="font-medium">{formatTokenCount(runStats.totalTokens)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Processing Efficiency:</span>
+                          <span className="font-medium">{runStats.averageEfficiency.toFixed(1)}%</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Overhead Time:</span>
+                          <span className="font-medium">
+                            {formatProcessingTime(runStats.totalRunTime - runStats.totalProcessingTime)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Processing vs Overhead:</span>
+                          <span className="font-medium">
+                            {runStats.totalProcessingTime > 0 ? 
+                              `${((runStats.totalProcessingTime / runStats.totalRunTime) * 100).toFixed(1)}%` : 'N/A'
+                            } / {
+                              runStats.totalProcessingTime > 0 ? 
+                                `${(((runStats.totalRunTime - runStats.totalProcessingTime) / runStats.totalRunTime) * 100).toFixed(1)}%` : 'N/A'
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
               
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold">Recent Activity</h3>
