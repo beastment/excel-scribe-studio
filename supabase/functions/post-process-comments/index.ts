@@ -115,7 +115,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
       if (aiLogger && userId && scanRunId && phase) {
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage);
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
       throw new Error(errorMessage);
     }
@@ -125,7 +125,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response if logger is provided
     if (aiLogger && userId && scanRunId && phase && responseText) {
-      await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText);
+      await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
     }
     
     return responseText;
@@ -145,7 +145,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
       if (aiLogger && userId && scanRunId && phase) {
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage);
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
       throw new Error(errorMessage);
     }
@@ -155,7 +155,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response if logger is provided
     if (aiLogger && userId && scanRunId && phase && responseText) {
-      await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText);
+      await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
     }
     
     return responseText;
@@ -368,8 +368,9 @@ serve(async (req) => {
           chunk_size: chunk.length
         }).substring(0, 500)}...`);
         
-        // Initialize AI logger
-        const aiLogger = new AILogger();
+                 // Initialize AI logger
+         const aiLogger = new AILogger();
+         aiLogger.setFunctionStartTime(overallStartTime);
         
         const [rawRedacted, rawRephrased] = await Promise.all([
           callAI(

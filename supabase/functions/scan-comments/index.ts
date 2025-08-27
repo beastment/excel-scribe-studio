@@ -254,6 +254,7 @@ serve(async (req) => {
     
     // Initialize AI logger for this scan run
     const aiLogger = new AILogger();
+    aiLogger.setFunctionStartTime(overallStartTime);
     
     for (let currentBatchStart = 0; currentBatchStart < inputComments.length; currentBatchStart += batchSize) {
       const batch = inputComments.slice(currentBatchStart, currentBatchStart + batchSize);
@@ -775,14 +776,14 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       body: JSON.stringify(payload)
     });
 
-    if (!response.ok) {
-      const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
-      // Log the error response
-      if (aiLogger) {
-        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+          if (!response.ok) {
+        const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
+        // Log the error response
+        if (aiLogger) {
+          await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+        }
+        throw new Error(errorMessage);
       }
-      throw new Error(errorMessage);
-    }
 
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
@@ -793,7 +794,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response
     if (aiLogger) {
-      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText, undefined, undefined);
     }
     
     return responseText;
@@ -819,7 +820,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
       // Log the error response
       if (aiLogger) {
-        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
       throw new Error(errorMessage);
     }
@@ -833,7 +834,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response
     if (aiLogger) {
-      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText, undefined, undefined);
     }
     
     return responseText;
@@ -917,7 +918,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       const errorMessage = `Bedrock API error: ${response.status} ${response.statusText}`;
       // Log the error response
       if (aiLogger) {
-        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
       throw new Error(errorMessage);
     }
@@ -931,7 +932,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response
     if (aiLogger) {
-      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText, undefined, undefined);
     }
     
     return responseText;

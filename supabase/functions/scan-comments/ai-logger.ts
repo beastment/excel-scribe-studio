@@ -28,6 +28,7 @@ export interface AILogEntry {
 export class AILogger {
   private supabase: any;
   private startTime: number;
+  private functionStartTime: number;
   
   constructor() {
     this.supabase = createClient(
@@ -35,6 +36,7 @@ export class AILogger {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     );
     this.startTime = Date.now();
+    this.functionStartTime = Date.now();
   }
   
   // Log an AI request (call this before making the AI call)
@@ -92,6 +94,9 @@ export class AILogger {
       
       const responseStatus: 'success' | 'error' = error ? 'error' : 'success';
       
+      // Calculate total run time if not provided
+      const calculatedTotalRunTimeMs = totalRunTimeMs || (Date.now() - this.functionStartTime);
+      
       // Update the existing log entry - find the most recent pending log for this user/function/phase
       const { error: updateError } = await this.supabase
         .from('ai_logs')
@@ -102,7 +107,7 @@ export class AILogger {
           response_error: error,
           processing_time_ms: processingTimeMs,
           time_finished: new Date().toISOString(),
-          total_run_time_ms: totalRunTimeMs
+          total_run_time_ms: calculatedTotalRunTimeMs
         })
         .eq('user_id', userId)
         .eq('scan_run_id', scanRunId || '')
@@ -126,5 +131,10 @@ export class AILogger {
   // Reset the timer for a new operation
   resetTimer(): void {
     this.startTime = Date.now();
+  }
+  
+  // Set the function start time for total run time calculation
+  setFunctionStartTime(startTime: number): void {
+    this.functionStartTime = startTime;
   }
 }
