@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { FileUpload, CommentData } from '@/components/FileUpload';
 import { CommentEditor } from '@/components/CommentEditor';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ const Index = () => {
   
   const { user } = useAuth();
   const { credits, loading: creditsLoading, refreshCredits } = useUserCredits();
+  const aiLogsViewerRef = useRef<{ clearLogs: () => void } | null>(null);
   const handleDataLoaded = (newComments: CommentData[]) => {
     setIsDemoData(false); // Regular file upload, not demo data
     
@@ -40,6 +41,11 @@ const Index = () => {
     
     setComments(cleanComments);
     setHasScanRun(false); // Reset scan state when new data is imported
+    
+    // Clear AI logs when new file is loaded
+    if (aiLogsViewerRef.current) {
+      aiLogsViewerRef.current.clearLogs();
+    }
   };
   const handleCommentsUpdate = (updatedComments: CommentData[]) => {
     setComments(updatedComments);
@@ -58,6 +64,11 @@ const Index = () => {
     setComments([]);
     setIsDemoData(false);
     setHasScanRun(false);
+    
+    // Clear AI logs when comments are cleared
+    if (aiLogsViewerRef.current) {
+      aiLogsViewerRef.current.clearLogs();
+    }
   };
   const loadDemoData = () => {
     setIsDemoData(true);
@@ -257,6 +268,12 @@ const Index = () => {
     }));
     setComments(cleanDemoComments); // Directly set comments for demo data
     setHasScanRun(false); // Reset scan state for demo data
+    
+    // Clear AI logs when demo data is loaded
+    if (aiLogsViewerRef.current) {
+      aiLogsViewerRef.current.clearLogs();
+    }
+    
     toast.success('Demo data loaded successfully! 20 employee survey comments imported.');
   };
   return <div className="pt-20">
@@ -322,6 +339,7 @@ const Index = () => {
                 isDemoData={isDemoData}
                 hasScanRun={hasScanRun}
                 setHasScanRun={setHasScanRun}
+                aiLogsViewerRef={aiLogsViewerRef}
               />
             </div>}
           </div>

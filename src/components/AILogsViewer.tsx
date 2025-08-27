@@ -46,9 +46,10 @@ interface AILog {
 
 interface AILogsViewerProps {
   debugMode?: boolean;
+  onRef?: (ref: { clearLogs: () => void }) => void;
 }
 
-export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
+export function AILogsViewer({ debugMode = false, onRef }: AILogsViewerProps) {
   const { user } = useAuth();
   const [logs, setLogs] = useState<AILog[]>([]);
   const [loading, setLoading] = useState(false);
@@ -65,11 +66,26 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
     functions: { [key: string]: number };
   } | null>(null);
 
+  const clearLogs = () => {
+    setLogs([]);
+    setMostRecentRunId(null);
+    setRunStats(null);
+    setLastRefresh(null);
+    setSelectedLog(null);
+  };
+
   useEffect(() => {
     if (user) {
       fetchLogs();
     }
   }, [user]);
+
+  // Expose clearLogs function to parent component
+  useEffect(() => {
+    if (onRef) {
+      onRef({ clearLogs });
+    }
+  }, [onRef]);
 
   const calculateRunStats = (logs: AILog[]) => {
     if (logs.length === 0) {
@@ -507,54 +523,7 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                     </CardContent>
                   </Card>
 
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Performance Summary</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Total AI Requests:</span>
-                          <span className="font-medium">{runStats.totalRequests}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Token Usage:</span>
-                          <span className="font-medium">{formatTokenCount(runStats.totalTokens)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Processing Efficiency:</span>
-                          <span className="font-medium">{runStats.averageEfficiency.toFixed(1)}%</span>
-                        </div>
-                                                                         <div className="flex justify-between items-center">
-                          <span className="text-sm">Overhead Time:</span>
-                          <span className="font-medium">
-                            {runStats.totalProcessingTime > runStats.totalRunTime ? 
-                              'Parallel Processing' : 
-                              formatProcessingTime(runStats.totalRunTime - runStats.totalProcessingTime)
-                            }
-                          </span>
-                        </div>
-                        <div className="text-xs text-muted-foreground text-center">
-                          {runStats.totalProcessingTime > runStats.totalRunTime ? 
-                            'Multiple AI requests running in parallel (processing time exceeds run time)' :
-                            'Time not spent processing AI requests'
-                          }
-                        </div>
-
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Processing vs Overhead:</span>
-                          <span className="font-medium">
-                            {runStats.totalProcessingTime > 0 ? 
-                              `${((runStats.totalProcessingTime / runStats.totalRunTime) * 100).toFixed(1)}%` : 'N/A'
-                            } / {
-                              runStats.totalProcessingTime > 0 ? 
-                                `${(Math.max(0, (runStats.totalRunTime - runStats.totalProcessingTime) / runStats.totalRunTime) * 100).toFixed(1)}%` : 'N/A'
-                            }
-                          </span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  
                 </>
               )}
               
@@ -577,11 +546,7 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                         <span className="text-sm text-muted-foreground">
                           {log.phase}
                         </span>
-                        {log.scan_run_id && (
-                          <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">
-                            RUN: {log.scan_run_id}
-                          </Badge>
-                        )}
+                        
                       </div>
                                              <div className="flex items-center gap-3 text-sm text-muted-foreground">
                          <span>{formatTokenCount(log.request_tokens)} → {formatTokenCount(log.response_tokens)}</span>

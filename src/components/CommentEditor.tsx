@@ -28,6 +28,7 @@ interface CommentEditorProps {
   isDemoData?: boolean;
   hasScanRun?: boolean;
   setHasScanRun?: (value: boolean) => void;
+  aiLogsViewerRef?: React.RefObject<{ clearLogs: () => void }>;
 }
 export const CommentEditor: React.FC<CommentEditorProps> = ({ 
   comments, 
@@ -38,7 +39,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   onResetScanState,
   isDemoData = false,
   hasScanRun: externalHasScanRun,
-  setHasScanRun: externalSetHasScanRun
+  setHasScanRun: externalSetHasScanRun,
+  aiLogsViewerRef
 }) => {
   const {
     user
@@ -74,6 +76,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [debugMode, setDebugMode] = useState(false);
   const scanInFlightRef = useRef(false);
   const lastScanTsRef = useRef<number>(0);
+  const aiLogsViewerRef = useRef<{ clearLogs: () => void } | null>(null);
 
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -968,7 +971,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
       {/* AI Logs Viewer */}
       <div className="mb-6">
-        <AILogsViewer debugMode={debugMode} />
+        <AILogsViewer 
+          debugMode={debugMode} 
+          onRef={(ref) => {
+            if (aiLogsViewerRef) {
+              aiLogsViewerRef.current = ref;
+            }
+          }}
+        />
       </div>
 
       {/* Comments List - Scrollable Container */}
