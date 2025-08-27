@@ -8,7 +8,7 @@ import { CreditsDisplay } from '@/components/CreditsDisplay';
 import { InsufficientCreditsDialog } from '@/components/InsufficientCreditsDialog';
 import { useUserCredits } from '@/hooks/useUserCredits';
 import { useAuth } from '@/contexts/AuthContext';
-const Index = () => {
+const CommentEditorPage = () => {
   const [comments, setComments] = useState<CommentData[]>([]);
   const [isDemoData, setIsDemoData] = useState(false);
   const [hasScanRun, setHasScanRun] = useState(false);
@@ -360,4 +360,4 @@ const Index = () => {
       />
     </div>;
 };
-export default Index;
+export default CommentEditorPage;
