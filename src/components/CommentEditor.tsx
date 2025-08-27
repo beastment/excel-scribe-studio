@@ -968,7 +968,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
       {/* AI Logs Viewer */}
       <div className="mb-6">
-        <AILogsViewer />
+        <AILogsViewer debugMode={debugMode} />
       </div>
 
       {/* Comments List - Scrollable Container */}

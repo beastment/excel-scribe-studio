@@ -38,12 +38,18 @@ interface AILog {
   created_at: string;
 }
 
-export function AILogsViewer() {
+interface AILogsViewerProps {
+  debugMode?: boolean;
+}
+
+export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
   const { user } = useAuth();
   const [logs, setLogs] = useState<AILog[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showFullContent, setShowFullContent] = useState(false);
+  const [showFullContent, setShowFullContent] = useState(true); // Auto-expand by default
   const [selectedLog, setSelectedLog] = useState<AILog | null>(null);
+  const [mostRecentRunId, setMostRecentRunId] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -56,31 +62,67 @@ export function AILogsViewer() {
     
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // First, get all logs to find the most recent run ID
+      const { data: allLogs, error: allLogsError } = await supabase
         .from('ai_logs')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(100);
+        .limit(1000);
 
-      if (error) {
-        console.error('Error fetching AI logs:', error);
+      if (allLogsError) {
+        console.error('Error fetching AI logs:', allLogsError);
         return;
       }
 
-      setLogs(data || []);
+      // Find the most recent run ID (non-null scan_run_id)
+      const logsWithRunId = allLogs?.filter(log => log.scan_run_id) || [];
+      if (logsWithRunId.length > 0) {
+        // Group by scan_run_id and find the most recent one
+        const runGroups = logsWithRunId.reduce((groups, log) => {
+          if (!groups[log.scan_run_id!]) {
+            groups[log.scan_run_id!] = [];
+          }
+          groups[log.scan_run_id!].push(log);
+          return groups;
+        }, {} as Record<string, AILog[]>);
+
+        // Find the run with the most recent timestamp
+        let mostRecentRun = '';
+        let mostRecentTime = 0;
+        
+        Object.entries(runGroups).forEach(([runId, runLogs]) => {
+          const runTime = new Date(runLogs[0].created_at).getTime();
+          if (runTime > mostRecentTime) {
+            mostRecentTime = runTime;
+            mostRecentRun = runId;
+          }
+        });
+
+        setMostRecentRunId(mostRecentRun);
+        
+        // Filter logs to only show the most recent run
+        const filteredLogs = allLogs?.filter(log => log.scan_run_id === mostRecentRun) || [];
+        setLogs(filteredLogs);
+      } else {
+        // If no logs with run ID, show all logs
+        setLogs(allLogs || []);
+        setMostRecentRunId(null);
+      }
     } catch (error) {
       console.error('Error fetching AI logs:', error);
     } finally {
       setLoading(false);
+      setLastRefresh(new Date());
     }
   };
 
   const exportLogs = () => {
     const csvContent = [
-      ['Timestamp', 'Function', 'Provider/Model', 'Type', 'Phase', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)'],
+      ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)'],
       ...logs.map(log => [
         new Date(log.created_at).toLocaleString(),
+        log.scan_run_id || 'N/A',
         log.function_name,
         `${log.provider}/${log.model}`,
         log.request_type,
@@ -141,6 +183,10 @@ export function AILogsViewer() {
     );
   }
 
+  if (!debugMode) {
+    return null; // Don't show anything when debug mode is off
+  }
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -148,6 +194,9 @@ export function AILogsViewer() {
           <CardTitle className="flex items-center gap-2">
             <Zap className="h-5 w-5" />
             AI Request & Response Logs
+            <Badge variant="outline" className="text-xs bg-yellow-100 text-yellow-800 border-yellow-300">
+              Debug Mode Only
+            </Badge>
           </CardTitle>
           <div className="flex items-center gap-2">
             <Button
@@ -176,6 +225,11 @@ export function AILogsViewer() {
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
+            {lastRefresh && (
+              <span className="text-xs text-muted-foreground">
+                Last: {lastRefresh.toLocaleTimeString()}
+              </span>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -187,7 +241,10 @@ export function AILogsViewer() {
           </div>
         ) : logs.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            No AI logs found. Run a comment scan to see logs.
+            {mostRecentRunId ? 
+              `No AI logs found for run ${mostRecentRunId}. Run a comment scan to see logs.` :
+              'No AI logs found. Run a comment scan to see logs.'
+            }
           </div>
         ) : (
           <Tabs defaultValue="summary" className="w-full">
@@ -198,6 +255,21 @@ export function AILogsViewer() {
             </TabsList>
             
             <TabsContent value="summary" className="space-y-4">
+              {/* RUN ID Display */}
+              {mostRecentRunId && (
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-2">
+                      <Hash className="h-5 w-5 text-blue-600" />
+                      <span className="text-lg font-semibold text-blue-800">Current Run ID: {mostRecentRunId}</span>
+                    </div>
+                    <p className="text-sm text-blue-600 mt-1">
+                      Showing {logs.length} AI interactions from the most recent scan run
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+              
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card>
                   <CardContent className="pt-6">
@@ -258,6 +330,11 @@ export function AILogsViewer() {
                         <span className="text-sm text-muted-foreground">
                           {log.phase}
                         </span>
+                        {log.scan_run_id && (
+                          <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">
+                            RUN: {log.scan_run_id}
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-sm text-muted-foreground">
                         <span>{formatTokenCount(log.request_tokens)} → {formatTokenCount(log.response_tokens)}</span>
@@ -285,6 +362,11 @@ export function AILogsViewer() {
                           <Badge className={getStatusColor(log.response_status)}>
                             {log.response_status}
                           </Badge>
+                          {log.scan_run_id && (
+                            <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                              RUN: {log.scan_run_id}
+                            </Badge>
+                          )}
                         </div>
                         <span className="text-sm text-muted-foreground">
                           {new Date(log.created_at).toLocaleString()}
@@ -403,6 +485,12 @@ export function AILogsViewer() {
                     <span className="font-medium">Created:</span>
                     <p>{new Date(selectedLog.created_at).toLocaleString()}</p>
                   </div>
+                  {selectedLog.scan_run_id && (
+                    <div>
+                      <span className="font-medium">Run ID:</span>
+                      <p className="font-mono bg-blue-50 p-2 rounded">{selectedLog.scan_run_id}</p>
+                    </div>
+                  )}
                 </div>
                 
                 <div>
