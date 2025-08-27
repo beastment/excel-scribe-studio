@@ -76,7 +76,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [debugMode, setDebugMode] = useState(false);
   const scanInFlightRef = useRef(false);
   const lastScanTsRef = useRef<number>(0);
-  const aiLogsViewerRef = useRef<{ clearLogs: () => void } | null>(null);
+  // Remove duplicate aiLogsViewerRef - using the one from props
 
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -974,8 +974,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         <AILogsViewer 
           debugMode={debugMode} 
           onRef={(ref) => {
-            if (aiLogsViewerRef) {
-              aiLogsViewerRef.current = ref;
+            if (aiLogsViewerRef && aiLogsViewerRef.current !== ref) {
+              // Only assign if aiLogsViewerRef exists and ref value has changed
+              (aiLogsViewerRef as any).current = ref;
             }
           }}
         />
