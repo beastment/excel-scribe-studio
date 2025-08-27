@@ -35,6 +35,8 @@ interface AILog {
   response_status: 'success' | 'error' | 'pending';
   response_error?: string;
   processing_time_ms?: number;
+  time_started?: string;
+  time_finished?: string;
   created_at: string;
 }
 
@@ -119,7 +121,7 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
 
   const exportLogs = () => {
     const csvContent = [
-      ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)'],
+      ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)', 'Time Started', 'Time Finished', 'Duration'],
       ...logs.map(log => [
         new Date(log.created_at).toLocaleString(),
         log.scan_run_id || 'N/A',
@@ -131,7 +133,10 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
         log.response_tokens || 0,
         (log.request_tokens || 0) + (log.response_tokens || 0),
         log.response_status,
-        log.processing_time_ms || 0
+        log.processing_time_ms || 0,
+        log.time_started ? new Date(log.time_started).toLocaleString() : 'N/A',
+        log.time_finished ? new Date(log.time_finished).toLocaleString() : 'N/A',
+        formatTimeDuration(log.time_started, log.time_finished)
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -163,6 +168,19 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
     if (!ms) return 'N/A';
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(1)}s`;
+  };
+
+  const formatTimeDuration = (startTime?: string, endTime?: string) => {
+    if (!startTime || !endTime) return 'N/A';
+    try {
+      const start = new Date(startTime);
+      const end = new Date(endTime);
+      const duration = end.getTime() - start.getTime();
+      if (duration < 1000) return `${duration}ms`;
+      return `${(duration / 1000).toFixed(1)}s`;
+    } catch (error) {
+      return 'N/A';
+    }
   };
 
   const truncateText = (text: string, maxLength: number = 100) => {
@@ -341,6 +359,7 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                         <Badge className={getStatusColor(log.response_status)}>
                           {log.response_status}
                         </Badge>
+                        <span>{formatTimeDuration(log.time_started, log.time_finished)}</span>
                         <span>{new Date(log.created_at).toLocaleTimeString()}</span>
                       </div>
                     </div>
@@ -390,6 +409,25 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                         <div>
                           <span className="font-medium">Processing Time:</span>
                           <p>{formatProcessingTime(log.processing_time_ms)}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium">Time Started:</span>
+                          <p>{log.time_started ? new Date(log.time_started).toLocaleString() : 'N/A'}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium">Time Finished:</span>
+                          <p>{log.time_finished ? new Date(log.time_finished).toLocaleString() : 'N/A'}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium">Duration:</span>
+                          <p>{formatTimeDuration(log.time_started, log.time_finished)}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium">Created:</span>
+                          <p>{new Date(log.created_at).toLocaleString()}</p>
                         </div>
                       </div>
                       
@@ -484,6 +522,18 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                   <div>
                     <span className="font-medium">Created:</span>
                     <p>{new Date(selectedLog.created_at).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium">Time Started:</span>
+                    <p>{selectedLog.time_started ? new Date(selectedLog.time_started).toLocaleString() : 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium">Time Finished:</span>
+                    <p>{selectedLog.time_finished ? new Date(selectedLog.time_finished).toLocaleString() : 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium">Duration:</span>
+                    <p>{formatTimeDuration(selectedLog.time_started, selectedLog.time_finished)}</p>
                   </div>
                   {selectedLog.scan_run_id && (
                     <div>

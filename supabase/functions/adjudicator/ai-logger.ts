@@ -20,6 +20,8 @@ export interface AILogEntry {
   responseStatus: 'success' | 'error';
   responseError?: string;
   processingTimeMs?: number;
+  timeStarted?: string;
+  timeFinished?: string;
 }
 
 export class AILogger {
@@ -40,6 +42,8 @@ export class AILogger {
       // Count input tokens
       const tokenCounts = await countTokens(entry.provider, entry.model, entry.requestInput);
       
+      const timeStarted = new Date().toISOString();
+      
       await this.supabase
         .from('ai_logs')
         .insert({
@@ -55,7 +59,8 @@ export class AILogger {
           request_tokens: tokenCounts.inputTokens,
           request_temperature: entry.requestTemperature,
           request_max_tokens: entry.requestMaxTokens,
-          response_status: 'pending'
+          response_status: 'pending',
+          time_started: timeStarted
         });
         
       console.log(`[AI REQUEST] ${entry.provider}/${entry.model} type=${entry.requestType} phase=${entry.phase} input_tokens=${tokenCounts.inputTokens}`);
@@ -93,7 +98,8 @@ export class AILogger {
           response_tokens: tokenCounts.outputTokens,
           response_status: responseStatus,
           response_error: error,
-          processing_time_ms: processingTimeMs
+          processing_time_ms: processingTimeMs,
+          time_finished: new Date().toISOString()
         })
         .eq('user_id', userId)
         .eq('scan_run_id', scanRunId || '')

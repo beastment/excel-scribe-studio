@@ -24,6 +24,8 @@ CREATE TABLE public.ai_logs (
   
   -- Metadata
   processing_time_ms integer, -- Time taken for the AI call
+  time_started timestamp with time zone, -- When the AI request started
+  time_finished timestamp with time zone, -- When the AI response finished
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
