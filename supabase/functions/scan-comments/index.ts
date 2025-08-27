@@ -742,23 +742,22 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     max_tokens: 8192  // Increased from 4096 to handle larger responses
   };
 
-  // Initialize AI logger
-  const aiLogger = new AILogger();
-  
-  // Log the AI request
-  await aiLogger.logRequest({
-    userId,
-    scanRunId,
-    functionName: 'scan-comments',
-    provider,
-    model,
-    requestType: responseType,
-    phase,
-    requestPrompt: prompt,
-    requestInput: input,
-    requestTemperature: 0.1,
-    requestMaxTokens: 8192
-  });
+  // Log the AI request if logger is provided
+  if (aiLogger) {
+    await aiLogger.logRequest({
+      userId,
+      scanRunId,
+      functionName: 'scan-comments',
+      provider,
+      model,
+      requestType: responseType,
+      phase,
+      requestPrompt: prompt,
+      requestInput: input,
+      requestTemperature: 0.1,
+      requestMaxTokens: 8192
+    });
+  }
 
   if (provider === 'azure') {
     const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
