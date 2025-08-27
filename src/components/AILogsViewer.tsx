@@ -532,11 +532,15 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                            </span>
                          </div>
                          <div className="text-xs text-muted-foreground text-center">
-                           (Time not spent processing AI requests - may be small if requests run in parallel)
+                           Raw calc: {runStats.totalRunTime} - {runStats.totalProcessingTime} = {runStats.totalRunTime - runStats.totalProcessingTime}ms
                          </div>
                          <div className="text-xs text-muted-foreground text-center">
-                           Debug: Total Run: {runStats.totalRunTime}ms, Total Processing: {runStats.totalProcessingTime}ms
+                           Types: Total Run ({typeof runStats.totalRunTime}), Processing ({typeof runStats.totalProcessingTime})
                          </div>
+                         <div className="text-xs text-muted-foreground text-center">
+                           (Time not spent processing AI requests - may be small if requests run in parallel)
+                         </div>
+
                         <div className="flex justify-between items-center">
                           <span className="text-sm">Processing vs Overhead:</span>
                           <span className="font-medium">
