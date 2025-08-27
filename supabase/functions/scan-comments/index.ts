@@ -772,7 +772,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
       // Log the error response
-      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+      }
       throw new Error(errorMessage);
     }
 
@@ -784,7 +786,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
     
     // Log the AI response
-    await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+    if (aiLogger) {
+      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+    }
     
     return responseText;
   } else if (provider === 'openai') {
@@ -808,7 +812,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       console.error(`[OPENAI] Error response:`, errorText);
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
       // Log the error response
-      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+      }
       throw new Error(errorMessage);
     }
 
@@ -820,7 +826,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
     
     // Log the AI response
-    await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+    if (aiLogger) {
+      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+    }
     
     return responseText;
   } else if (provider === 'bedrock') {
@@ -902,7 +910,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       console.error(`[BEDROCK] Error response:`, errorText);
       const errorMessage = `Bedrock API error: ${response.status} ${response.statusText}`;
       // Log the error response
-      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+      }
       throw new Error(errorMessage);
     }
 
@@ -914,7 +924,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
     
     // Log the AI response
-    await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+    if (aiLogger) {
+      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+    }
     
     return responseText;
       } else {
