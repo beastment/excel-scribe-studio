@@ -18,6 +18,15 @@ const Index = () => {
   const { user } = useAuth();
   const { credits, loading: creditsLoading, refreshCredits } = useUserCredits();
   const aiLogsViewerRef = useRef<{ clearLogs: () => void } | null>(null);
+  const [shouldClearLogs, setShouldClearLogs] = useState(false);
+
+  // Effect to clear logs when the flag is set
+  useEffect(() => {
+    if (shouldClearLogs && aiLogsViewerRef.current) {
+      aiLogsViewerRef.current.clearLogs();
+      setShouldClearLogs(false);
+    }
+  }, [shouldClearLogs]);
   const handleDataLoaded = (newComments: CommentData[]) => {
     setIsDemoData(false); // Regular file upload, not demo data
     
@@ -42,10 +51,8 @@ const Index = () => {
     setComments(cleanComments);
     setHasScanRun(false); // Reset scan state when new data is imported
     
-    // Clear AI logs when new file is loaded
-    if (aiLogsViewerRef.current) {
-      aiLogsViewerRef.current.clearLogs();
-    }
+    // Set flag to clear AI logs when new file is loaded
+    setShouldClearLogs(true);
   };
   const handleCommentsUpdate = (updatedComments: CommentData[]) => {
     setComments(updatedComments);
@@ -65,10 +72,8 @@ const Index = () => {
     setIsDemoData(false);
     setHasScanRun(false);
     
-    // Clear AI logs when comments are cleared
-    if (aiLogsViewerRef.current) {
-      aiLogsViewerRef.current.clearLogs();
-    }
+    // Set flag to clear AI logs when comments are cleared
+    setShouldClearLogs(true);
   };
   const loadDemoData = () => {
     setIsDemoData(true);
@@ -269,10 +274,8 @@ const Index = () => {
     setComments(cleanDemoComments); // Directly set comments for demo data
     setHasScanRun(false); // Reset scan state for demo data
     
-    // Clear AI logs when demo data is loaded
-    if (aiLogsViewerRef.current) {
-      aiLogsViewerRef.current.clearLogs();
-    }
+    // Set flag to clear AI logs when demo data is loaded
+    setShouldClearLogs(true);
     
     toast.success('Demo data loaded successfully! 20 employee survey comments imported.');
   };
