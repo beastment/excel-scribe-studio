@@ -81,6 +81,13 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     }
   }, [user, skipInitialFetch]);
 
+  // Clear logs immediately when skipInitialFetch becomes true
+  useEffect(() => {
+    if (skipInitialFetch && logs.length > 0) {
+      clearLogs();
+    }
+  }, [skipInitialFetch, logs.length]);
+
   // Expose clearLogs function to parent component
   useEffect(() => {
     if (onRef) {
