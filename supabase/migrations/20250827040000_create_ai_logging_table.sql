@@ -24,10 +24,7 @@ CREATE TABLE public.ai_logs (
   
   -- Metadata
   processing_time_ms integer, -- Time taken for the AI call
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  
-  -- Indexes for efficient querying
-  CONSTRAINT ai_logs_user_id_idx UNIQUE (user_id, created_at, function_name, phase)
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 -- Enable RLS
@@ -56,8 +53,4 @@ CREATE INDEX idx_ai_logs_function_name ON public.ai_logs(function_name);
 CREATE INDEX idx_ai_logs_created_at ON public.ai_logs(created_at);
 CREATE INDEX idx_ai_logs_provider_model ON public.ai_logs(provider, model);
 
--- Add trigger for automatic timestamp updates
-CREATE TRIGGER update_ai_logs_updated_at
-BEFORE UPDATE ON public.ai_logs
-FOR EACH ROW
-EXECUTE FUNCTION public.update_updated_at_column();
+
