@@ -261,8 +261,9 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
   };
 
   const formatProcessingTime = (ms?: number): string => {
-    if (!ms) return 'N/A';
+    if (ms === undefined || ms === null) return 'N/A';
     if (ms < 0) return 'N/A'; // Handle negative values
+    if (ms === 0) return '0.0s'; // Handle zero values
     
     // Always show in seconds or minutes for better readability
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
