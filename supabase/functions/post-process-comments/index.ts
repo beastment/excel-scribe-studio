@@ -81,7 +81,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: 0.1,
+    temperature: 0,
     max_tokens: maxTokens || 4096
   };
 
@@ -97,7 +97,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       phase,
       requestPrompt: prompt,
       requestInput: input,
-      requestTemperature: 0.1,
+      requestTemperature: 0,
       requestMaxTokens: maxTokens || 4096
     });
   }
