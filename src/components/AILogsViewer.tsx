@@ -54,6 +54,7 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
   const { user } = useAuth();
   const [logs, setLogs] = useState<AILog[]>([]);
   const [loading, setLoading] = useState(false);
+  const [clearingLogs, setClearingLogs] = useState(false);
   const [showFullContent, setShowFullContent] = useState(true); // Auto-expand by default
   const [selectedLog, setSelectedLog] = useState<AILog | null>(null);
   const [mostRecentRunId, setMostRecentRunId] = useState<string | null>(null);
@@ -68,11 +69,13 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
   } | null>(null);
 
   const clearLogs = () => {
+    setClearingLogs(true); // Show clearing state
     setLogs([]);
     setMostRecentRunId(null);
     setRunStats(null);
     setLastRefresh(null);
     setSelectedLog(null);
+    setClearingLogs(false); // Hide clearing state
   };
 
   useEffect(() => {
@@ -84,6 +87,7 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
   // Clear logs immediately when skipInitialFetch becomes true
   useEffect(() => {
     if (skipInitialFetch && logs.length > 0) {
+      setClearingLogs(true); // Show clearing state immediately
       clearLogs();
     }
   }, [skipInitialFetch, logs.length]);
@@ -387,10 +391,10 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
         </div>
       </CardHeader>
       <CardContent>
-        {loading ? (
+        {loading || clearingLogs ? (
           <div className="flex items-center justify-center py-8">
             <RefreshCw className="h-6 w-6 animate-spin" />
-            <span className="ml-2">Loading logs...</span>
+            <span className="ml-2">{clearingLogs ? 'Clearing logs...' : 'Loading logs...'}</span>
           </div>
         ) : logs.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
