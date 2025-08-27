@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EditableText } from '@/components/EditableText';
+import { ConsultingServicesSection } from '@/components/ConsultingServicesSection';
 import { EditableFeatureList } from '@/components/EditableFeatureList';
 import { Shield, BrainCircuit, ClipboardList, FileText, ArrowRight, Star, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -318,7 +319,10 @@ const Home = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
+        {/* Consulting Services Section */}
+        <ConsultingServicesSection />
+
+        {/* CTA Section */}
       <section className="py-20 bg-gradient-to-r from-blue-600 to-purple-600">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <EditableText 

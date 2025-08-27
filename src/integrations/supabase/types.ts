@@ -170,6 +170,75 @@ export type Database = {
         }
         Relationships: []
       }
+      consulting_services: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_blurred: boolean
+          is_enabled: boolean
+          is_hidden: boolean
+          name: string
+          position: number | null
+          service_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_blurred?: boolean
+          is_enabled?: boolean
+          is_hidden?: boolean
+          name: string
+          position?: number | null
+          service_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_blurred?: boolean
+          is_enabled?: boolean
+          is_hidden?: boolean
+          name?: string
+          position?: number | null
+          service_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      consulting_services_settings: {
+        Row: {
+          id: string
+          is_enabled: boolean
+          section_subtitle: string
+          section_title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          is_enabled?: boolean
+          section_subtitle?: string
+          section_title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          is_enabled?: boolean
+          section_subtitle?: string
+          section_title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       content_edits: {
         Row: {
           content_key: string

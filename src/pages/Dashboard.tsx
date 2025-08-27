@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { MaintenanceToggle } from '@/components/admin/MaintenanceToggle';
 import { UserManagement } from '@/components/admin/UserManagement';
+import { ConsultingServicesManagement } from '@/components/admin/ConsultingServicesManagement';
 import { AppManagement } from '@/components/admin/AppManagement';
 import { AIConfigurationManagement } from '@/components/admin/AIConfigurationManagement';
 import CreditManagement from '@/components/CreditManagement';
@@ -305,6 +306,7 @@ const Dashboard = () => {
         {profile?.role === 'admin' && (
           <div className="mt-8">
             <UserManagement />
+            <ConsultingServicesManagement />
           </div>
         )}
       </div>
