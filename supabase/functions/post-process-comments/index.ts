@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { AILogger } from './ai-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -74,7 +75,7 @@ function enforceRedactionPolicy(text: string | null | undefined): string | null 
 }
 
 // AI calling function (simplified version for post-processing)
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number) {
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger) {
   const payload = {
     messages: [
       { role: 'system', content: prompt },
@@ -83,6 +84,23 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     temperature: 0.1,
     max_tokens: maxTokens || 4096
   };
+
+  // Log the AI request if logger is provided
+  if (aiLogger && userId && scanRunId && phase) {
+    await aiLogger.logRequest({
+      userId,
+      scanRunId,
+      functionName: 'post-process-comments',
+      provider,
+      model,
+      requestType: responseType,
+      phase,
+      requestPrompt: prompt,
+      requestInput: input,
+      requestTemperature: 0.1,
+      requestMaxTokens: maxTokens || 4096
+    });
+  }
 
   if (provider === 'azure') {
     const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -95,11 +113,22 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     });
 
     if (!response.ok) {
-      throw new Error(`Azure OpenAI API error: ${response.status} ${response.statusText}`);
+      const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
+      if (aiLogger && userId && scanRunId && phase) {
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage);
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
-    return result.choices?.[0]?.message?.content || null;
+    const responseText = result.choices?.[0]?.message?.content || null;
+    
+    // Log the AI response if logger is provided
+    if (aiLogger && userId && scanRunId && phase && responseText) {
+      await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText);
+    }
+    
+    return responseText;
   } else if (provider === 'openai') {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -114,11 +143,22 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
+      if (aiLogger && userId && scanRunId && phase) {
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage);
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
-    return result.choices?.[0]?.message?.content || null;
+    const responseText = result.choices?.[0]?.message?.content || null;
+    
+    // Log the AI response if logger is provided
+    if (aiLogger && userId && scanRunId && phase && responseText) {
+      await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText);
+    }
+    
+    return responseText;
   } else if (provider === 'bedrock') {
     // For Bedrock, we'll use a simplified approach
     // In production, you'd want to implement the full Bedrock client logic
@@ -239,6 +279,30 @@ serve(async (req) => {
       )
     }
 
+    // Check user authentication
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Authorization header required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+    
+    const token = authHeader.replace('Bearer ', '');
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+    );
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid authentication token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
     // Use scanRunId if provided, otherwise generate a new one
     const runId = scanRunId || Math.floor(Math.random() * 10000);
     const logPrefix = `[RUN ${runId}]`;
@@ -301,6 +365,9 @@ serve(async (req) => {
           chunk_size: chunk.length
         }).substring(0, 500)}...`);
         
+        // Initialize AI logger
+        const aiLogger = new AILogger();
+        
         const [rawRedacted, rawRephrased] = await Promise.all([
           callAI(
             scanConfig.provider,
@@ -308,7 +375,11 @@ serve(async (req) => {
             redactPrompt,
             sentinelInput,
             'batch_text',
-            getEffectiveMaxTokens(scanConfig)
+            getEffectiveMaxTokens(scanConfig),
+            user.id,
+            scanRunId,
+            'redaction',
+            aiLogger
           ),
           callAI(
             scanConfig.provider,
@@ -316,7 +387,11 @@ serve(async (req) => {
             rephrasePrompt,
             sentinelInput,
             'batch_text',
-            getEffectiveMaxTokens(scanConfig)
+            getEffectiveMaxTokens(scanConfig),
+            user.id,
+            scanRunId,
+            'rephrase',
+            aiLogger
           )
         ]);
         

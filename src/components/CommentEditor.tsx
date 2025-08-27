@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCommentSessions } from '@/hooks/useCommentSessions';
 import { useUserRole } from '@/hooks/useUserRole';
+import { AILogsViewer } from './AILogsViewer';
 import * as XLSX from 'xlsx';
 interface CommentEditorProps {
   comments: CommentData[];
@@ -963,6 +964,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       <div className="relative mb-6">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
         <Input placeholder="Search comments..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+      </div>
+
+      {/* AI Logs Viewer */}
+      <div className="mb-6">
+        <AILogsViewer />
       </div>
 
       {/* Comments List - Scrollable Container */}

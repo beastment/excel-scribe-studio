@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { AILogger } from './ai-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,7 +55,7 @@ interface AdjudicationResponse {
 }
 
 // AI calling function
-async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number) {
+async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, scanRunId?: string, aiLogger?: AILogger) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
@@ -76,11 +77,22 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     });
 
     if (!response.ok) {
-      throw new Error(`Azure OpenAI API error: ${response.status} ${response.statusText}`);
+      const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
+      if (aiLogger && userId && scanRunId) {
+        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage);
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
-    return result.choices[0]?.message?.content || '';
+    const responseText = result.choices[0]?.message?.content || '';
+    
+    // Log the AI response
+    if (aiLogger && userId && scanRunId) {
+      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText);
+    }
+    
+    return responseText;
   } else if (provider === 'openai') {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -92,11 +104,22 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
+      if (aiLogger && userId && scanRunId) {
+        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage);
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
-    return result.choices[0]?.message?.content || '';
+    const responseText = result.choices[0]?.message?.content || '';
+    
+    // Log the AI response
+    if (aiLogger && userId && scanRunId) {
+      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText);
+    }
+    
+    return responseText;
   } else if (provider === 'bedrock') {
     // Bedrock implementation would go here
     throw new Error('Bedrock provider not yet implemented in adjudicator function');
@@ -295,13 +318,34 @@ serve(async (req) => {
         comment_count: needsAdjudication.length
       }).substring(0, 500)}...`);
 
+      // Initialize AI logger
+      const aiLogger = new AILogger();
+      
+      // Log the AI request
+      await aiLogger.logRequest({
+        userId: user.id,
+        scanRunId: runId.toString(),
+        functionName: 'adjudicator',
+        provider: adjudicatorConfig.provider,
+        model: adjudicatorConfig.model,
+        requestType: 'adjudication',
+        phase: 'adjudication',
+        requestPrompt: prompt,
+        requestInput: input,
+        requestTemperature: 0.1,
+        requestMaxTokens: adjudicatorConfig.max_tokens || 4096
+      });
+      
       // Call AI for adjudication
       const rawResponse = await callAI(
         adjudicatorConfig.provider,
         adjudicatorConfig.model,
         prompt,
         input,
-        adjudicatorConfig.max_tokens
+        adjudicatorConfig.max_tokens,
+        user.id,
+        runId.toString(),
+        aiLogger
       );
 
       console.log(`${logPrefix} [AI RESPONSE] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);

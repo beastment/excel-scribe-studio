@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { AILogger } from './ai-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -249,6 +250,9 @@ serve(async (req) => {
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     
+    // Initialize AI logger for this scan run
+    const aiLogger = new AILogger();
+    
     for (let currentBatchStart = 0; currentBatchStart < inputComments.length; currentBatchStart += batchSize) {
       const batch = inputComments.slice(currentBatchStart, currentBatchStart + batchSize);
       const batchEnd = Math.min(currentBatchStart + batchSize, inputComments.length);
@@ -256,10 +260,10 @@ serve(async (req) => {
       console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (preferredA=${scanA.preferred_batch_size || 100}, preferredB=${scanB.preferred_batch_size || 100}, chosen=${batchSize})`);
 
       // Process batch with Scan A and Scan B in parallel
-      const [scanAResults, scanBResults] = await Promise.all([
-        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis'),
-        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis')
-      ]);
+              const [scanAResults, scanBResults] = await Promise.all([
+          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger),
+          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger)
+        ]);
 
       console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
       console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
@@ -727,7 +731,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
   }
 }
 
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string) {
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
@@ -737,6 +741,24 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     temperature: 0.1,
     max_tokens: 8192  // Increased from 4096 to handle larger responses
   };
+
+  // Initialize AI logger
+  const aiLogger = new AILogger();
+  
+  // Log the AI request
+  await aiLogger.logRequest({
+    userId,
+    scanRunId,
+    functionName: 'scan-comments',
+    provider,
+    model,
+    requestType: responseType,
+    phase,
+    requestPrompt: prompt,
+    requestInput: input,
+    requestTemperature: 0.1,
+    requestMaxTokens: 8192
+  });
 
   if (provider === 'azure') {
     const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -749,7 +771,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     });
 
     if (!response.ok) {
-      throw new Error(`Azure OpenAI API error: ${response.status} ${response.statusText}`);
+      const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
+      // Log the error response
+      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
@@ -758,6 +783,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (responseText.length > 8000) {
       console.warn(`[AZURE] Response is very long (${responseText.length} chars), may be approaching token limits`);
     }
+    
+    // Log the AI response
+    await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+    
     return responseText;
   } else if (provider === 'openai') {
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
@@ -778,7 +807,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[OPENAI] Error response:`, errorText);
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
+      // Log the error response
+      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
@@ -787,6 +819,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (responseText.length > 8000) {
       console.warn(`[OPENAI] Response is very long (${responseText.length} chars), may be approaching token limits`);
     }
+    
+    // Log the AI response
+    await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+    
     return responseText;
   } else if (provider === 'bedrock') {
     // AWS Bedrock implementation
@@ -865,7 +901,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[BEDROCK] Error response:`, errorText);
-      throw new Error(`Bedrock API error: ${response.status} ${response.statusText}`);
+      const errorMessage = `Bedrock API error: ${response.status} ${response.statusText}`;
+      // Log the error response
+      await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage);
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
@@ -874,6 +913,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (responseText.length > 8000) {
       console.warn(`[BEDROCK] Response is very long (${responseText.length} chars), may be approaching token limits`);
     }
+    
+    // Log the AI response
+    await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, responseText);
+    
     return responseText;
       } else {
     throw new Error(`Unsupported provider: ${provider}`);
