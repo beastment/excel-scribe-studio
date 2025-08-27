@@ -206,6 +206,7 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
       csvContent += `Total Tokens,${runStats.totalTokens}\n`;
       csvContent += `Total Processing Time (ms),${runStats.totalProcessingTime}\n`;
       csvContent += `Total Run Time (ms),${runStats.totalRunTime}\n`;
+      csvContent += `Overhead Time (ms),${Math.max(0, runStats.totalRunTime - runStats.totalProcessingTime)}\n`;
       csvContent += `Average Efficiency (%),${runStats.averageEfficiency.toFixed(1)}\n`;
       csvContent += `Functions Used,${Object.keys(runStats.functions).join('; ')}\n`;
       csvContent += '\n';
@@ -261,7 +262,9 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
 
   const formatProcessingTime = (ms?: number): string => {
     if (!ms) return 'N/A';
-    if (ms < 1000) return `${ms}ms`;
+    if (ms < 0) return 'N/A'; // Handle negative values
+    
+    // Always show in seconds or minutes for better readability
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
     if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
     return `${(ms / 3600000).toFixed(1)}h`;
@@ -273,7 +276,8 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
       const start = new Date(startTime);
       const end = new Date(endTime);
       const duration = end.getTime() - start.getTime();
-      if (duration < 1000) return `${duration}ms`;
+      
+      // Always show in seconds or minutes for better readability
       if (duration < 60000) return `${(duration / 1000).toFixed(1)}s`;
       if (duration < 3600000) return `${(duration / 60000).toFixed(1)}m`;
       return `${(duration / 3600000).toFixed(1)}h`;
@@ -522,8 +526,11 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                         <div className="flex justify-between items-center">
                           <span className="text-sm">Overhead Time:</span>
                           <span className="font-medium">
-                            {formatProcessingTime(runStats.totalRunTime - runStats.totalProcessingTime)}
+                            {formatProcessingTime(Math.max(0, runStats.totalRunTime - runStats.totalProcessingTime))}
                           </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground text-center">
+                          (Time not spent processing AI requests - may be small if requests run in parallel)
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-sm">Processing vs Overhead:</span>
@@ -532,7 +539,7 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                               `${((runStats.totalProcessingTime / runStats.totalRunTime) * 100).toFixed(1)}%` : 'N/A'
                             } / {
                               runStats.totalProcessingTime > 0 ? 
-                                `${(((runStats.totalRunTime - runStats.totalProcessingTime) / runStats.totalRunTime) * 100).toFixed(1)}%` : 'N/A'
+                                `${(Math.max(0, (runStats.totalRunTime - runStats.totalProcessingTime) / runStats.totalRunTime) * 100).toFixed(1)}%` : 'N/A'
                             }
                           </span>
                         </div>
@@ -661,8 +668,8 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                          </div>
                          <div>
                            <span className="font-medium">Overhead:</span>
-                           <p>{log.processing_time_ms && log.total_run_time_ms ? 
-                             `${(((log.total_run_time_ms - log.processing_time_ms) / log.total_run_time_ms) * 100).toFixed(1)}%` : 'N/A'}</p>
+                                                   <p>{log.processing_time_ms && log.total_run_time_ms ?
+                          `${(Math.max(0, (log.total_run_time_ms - log.processing_time_ms) / log.total_run_time_ms) * 100).toFixed(1)}%` : 'N/A'}</p>
                          </div>
                        </div>
                       
