@@ -28,7 +28,12 @@ import CommentDeIdentification from "./pages/apps/CommentDeIdentification";
 import ThematicAnalysis from "./pages/apps/ThematicAnalysis";
 import ActionPlanningExtension from "./pages/apps/ActionPlanningExtension";
 import ReportWriter from "./pages/apps/ReportWriter";
-import ConsultingServices from "./pages/apps/ConsultingServices";
+import SurveyResultsPresentation from './pages/services/SurveyResultsPresentation';
+import WrittenRecommendations from './pages/services/WrittenRecommendations';
+import BespokeSurveyDesign from './pages/services/BespokeSurveyDesign';
+import ProjectManagement from './pages/services/ProjectManagement';
+import DebriefSessions from './pages/services/DebriefSessions';
+import ActionPlanningWorkshops from './pages/services/ActionPlanningWorkshops';
 
 const queryClient = new QueryClient();
 
@@ -103,11 +108,12 @@ const AppContent = () => {
             <MaintenanceMode /> : 
             <ReportWriter />
         } />
-        <Route path="/apps/consulting-services" element={
-          shouldShowMaintenance ? 
-            <MaintenanceMode /> : 
-            <ConsultingServices />
-        } />
+          <Route path="/services/survey-results-presentation" element={<SurveyResultsPresentation />} />
+          <Route path="/services/written-recommendations" element={<WrittenRecommendations />} />
+          <Route path="/services/bespoke-survey-design" element={<BespokeSurveyDesign />} />
+          <Route path="/services/project-management" element={<ProjectManagement />} />
+          <Route path="/services/debrief-sessions" element={<DebriefSessions />} />
+          <Route path="/services/action-planning-workshops" element={<ActionPlanningWorkshops />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
