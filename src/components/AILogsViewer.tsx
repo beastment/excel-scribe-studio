@@ -525,21 +525,21 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                           <span className="text-sm">Processing Efficiency:</span>
                           <span className="font-medium">{runStats.averageEfficiency.toFixed(1)}%</span>
                         </div>
-                                                 <div className="flex justify-between items-center">
-                           <span className="text-sm">Overhead Time:</span>
-                           <span className="font-medium">
-                             {formatProcessingTime(Math.max(0, runStats.totalRunTime - runStats.totalProcessingTime))}
-                           </span>
-                         </div>
-                         <div className="text-xs text-muted-foreground text-center">
-                           Raw calc: {runStats.totalRunTime} - {runStats.totalProcessingTime} = {runStats.totalRunTime - runStats.totalProcessingTime}ms
-                         </div>
-                         <div className="text-xs text-muted-foreground text-center">
-                           Types: Total Run ({typeof runStats.totalRunTime}), Processing ({typeof runStats.totalProcessingTime})
-                         </div>
-                         <div className="text-xs text-muted-foreground text-center">
-                           (Time not spent processing AI requests - may be small if requests run in parallel)
-                         </div>
+                                                                         <div className="flex justify-between items-center">
+                          <span className="text-sm">Overhead Time:</span>
+                          <span className="font-medium">
+                            {runStats.totalProcessingTime > runStats.totalRunTime ? 
+                              'Parallel Processing' : 
+                              formatProcessingTime(runStats.totalRunTime - runStats.totalProcessingTime)
+                            }
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground text-center">
+                          {runStats.totalProcessingTime > runStats.totalRunTime ? 
+                            'Multiple AI requests running in parallel (processing time exceeds run time)' :
+                            'Time not spent processing AI requests'
+                          }
+                        </div>
 
                         <div className="flex justify-between items-center">
                           <span className="text-sm">Processing vs Overhead:</span>
