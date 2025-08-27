@@ -140,14 +140,24 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     );
 
-    const { data: configs, error: configError } = await supabase
-      .from('ai_configurations')
-      .select('*');
+    // Fetch AI configurations and model configurations
+    const [configsResult, modelConfigsResult] = await Promise.all([
+      supabase.from('ai_configurations').select('*'),
+      supabase.from('model_configurations').select('*')
+    ]);
 
-    if (configError) {
-      console.error('Database error fetching AI configurations:', configError);
-      throw new Error(`Database error: ${configError.message || JSON.stringify(configError)}`);
+    if (configsResult.error) {
+      console.error('Database error fetching AI configurations:', configsResult.error);
+      throw new Error(`Database error: ${configsResult.error.message || JSON.stringify(configsResult.error)}`);
     }
+
+    if (modelConfigsResult.error) {
+      console.error('Database error fetching model configurations:', modelConfigsResult.error);
+      throw new Error(`Database error: ${modelConfigsResult.error.message || JSON.stringify(modelConfigsResult.error)}`);
+    }
+
+    const configs = configsResult.data;
+    const modelConfigs = modelConfigsResult.data;
 
     if (!configs || configs.length === 0) {
       console.error('No active AI configurations found');
@@ -164,6 +174,33 @@ serve(async (req) => {
     }
 
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
+
+    // Get I/O ratios from scan_a configuration (these are application-wide settings)
+    const ioRatios = {
+      scan_a_io_ratio: scanA.scan_a_io_ratio || 1.0,
+      scan_b_io_ratio: scanA.scan_b_io_ratio || 0.9,
+      adjudicator_io_ratio: scanA.adjudicator_io_ratio || 6.2,
+      redaction_io_ratio: scanA.redaction_io_ratio || 1.7,
+      rephrase_io_ratio: scanA.rephrase_io_ratio || 2.3
+    };
+
+    // Get token limits for the models being used
+    const scanAModelConfig = modelConfigs?.find(m => m.provider === scanA.provider && m.model === scanA.model);
+    const scanBModelConfig = modelConfigs?.find(m => m.provider === scanB.provider && m.model === scanB.model);
+
+    const scanATokenLimits = {
+      input_token_limit: scanAModelConfig?.input_token_limit || 128000,
+      output_token_limit: scanAModelConfig?.output_token_limit || 4096
+    };
+
+    const scanBTokenLimits = {
+      input_token_limit: scanBModelConfig?.input_token_limit || 128000,
+      output_token_limit: scanBModelConfig?.output_token_limit || 4096
+    };
+
+    console.log(`[TOKENS] Scan A limits: ${scanATokenLimits.input_token_limit} input, ${scanATokenLimits.output_token_limit} output`);
+    console.log(`[TOKENS] Scan B limits: ${scanBTokenLimits.input_token_limit} input, ${scanBTokenLimits.output_token_limit} output`);
+    console.log(`[I/O RATIOS] ${JSON.stringify(ioRatios)}`);
 
     // Check user credits before processing (only for Scan A, unless it's a demo scan)
     const creditsPerComment = 1; // 1 credit per comment for Scan A
@@ -231,22 +268,111 @@ serve(async (req) => {
       console.log(`[CREDITS] Sufficient credits available for Scan A: ${availableCredits} >= ${totalCreditsNeeded}`);
     }
 
-    // Process comments in batches - adjust batch size based on model capabilities
-    let batchSize = 100; // Default batch size
+    // Calculate dynamic batch sizes based on I/O ratios and token limits
+    const estimateTokens = (text: string) => Math.ceil(text.length / 4);
     
-    // Reduce batch size for models with lower token limits
-    if (scanA.model.includes('claude-3-haiku') || scanB.model.includes('claude-3-haiku')) {
-      batchSize = 20; // Claude 3 Haiku has lower token limits
-    } else if (scanA.model.includes('gpt-4o-mini') || scanB.model.includes('gpt-4o-mini')) {
-      batchSize = 50; // GPT-4o-mini can handle more
-    }
+    const estimateBatchInputTokens = (comments: any[], prompt: string) => {
+      const promptTokens = estimateTokens(prompt);
+      const commentTokens = comments.reduce((total, comment) => {
+        const commentText = comment.originalText || comment.text || '';
+        return total + estimateTokens(commentText);
+      }, 0);
+      return promptTokens + commentTokens;
+    };
     
-    // Use the smaller of the two models' preferred batch sizes
+    const calculateOptimalBatchSize = (
+      phase: 'scan_a' | 'scan_b',
+      comments: any[],
+      prompt: string,
+      ioRatio: number,
+      tokenLimits: { input_token_limit: number; output_token_limit: number },
+      safetyMarginPercent: number = 15
+    ) => {
+      const safetyMultiplier = 1 - (safetyMarginPercent / 100);
+      
+      // Calculate maximum input tokens we can use
+      const maxInputTokens = Math.floor(tokenLimits.input_token_limit * safetyMultiplier);
+      
+      // Calculate maximum output tokens we can generate
+      const maxOutputTokens = Math.floor(tokenLimits.output_token_limit * safetyMultiplier);
+      
+      // Calculate the maximum input tokens we can use based on output limits
+      const maxInputTokensByOutput = Math.floor(maxOutputTokens / ioRatio);
+      
+      // Use the more restrictive limit
+      const effectiveMaxInputTokens = Math.min(maxInputTokens, maxInputTokensByOutput);
+      
+      // Estimate tokens for prompt
+      const promptTokens = estimateTokens(prompt);
+      const availableTokensForComments = effectiveMaxInputTokens - promptTokens;
+      
+      if (availableTokensForComments <= 0) {
+        return 1; // Can only process one comment if prompt is too long
+      }
+      
+      // Calculate how many comments we can fit
+      let batchSize = 0;
+      let totalTokens = 0;
+      
+      for (let i = 0; i < comments.length; i++) {
+        const comment = comments[i];
+        const commentText = comment.originalText || comment.text || '';
+        const commentTokens = estimateTokens(commentText);
+        
+        if (totalTokens + commentTokens <= availableTokensForComments) {
+          totalTokens += commentTokens;
+          batchSize++;
+        } else {
+          break;
+        }
+      }
+      
+      return Math.max(1, batchSize); // Always return at least 1
+    };
+    
+    // Calculate optimal batch sizes for both scans
+    const scanABatchSize = calculateOptimalBatchSize(
+      'scan_a',
+      inputComments,
+      scanA.analysis_prompt,
+      ioRatios.scan_a_io_ratio,
+      scanATokenLimits
+    );
+    
+    const scanBBatchSize = calculateOptimalBatchSize(
+      'scan_b',
+      inputComments,
+      scanB.analysis_prompt,
+      ioRatios.scan_b_io_ratio,
+      scanBTokenLimits
+    );
+    
+    // Use the smaller batch size to ensure both scans can process the same batches
+    const batchSize = Math.min(scanABatchSize, scanBBatchSize);
+    
+    // Also respect the preferred batch sizes if they're smaller
     const preferredA = scanA.preferred_batch_size || batchSize;
     const preferredB = scanB.preferred_batch_size || batchSize;
-    batchSize = Math.min(preferredA, preferredB, batchSize);
+    const finalBatchSize = Math.min(preferredA, preferredB, batchSize);
     
-    console.log(`[BATCH] Model-based batch size: ${batchSize} (Scan A: ${scanA.model}, Scan B: ${scanB.model})`);
+    console.log(`[BATCH SIZING] Dynamic calculation results:`);
+    console.log(`  Scan A optimal: ${scanABatchSize} (I/O ratio: ${ioRatios.scan_a_io_ratio})`);
+    console.log(`  Scan B optimal: ${scanBBatchSize} (I/O ratio: ${ioRatios.scan_b_io_ratio})`);
+    console.log(`  Preferred A: ${preferredA}, Preferred B: ${preferredB}`);
+    console.log(`  Final batch size: ${finalBatchSize}`);
+    
+    // Log token estimates for the first batch
+    if (inputComments.length > 0) {
+      const firstBatch = inputComments.slice(0, finalBatchSize);
+      const scanAInputTokens = estimateBatchInputTokens(firstBatch, scanA.analysis_prompt);
+      const scanBInputTokens = estimateBatchInputTokens(firstBatch, scanB.analysis_prompt);
+      const scanAOutputTokens = Math.ceil(scanAInputTokens * ioRatios.scan_a_io_ratio);
+      const scanBOutputTokens = Math.ceil(scanBInputTokens * ioRatios.scan_b_io_ratio);
+      
+      console.log(`[TOKEN ESTIMATES] First batch (${finalBatchSize} comments):`);
+      console.log(`  Scan A: ${scanAInputTokens} input → ${scanAOutputTokens} output`);
+      console.log(`  Scan B: ${scanBInputTokens} input → ${scanBOutputTokens} output`);
+    }
     
     // Process ALL comments in batches
     let allScannedComments: any[] = [];
@@ -256,11 +382,11 @@ serve(async (req) => {
     const aiLogger = new AILogger();
     aiLogger.setFunctionStartTime(overallStartTime);
     
-    for (let currentBatchStart = 0; currentBatchStart < inputComments.length; currentBatchStart += batchSize) {
-      const batch = inputComments.slice(currentBatchStart, currentBatchStart + batchSize);
-      const batchEnd = Math.min(currentBatchStart + batchSize, inputComments.length);
+    for (let currentBatchStart = 0; currentBatchStart < inputComments.length; currentBatchStart += finalBatchSize) {
+      const batch = inputComments.slice(currentBatchStart, currentBatchStart + finalBatchSize);
+      const batchEnd = Math.min(currentBatchStart + finalBatchSize, inputComments.length);
       
-      console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (preferredA=${scanA.preferred_batch_size || 100}, preferredB=${scanB.preferred_batch_size || 100}, chosen=${batchSize})`);
+              console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize})`);
 
       // Process batch with Scan A and Scan B in parallel
               const [scanAResults, scanBResults] = await Promise.all([
@@ -344,7 +470,7 @@ serve(async (req) => {
     }
     
     totalSummary.total = allScannedComments.length;
-    console.log(`Successfully scanned ALL ${allScannedComments.length} comments across ${Math.ceil(inputComments.length / batchSize)} batches`);
+            console.log(`Successfully scanned ALL ${allScannedComments.length} comments across ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
     
     const totalRunTimeMs = Date.now() - overallStartTime;
     
@@ -360,7 +486,7 @@ serve(async (req) => {
     
     console.log('Returning response with comments count:', response.comments.length);
     console.log('Response summary:', response.summary);
-    console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / batchSize)} batches`);
+            console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
     console.log(`[TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`);
     
     // Deduct credits after successful scan completion (only for Scan A, unless it's a demo scan)

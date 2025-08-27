@@ -28,6 +28,11 @@ export type Database = {
           scanner_type: string
           tpm_limit: number | null
           updated_at: string
+          scan_a_io_ratio: number | null
+          scan_b_io_ratio: number | null
+          adjudicator_io_ratio: number | null
+          redaction_io_ratio: number | null
+          rephrase_io_ratio: number | null
         }
         Insert: {
           analysis_prompt: string
@@ -42,6 +47,11 @@ export type Database = {
           scanner_type: string
           tpm_limit?: number | null
           updated_at?: string
+          scan_a_io_ratio?: number | null
+          scan_b_io_ratio?: number | null
+          adjudicator_io_ratio?: number | null
+          redaction_io_ratio?: number | null
+          rephrase_io_ratio?: number | null
         }
         Update: {
           analysis_prompt?: string
@@ -56,6 +66,11 @@ export type Database = {
           scanner_type?: string
           tpm_limit?: number | null
           updated_at?: string
+          scan_a_io_ratio?: number | null
+          scan_b_io_ratio?: number | null
+          adjudicator_io_ratio?: number | null
+          redaction_io_ratio?: number | null
+          rephrase_io_ratio?: number | null
         }
         Relationships: []
       }

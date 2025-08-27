@@ -23,6 +23,11 @@ interface AIConfiguration {
   input_token_limit?: number;
   output_token_limit?: number;
   preferred_batch_size?: number;
+  scan_a_io_ratio?: number;
+  scan_b_io_ratio?: number;
+  adjudicator_io_ratio?: number;
+  redaction_io_ratio?: number;
+  rephrase_io_ratio?: number;
 }
 
 const PROVIDERS = [
@@ -450,6 +455,89 @@ export const AIConfigurationManagement = () => {
             min="1"
           />
         </div>
+
+        {/* I/O Ratio Fields - only show for scan_a since these are application-wide settings */}
+        {scannerConfig.type === 'scan_a' && (
+          <div className="space-y-4 border-t pt-4">
+            <h4 className="text-sm font-medium text-muted-foreground">Dynamic Batch Sizing I/O Ratios</h4>
+            <p className="text-xs text-muted-foreground">
+              These ratios estimate the relationship between input and output tokens for each phase.
+              Used to calculate optimal batch sizes that fit within token limits.
+            </p>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="scan-a-io-ratio">Scan A I/O Ratio</Label>
+                <Input
+                  id="scan-a-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={config.scan_a_io_ratio || ''}
+                  onChange={(e) => updateConfig(scannerConfig.type, { scan_a_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="1.00"
+                  min="0.1"
+                  max="10.0"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="scan-b-io-ratio">Scan B I/O Ratio</Label>
+                <Input
+                  id="scan-b-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={config.scan_b_io_ratio || ''}
+                  onChange={(e) => updateConfig(scannerConfig.type, { scan_b_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="0.90"
+                  min="0.1"
+                  max="10.0"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="adjudicator-io-ratio">Adjudicator I/O Ratio</Label>
+                <Input
+                  id="adjudicator-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={config.adjudicator_io_ratio || ''}
+                  onChange={(e) => updateConfig(scannerConfig.type, { adjudicator_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="6.20"
+                  min="0.1"
+                  max="10.0"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="redaction-io-ratio">Redaction I/O Ratio</Label>
+                <Input
+                  id="redaction-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={config.redaction_io_ratio || ''}
+                  onChange={(e) => updateConfig(scannerConfig.type, { redaction_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="1.70"
+                  min="0.1"
+                  max="10.0"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="rephrase-io-ratio">Rephrase I/O Ratio</Label>
+                <Input
+                  id="rephrase-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={config.rephrase_io_ratio || ''}
+                  onChange={(e) => updateConfig(scannerConfig.type, { rephrase_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="2.30"
+                  min="0.1"
+                  max="10.0"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor={`analysis_prompt-${scannerConfig.type}`}>Analysis Prompt</Label>
