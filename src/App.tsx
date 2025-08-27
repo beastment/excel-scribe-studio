@@ -35,6 +35,12 @@ import ProjectManagement from './pages/services/ProjectManagement';
 import DebriefSessions from './pages/services/DebriefSessions';
 import ActionPlanningWorkshops from './pages/services/ActionPlanningWorkshops';
 
+// Component to handle scroll to top on route change
+const ScrollToTopOnRouteChange = ({ children }: { children: React.ReactNode }) => {
+  useScrollToTop();
+  return <>{children}</>;
+};
+
 const queryClient = new QueryClient();
 
 const AppContent = () => {
@@ -42,14 +48,11 @@ const AppContent = () => {
   const { user } = useAuth();
   const { canBypassMaintenance, loading: roleLoading } = useUserRole();
   
-  // Scroll to top on route change
-  useScrollToTop();
-  
   // Check if we should show maintenance mode
   const shouldShowMaintenance = !loading && !roleLoading && maintenanceStatus.isEnabled && !canBypassMaintenance();
 
   return (
-    <>
+    <ScrollToTopOnRouteChange>
       <Navigation />
       <Routes>
         <Route path="/" element={
@@ -117,7 +120,7 @@ const AppContent = () => {
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
-    </>
+    </ScrollToTopOnRouteChange>
   );
 };
 
