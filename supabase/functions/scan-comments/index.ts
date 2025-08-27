@@ -680,14 +680,157 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
       }
     }
 
+    // Before attempting to parse, try to clean up common JSON issues
+    let cleanedJson = jsonMatch[0];
+    if (typeof cleanedJson === 'string') {
+      // Fix common JSON issues that can occur in AI responses
+      const originalJson = cleanedJson;
+      
+      // Log the original response for debugging
+      console.log(`${source}: Original response length: ${cleanedJson.length} characters`);
+      
+      // More sophisticated JSON cleaning approach
+      // First, try to identify and fix the specific issue mentioned in the error
+      // Look for patterns where quotes are used incorrectly in string values
+      
+      // Fix the specific case where AI puts quotes around words like "gaslighted" in the middle of strings
+      // This regex looks for patterns like: "text"word"text" and converts them to "text\"word\"text"
+      cleanedJson = cleanedJson.replace(/"([^"]*)"([^"]*)"([^"]*)"/g, (match, p1, p2, p3) => {
+        // If the middle part contains quotes, escape them
+        if (p2.includes('"')) {
+          const escapedMiddle = p2.replace(/"/g, '\\"');
+          console.log(`${source}: Fixed unescaped quotes in: "${p2}" -> "${escapedMiddle}"`);
+          return `"${p1}${escapedMiddle}${p3}"`;
+        }
+        return match;
+      });
+      
+      // Handle cases where quotes appear in the middle of string values without proper escaping
+      // Look for patterns like: "text"quoted text"more text"
+      cleanedJson = cleanedJson.replace(/"([^"]*)"([^"]*)"([^"]*)"/g, (match, p1, p2, p3) => {
+        // If we have a pattern where quotes are used to emphasize words, escape them
+        if (p2.includes('"') && p2.length < 50) { // Only for short quoted phrases
+          const escapedMiddle = p2.replace(/"/g, '\\"');
+          console.log(`${source}: Fixed emphasized quotes in: "${p2}" -> "${escapedMiddle}"`);
+          return `"${p1}${escapedMiddle}${p3}"`;
+        }
+        return match;
+      });
+      
+      // Log if we made changes
+      if (cleanedJson !== originalJson) {
+        console.log(`${source}: Cleaned JSON to fix quote escaping issues`);
+        console.log(`${source}: Original preview:`, originalJson.substring(0, 200) + '...');
+        console.log(`${source}: Cleaned preview:`, cleanedJson.substring(0, 200) + '...');
+      }
+    }
+
     let parsed;
     try {
-      parsed = JSON.parse(jsonMatch[0]);
+      parsed = JSON.parse(cleanedJson);
     } catch (parseError) {
       console.error(`${source}: JSON parse error:`, parseError);
-      console.error(`${source}: Attempted to parse:`, jsonMatch[0]);
+      console.error(`${source}: Attempted to parse:`, cleanedJson);
+      
+      // If the cleaned JSON still fails, try one more aggressive cleaning approach
+      if (typeof cleanedJson === 'string') {
+        console.warn(`${source}: Attempting aggressive JSON cleaning...`);
+        
+        // Try to fix the specific issue mentioned in the error (position 2142)
+        // Look for the problematic area and try to fix it
+        const problematicArea = cleanedJson.substring(Math.max(0, 2140), Math.min(cleanedJson.length, 2150));
+        console.log(`${source}: Problematic area around position 2142:`, problematicArea);
+        
+        // Try to extract just the valid objects we can find
+        // Use a more robust regex that can handle nested braces
+        const objectMatches = [];
+        let braceCount = 0;
+        let objectStart = -1;
+        
+        for (let i = 0; i < cleanedJson.length; i++) {
+          const char = cleanedJson[i];
+          if (char === '{') {
+            if (braceCount === 0) {
+              objectStart = i;
+            }
+            braceCount++;
+          } else if (char === '}') {
+            braceCount--;
+            if (braceCount === 0 && objectStart !== -1) {
+              const objectJson = cleanedJson.substring(objectStart, i + 1);
+              objectMatches.push(objectJson);
+              objectStart = -1;
+            }
+          }
+        }
+        
+        if (objectMatches.length > 0) {
+          console.warn(`${source}: Found ${objectMatches.length} potential objects, attempting to reconstruct...`);
+          
+          const validObjects = [];
+          for (const objMatch of objectMatches) {
+            try {
+              const parsedObj = JSON.parse(objMatch);
+              if (parsedObj && typeof parsedObj === 'object') {
+                validObjects.push(parsedObj);
+              }
+            } catch (e) {
+              // Skip invalid objects
+            }
+          }
+          
+          if (validObjects.length > 0) {
+            console.warn(`${source}: Successfully extracted ${validObjects.length} valid objects from malformed JSON`);
+            return validObjects;
+          }
+        }
+        
+        // Final fallback: try to manually fix the specific issue mentioned in the error
+        console.warn(`${source}: Attempting manual JSON repair...`);
+        
+        // Look for the specific pattern that's causing issues
+        // The error mentions position 2142, so let's examine that area
+        const errorArea = cleanedJson.substring(Math.max(0, 2130), Math.min(cleanedJson.length, 2160));
+        console.log(`${source}: Error area around position 2142:`, errorArea);
+        
+        // Try to manually fix common patterns
+        let manuallyFixed = cleanedJson;
+        
+        // Look for patterns like: "text"word"text" and fix them
+        manuallyFixed = manuallyFixed.replace(/"([^"]*)"([^"]*)"([^"]*)"/g, (match, p1, p2, p3) => {
+          if (p2.includes('"')) {
+            const fixed = p2.replace(/"/g, '\\"');
+            console.log(`${source}: Manually fixed: "${p2}" -> "${fixed}"`);
+            return `"${p1}${fixed}${p3}"`;
+          }
+          return match;
+        });
+        
+        // Handle the specific case mentioned in the error logs: "gaslighted" with quotes
+        // Look for patterns like: "text"gaslighted"text" and fix them
+        manuallyFixed = manuallyFixed.replace(/"([^"]*)"([^"]*)"([^"]*)"/g, (match, p1, p2, p3) => {
+          // Check if this is a quoted word that should be escaped
+          if (p2.includes('"') && p2.length < 30) {
+            const fixed = p2.replace(/"/g, '\\"');
+            console.log(`${source}: Fixed quoted word: "${p2}" -> "${fixed}"`);
+            return `"${p1}${fixed}${p3}"`;
+          }
+          return match;
+        });
+        
+        // Try parsing the manually fixed version
+        try {
+          const manualParsed = JSON.parse(manuallyFixed);
+          console.warn(`${source}: Manual JSON repair successful!`);
+          return manualParsed;
+        } catch (manualError) {
+          console.error(`${source}: Manual JSON repair failed:`, manualError.message);
+        }
+      }
+      
       throw new Error(`Invalid JSON in response: ${parseError.message}`);
     }
+    
     if (!Array.isArray(parsed)) {
       throw new Error('Response is not an array');
     }
@@ -717,24 +860,14 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
           });
         }
       }
+      
       return paddedResults;
     }
 
-    if (parsed.length > expectedCount) {
-      console.warn(`${source}: Expected ${expectedCount} items, got ${parsed.length}. Truncating to expected count.`);
-      parsed = parsed.slice(0, expectedCount);
-    }
-
-    return parsed.map((item, i) => ({
-      index: item.index || i + 1,
-      concerning: Boolean(item.concerning),
-      identifiable: Boolean(item.identifiable),
-      reasoning: String(item.reasoning || 'No reasoning provided')
-    }));
+    return parsed;
   } catch (error) {
-    console.error(`Failed to parse ${source} results:`, error);
-    console.error(`Raw ${source} response:`, response);
-    throw new Error(`Failed to parse ${source} results: ${error.message}`);
+    console.error(`${source}: Error in parseBatchResults:`, error);
+    throw error;
   }
 }
 
@@ -936,10 +1069,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
     
     return responseText;
-      } else {
+  } else {
     throw new Error(`Unsupported provider: ${provider}`);
   }
-  }
+}
 
 // AWS Signature V4 implementation for Bedrock
 async function createAWSSignature(
