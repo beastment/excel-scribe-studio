@@ -524,15 +524,18 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                           <span className="text-sm">Processing Efficiency:</span>
                           <span className="font-medium">{runStats.averageEfficiency.toFixed(1)}%</span>
                         </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Overhead Time:</span>
-                          <span className="font-medium">
-                            {formatProcessingTime(Math.max(0, runStats.totalRunTime - runStats.totalProcessingTime))}
-                          </span>
-                        </div>
-                        <div className="text-xs text-muted-foreground text-center">
-                          (Time not spent processing AI requests - may be small if requests run in parallel)
-                        </div>
+                                                 <div className="flex justify-between items-center">
+                           <span className="text-sm">Overhead Time:</span>
+                           <span className="font-medium">
+                             {formatProcessingTime(Math.max(0, runStats.totalRunTime - runStats.totalProcessingTime))}
+                           </span>
+                         </div>
+                         <div className="text-xs text-muted-foreground text-center">
+                           (Time not spent processing AI requests - may be small if requests run in parallel)
+                         </div>
+                         <div className="text-xs text-muted-foreground text-center">
+                           Debug: Total Run: {runStats.totalRunTime}ms, Total Processing: {runStats.totalProcessingTime}ms
+                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-sm">Processing vs Overhead:</span>
                           <span className="font-medium">
