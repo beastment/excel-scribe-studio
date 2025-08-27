@@ -16,6 +16,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const overallStartTime = Date.now(); // Track overall process time
+
   try {
     const requestBody = await req.json();
     // Generate a per-request scanRunId for log correlation
@@ -343,18 +345,22 @@ serve(async (req) => {
     totalSummary.total = allScannedComments.length;
     console.log(`Successfully scanned ALL ${allScannedComments.length} comments across ${Math.ceil(inputComments.length / batchSize)} batches`);
     
+    const totalRunTimeMs = Date.now() - overallStartTime;
+    
     const response = { 
       comments: allScannedComments,
       batchStart: 0, // Always start from 0 since we process all
       batchSize: allScannedComments.length, // Total processed
       hasMore: false, // No more batches since we processed all
       totalComments: inputComments.length,
-      summary: totalSummary
+      summary: totalSummary,
+      totalRunTimeMs: totalRunTimeMs
     };
     
     console.log('Returning response with comments count:', response.comments.length);
     console.log('Response summary:', response.summary);
     console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / batchSize)} batches`);
+    console.log(`[TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`);
     
     // Deduct credits after successful scan completion (only for Scan A, unless it's a demo scan)
     if (isDemoScan) {

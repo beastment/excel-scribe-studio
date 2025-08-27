@@ -260,6 +260,7 @@ interface PostProcessResponse {
     rephrased: number;
     original: number;
   };
+  totalRunTimeMs?: number;
   error?: string;
 }
 
@@ -268,6 +269,8 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  const overallStartTime = Date.now(); // Track overall process time
 
   try {
     const { comments, scanConfig, defaultMode, scanRunId }: PostProcessRequest = await req.json()
@@ -543,23 +546,27 @@ serve(async (req) => {
       originalCount++
     }
 
-    const response: PostProcessResponse = {
-      success: true,
-      processedComments,
-      summary: {
-        total: comments.length,
-        redacted: redactedCount,
-        rephrased: rephrasedCount,
-        original: originalCount
-      }
-    }
+         const totalRunTimeMs = Date.now() - overallStartTime;
+     
+     const response: PostProcessResponse = {
+       success: true,
+       processedComments,
+       summary: {
+         total: comments.length,
+         redacted: redactedCount,
+         rephrased: rephrasedCount,
+         original: originalCount
+       },
+       totalRunTimeMs: totalRunTimeMs
+     }
 
-    console.log(`${logPrefix} [POSTPROCESS] Completed: ${redactedCount} redacted, ${rephrasedCount} rephrased, ${originalCount} original`)
+     console.log(`${logPrefix} [POSTPROCESS] Completed: ${redactedCount} redacted, ${rephrasedCount} rephrased, ${originalCount} original`)
+     console.log(`${logPrefix} [TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`)
 
-    return new Response(
-      JSON.stringify(response),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+     return new Response(
+       JSON.stringify(response),
+       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+     )
 
   } catch (error) {
     console.error('[POSTPROCESS] Error:', error)

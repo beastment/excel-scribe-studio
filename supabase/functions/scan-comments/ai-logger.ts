@@ -22,6 +22,7 @@ export interface AILogEntry {
   processingTimeMs?: number;
   timeStarted?: string;
   timeFinished?: string;
+  totalRunTimeMs?: number;
 }
 
 export class AILogger {
@@ -80,7 +81,8 @@ export class AILogger {
     requestType: string,
     phase: string,
     responseText: string,
-    error?: string
+    error?: string,
+    totalRunTimeMs?: number
   ): Promise<void> {
     try {
       const processingTimeMs = Date.now() - this.startTime;
@@ -99,7 +101,8 @@ export class AILogger {
           response_status: responseStatus,
           response_error: error,
           processing_time_ms: processingTimeMs,
-          time_finished: new Date().toISOString()
+          time_finished: new Date().toISOString(),
+          total_run_time_ms: totalRunTimeMs
         })
         .eq('user_id', userId)
         .eq('scan_run_id', scanRunId || '')

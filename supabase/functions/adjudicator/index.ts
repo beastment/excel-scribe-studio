@@ -224,6 +224,8 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  const overallStartTime = Date.now(); // Track overall process time
+
   try {
     const { comments, adjudicatorConfig, scanRunId }: AdjudicationRequest = await req.json()
     
@@ -385,23 +387,27 @@ serve(async (req) => {
         };
       });
 
-      const summary = {
-        total: comments.length,
-        resolved: needsAdjudication.length,
-        errors: 0
-      };
+             const totalRunTimeMs = Date.now() - overallStartTime;
+       
+       const summary = {
+         total: comments.length,
+         resolved: needsAdjudication.length,
+         errors: 0
+       };
 
-      console.log(`${logPrefix} [ADJUDICATOR] Completed: ${summary.resolved} resolved, ${summary.total - summary.resolved} already agreed`);
-      console.log(`${logPrefix} [ADJUDICATOR] No credits deducted - adjudication is free`);
+       console.log(`${logPrefix} [ADJUDICATOR] Completed: ${summary.resolved} resolved, ${summary.total - summary.resolved} already agreed`);
+       console.log(`${logPrefix} [ADJUDICATOR] No credits deducted - adjudication is free`);
+       console.log(`${logPrefix} [TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`);
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          adjudicatedComments,
-          summary
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+       return new Response(
+         JSON.stringify({
+           success: true,
+           adjudicatedComments,
+           summary,
+           totalRunTimeMs: totalRunTimeMs
+         }),
+         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+       );
 
     } catch (error) {
       console.error(`${logPrefix} [ADJUDICATOR] Error during adjudication:`, error);

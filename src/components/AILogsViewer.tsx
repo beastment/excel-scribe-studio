@@ -37,6 +37,7 @@ interface AILog {
   processing_time_ms?: number;
   time_started?: string;
   time_finished?: string;
+  total_run_time_ms?: number;
   created_at: string;
 }
 
@@ -121,7 +122,7 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
 
   const exportLogs = () => {
     const csvContent = [
-      ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)', 'Time Started', 'Time Finished', 'Duration'],
+      ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)', 'Time Started', 'Time Finished', 'Duration', 'Total Run Time (ms)', 'Efficiency (%)'],
       ...logs.map(log => [
         new Date(log.created_at).toLocaleString(),
         log.scan_run_id || 'N/A',
@@ -136,7 +137,10 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
         log.processing_time_ms || 0,
         log.time_started ? new Date(log.time_started).toLocaleString() : 'N/A',
         log.time_finished ? new Date(log.time_finished).toLocaleString() : 'N/A',
-        formatTimeDuration(log.time_started, log.time_finished)
+        formatTimeDuration(log.time_started, log.time_finished),
+        log.total_run_time_ms || 0,
+        log.processing_time_ms && log.total_run_time_ms ? 
+          ((log.processing_time_ms / log.total_run_time_ms) * 100).toFixed(1) : 'N/A'
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -354,14 +358,15 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                           </Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                        <span>{formatTokenCount(log.request_tokens)} → {formatTokenCount(log.response_tokens)}</span>
-                        <Badge className={getStatusColor(log.response_status)}>
-                          {log.response_status}
-                        </Badge>
-                        <span>{formatTimeDuration(log.time_started, log.time_finished)}</span>
-                        <span>{new Date(log.created_at).toLocaleTimeString()}</span>
-                      </div>
+                                             <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                         <span>{formatTokenCount(log.request_tokens)} → {formatTokenCount(log.response_tokens)}</span>
+                         <Badge className={getStatusColor(log.response_status)}>
+                           {log.response_status}
+                         </Badge>
+                         <span>{formatTimeDuration(log.time_started, log.time_finished)}</span>
+                         <span>{formatProcessingTime(log.total_run_time_ms)}</span>
+                         <span>{new Date(log.created_at).toLocaleTimeString()}</span>
+                       </div>
                     </div>
                   ))}
                 </ScrollArea>
@@ -412,24 +417,45 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium">Time Started:</span>
-                          <p>{log.time_started ? new Date(log.time_started).toLocaleString() : 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="font-medium">Time Finished:</span>
-                          <p>{log.time_finished ? new Date(log.time_finished).toLocaleString() : 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="font-medium">Duration:</span>
-                          <p>{formatTimeDuration(log.time_started, log.time_finished)}</p>
-                        </div>
-                        <div>
-                          <span className="font-medium">Created:</span>
-                          <p>{new Date(log.created_at).toLocaleString()}</p>
-                        </div>
-                      </div>
+                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                         <div>
+                           <span className="font-medium">Time Started:</span>
+                           <p>{log.time_started ? new Date(log.time_started).toLocaleString() : 'N/A'}</p>
+                         </div>
+                         <div>
+                           <span className="font-medium">Time Finished:</span>
+                           <p>{log.time_finished ? new Date(log.time_finished).toLocaleString() : 'N/A'}</p>
+                         </div>
+                         <div>
+                           <span className="font-medium">Duration:</span>
+                           <p>{formatTimeDuration(log.time_started, log.time_finished)}</p>
+                         </div>
+                         <div>
+                           <span className="font-medium">Created:</span>
+                           <p>{new Date(log.created_at).toLocaleString()}</p>
+                         </div>
+                       </div>
+                       
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                         <div>
+                           <span className="font-medium">Processing Time:</span>
+                           <p>{formatProcessingTime(log.processing_time_ms)}</p>
+                         </div>
+                         <div>
+                           <span className="font-medium">Total Run Time:</span>
+                           <p>{formatProcessingTime(log.total_run_time_ms)}</p>
+                         </div>
+                         <div>
+                           <span className="font-medium">Efficiency:</span>
+                           <p>{log.processing_time_ms && log.total_run_time_ms ? 
+                             `${((log.processing_time_ms / log.total_run_time_ms) * 100).toFixed(1)}%` : 'N/A'}</p>
+                         </div>
+                         <div>
+                           <span className="font-medium">Overhead:</span>
+                           <p>{log.processing_time_ms && log.total_run_time_ms ? 
+                             `${(((log.total_run_time_ms - log.processing_time_ms) / log.total_run_time_ms) * 100).toFixed(1)}%` : 'N/A'}</p>
+                         </div>
+                       </div>
                       
                       {showFullContent && (
                         <>
@@ -531,16 +557,25 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
                     <span className="font-medium">Time Finished:</span>
                     <p>{selectedLog.time_finished ? new Date(selectedLog.time_finished).toLocaleString() : 'N/A'}</p>
                   </div>
-                  <div>
-                    <span className="font-medium">Duration:</span>
-                    <p>{formatTimeDuration(selectedLog.time_started, selectedLog.time_finished)}</p>
-                  </div>
-                  {selectedLog.scan_run_id && (
-                    <div>
-                      <span className="font-medium">Run ID:</span>
-                      <p className="font-mono bg-blue-50 p-2 rounded">{selectedLog.scan_run_id}</p>
-                    </div>
-                  )}
+                                     <div>
+                     <span className="font-medium">Duration:</span>
+                     <p>{formatTimeDuration(selectedLog.time_started, selectedLog.time_finished)}</p>
+                   </div>
+                   <div>
+                     <span className="font-medium">Total Run Time:</span>
+                     <p>{formatProcessingTime(selectedLog.total_run_time_ms)}</p>
+                   </div>
+                   <div>
+                     <span className="font-medium">Efficiency:</span>
+                     <p>{selectedLog.processing_time_ms && selectedLog.total_run_time_ms ? 
+                       `${((selectedLog.processing_time_ms / selectedLog.total_run_time_ms) * 100).toFixed(1)}%` : 'N/A'}</p>
+                   </div>
+                   {selectedLog.scan_run_id && (
+                     <div>
+                       <span className="font-medium">Run ID:</span>
+                       <p className="font-mono bg-blue-50 p-2 rounded">{selectedLog.scan_run_id}</p>
+                     </div>
+                   )}
                 </div>
                 
                 <div>

@@ -26,6 +26,7 @@ CREATE TABLE public.ai_logs (
   processing_time_ms integer, -- Time taken for the AI call
   time_started timestamp with time zone, -- When the AI request started
   time_finished timestamp with time zone, -- When the AI response finished
+  total_run_time_ms integer, -- Total time for the entire process (scan/adjudication/post-processing)
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
