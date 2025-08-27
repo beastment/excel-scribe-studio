@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { FileUpload, CommentData } from '@/components/FileUpload';
 import { CommentEditor } from '@/components/CommentEditor';
 import { Button } from '@/components/ui/button';
