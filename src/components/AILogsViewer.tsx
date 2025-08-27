@@ -265,7 +265,8 @@ export function AILogsViewer({ debugMode = false }: AILogsViewerProps) {
     if (ms < 0) return 'N/A'; // Handle negative values
     if (ms === 0) return '0.0s'; // Handle zero values
     
-    // Always show in seconds or minutes for better readability
+    // For very small values (under 1 second), show with more precision
+    if (ms < 1000) return `${ms}ms`;
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
     if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
     return `${(ms / 3600000).toFixed(1)}h`;
