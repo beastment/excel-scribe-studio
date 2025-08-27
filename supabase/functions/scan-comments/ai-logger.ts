@@ -85,7 +85,7 @@ export class AILogger {
       
       const responseStatus: 'success' | 'error' = error ? 'error' : 'success';
       
-      // Update the existing log entry
+      // Update the existing log entry - find the most recent pending log for this user/function/phase
       const { error: updateError } = await this.supabase
         .from('ai_logs')
         .update({
@@ -99,7 +99,7 @@ export class AILogger {
         .eq('scan_run_id', scanRunId || '')
         .eq('function_name', functionName)
         .eq('phase', phase)
-        .eq('created_at', new Date().toISOString().split('T')[0]) // Match today's date
+        .eq('response_status', 'pending')
         .order('created_at', { ascending: false })
         .limit(1);
         
