@@ -47,9 +47,10 @@ interface AILog {
 interface AILogsViewerProps {
   debugMode?: boolean;
   onRef?: (ref: { clearLogs: () => void }) => void;
+  skipInitialFetch?: boolean;
 }
 
-export function AILogsViewer({ debugMode = false, onRef }: AILogsViewerProps) {
+export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = false }: AILogsViewerProps) {
   const { user } = useAuth();
   const [logs, setLogs] = useState<AILog[]>([]);
   const [loading, setLoading] = useState(false);
@@ -75,10 +76,10 @@ export function AILogsViewer({ debugMode = false, onRef }: AILogsViewerProps) {
   };
 
   useEffect(() => {
-    if (user) {
+    if (user && !skipInitialFetch) {
       fetchLogs();
     }
-  }, [user]);
+  }, [user, skipInitialFetch]);
 
   // Expose clearLogs function to parent component
   useEffect(() => {

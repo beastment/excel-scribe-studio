@@ -29,6 +29,7 @@ interface CommentEditorProps {
   hasScanRun?: boolean;
   setHasScanRun?: (value: boolean) => void;
   aiLogsViewerRef?: React.RefObject<{ clearLogs: () => void }>;
+  shouldClearLogs?: boolean;
 }
 export const CommentEditor: React.FC<CommentEditorProps> = ({ 
   comments, 
@@ -40,7 +41,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   isDemoData = false,
   hasScanRun: externalHasScanRun,
   setHasScanRun: externalSetHasScanRun,
-  aiLogsViewerRef
+  aiLogsViewerRef,
+  shouldClearLogs = false
 }) => {
   const {
     user
@@ -973,6 +975,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       <div className="mb-6">
         <AILogsViewer 
           debugMode={debugMode} 
+          skipInitialFetch={shouldClearLogs}
           onRef={(ref) => {
             if (aiLogsViewerRef && aiLogsViewerRef.current !== ref) {
               // Only assign if aiLogsViewerRef exists and ref value has changed

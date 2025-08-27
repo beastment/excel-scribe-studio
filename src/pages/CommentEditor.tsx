@@ -343,6 +343,7 @@ const CommentEditorPage = () => {
                 hasScanRun={hasScanRun}
                 setHasScanRun={setHasScanRun}
                 aiLogsViewerRef={aiLogsViewerRef}
+                shouldClearLogs={shouldClearLogs}
               />
             </div>}
           </div>
