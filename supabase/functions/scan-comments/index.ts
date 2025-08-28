@@ -190,15 +190,32 @@ serve(async (req) => {
     const scanAModelConfig = modelConfigs?.find(m => m.provider === scanA.provider && m.model === scanA.model);
     const scanBModelConfig = modelConfigs?.find(m => m.provider === scanB.provider && m.model === scanB.model);
 
+    console.log(`[MODEL CONFIG] Scan A model config:`, scanAModelConfig);
+    console.log(`[MODEL CONFIG] Scan B model config:`, scanBModelConfig);
+
+    // Validate that we have the required token limits
+    if (!scanAModelConfig?.output_token_limit) {
+      console.error(`[ERROR] Scan A model config missing output_token_limit:`, scanAModelConfig);
+      throw new Error(`Max Tokens is not defined for Scan A model (${scanA.provider}/${scanA.model})`);
+    }
+    
+    if (!scanBModelConfig?.output_token_limit) {
+      console.error(`[ERROR] Scan B model config missing output_token_limit:`, scanBModelConfig);
+      throw new Error(`Max Tokens is not defined for Scan B model (${scanB.provider}/${scanB.model})`);
+    }
+
     const scanATokenLimits = {
       input_token_limit: scanAModelConfig?.input_token_limit || 128000,
-      output_token_limit: scanAModelConfig?.output_token_limit || 4096
+      output_token_limit: scanAModelConfig.output_token_limit
     };
 
     const scanBTokenLimits = {
       input_token_limit: scanBModelConfig?.input_token_limit || 128000,
-      output_token_limit: scanBModelConfig?.output_token_limit || 4096
+      output_token_limit: scanBModelConfig.output_token_limit
     };
+
+    console.log(`[TOKEN LIMITS] Scan A:`, scanATokenLimits);
+    console.log(`[TOKEN LIMITS] Scan B:`, scanBTokenLimits);
 
     console.log(`[TOKENS] Scan A limits: ${scanATokenLimits.input_token_limit} input, ${scanATokenLimits.output_token_limit} output`);
     console.log(`[TOKENS] Scan B limits: ${scanBTokenLimits.input_token_limit} input, ${scanBTokenLimits.output_token_limit} output`);
@@ -995,6 +1012,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
 }
 
 async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger, maxTokens?: number, temperature?: number) {
+  console.log(`[CALLAI] ${phase} - Received maxTokens: ${maxTokens}, using: ${maxTokens || 4096}`);
   console.log(`[CALLAI] ${phase} - Received temperature: ${temperature}, using: ${temperature || 0}`);
   
   const payload = {
