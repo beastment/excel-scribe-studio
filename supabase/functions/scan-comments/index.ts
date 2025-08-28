@@ -165,6 +165,7 @@ serve(async (req) => {
     }
 
     console.log(`[CONFIG] Found ${configs.length} active configurations:`, configs.map(c => `${c.scanner_type}:${c.provider}/${c.model}`));
+    console.log(`[CONFIG] Raw config data:`, configs.map(c => ({ scanner_type: c.scanner_type, provider: c.provider, model: c.model, temperature: c.temperature })));
 
     const scanA = configs.find(c => c.scanner_type === 'scan_a');
     const scanB = configs.find(c => c.scanner_type === 'scan_b');
@@ -174,6 +175,7 @@ serve(async (req) => {
     }
 
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
+    console.log(`[CONFIG] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
 
     // Get I/O ratios from scan_a configuration (these are application-wide settings)
     const ioRatios = {
@@ -993,6 +995,8 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
 }
 
 async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger, maxTokens?: number, temperature?: number) {
+  console.log(`[CALLAI] ${phase} - Received temperature: ${temperature}, using: ${temperature || 0}`);
+  
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
@@ -1015,9 +1019,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       phase,
       requestPrompt: prompt,
       requestInput: input,
-      requestTemperature: 0,
-      requestMaxTokens: maxTokens || 4096,
-      requestTemperature: temperature || 0
+      requestTemperature: temperature || 0,
+      requestMaxTokens: maxTokens || 4096
     });
   }
 

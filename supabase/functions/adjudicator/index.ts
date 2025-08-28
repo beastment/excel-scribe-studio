@@ -336,7 +336,7 @@ serve(async (req) => {
         phase: 'adjudication',
         requestPrompt: prompt,
         requestInput: input,
-        requestTemperature: 0,
+        requestTemperature: adjudicatorConfig.temperature || 0,
         requestMaxTokens: adjudicatorConfig.max_tokens || 4096
       });
       
