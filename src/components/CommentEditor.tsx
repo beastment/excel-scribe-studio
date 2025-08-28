@@ -453,6 +453,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           console.warn('Failed to fetch model configuration, using defaults');
         }
         
+        const maxTokens = modelConfig?.output_token_limit || 4096;
+        
         console.log(`[POSTPROCESS] Model config result:`, modelConfig);
         console.log(`[POSTPROCESS] Model config data:`, modelConfig);
         console.log(`[POSTPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
