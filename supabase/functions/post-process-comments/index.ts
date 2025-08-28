@@ -18,16 +18,10 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 }
 
 function getEffectiveMaxTokens(config: any): number {
-  console.log(`[getEffectiveMaxTokens] Input config:`, JSON.stringify(config, null, 2));
   const explicit = config?.max_tokens;
-  console.log(`[getEffectiveMaxTokens] Explicit max_tokens: ${explicit}, type: ${typeof explicit}`);
-  if (explicit && explicit > 0) {
-    console.log(`[getEffectiveMaxTokens] Returning explicit value: ${Math.floor(explicit)}`);
-    return Math.floor(explicit);
-  }
+  if (explicit && explicit > 0) return Math.floor(explicit);
   const provider = String(config?.provider || '').toLowerCase();
   const model = String(config?.model || '').toLowerCase();
-  console.log(`[getEffectiveMaxTokens] No explicit max_tokens, using provider/model fallback: ${provider}/${model}`);
   if (provider === 'bedrock') {
     if (model.includes('anthropic.claude')) return 4096;
     if (model.startsWith('mistral.')) return 4096;
@@ -81,7 +75,6 @@ function enforceRedactionPolicy(text: string | null | undefined): string | null 
 
 // AI calling function (simplified version for post-processing)
 async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, temperature?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger) {
-  console.log(`[callAI] Received maxTokens: ${maxTokens}, temperature: ${temperature}`);
   const payload = {
     messages: [
       { role: 'system', content: prompt },
@@ -90,7 +83,6 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     temperature: temperature || 0,
     max_tokens: maxTokens || 4096
   };
-  console.log(`[callAI] Final payload max_tokens: ${payload.max_tokens}`);
 
   // Log the AI request if logger is provided
   if (aiLogger && userId && scanRunId && phase) {
@@ -319,7 +311,6 @@ serve(async (req) => {
     const logPrefix = `[RUN ${runId}]`;
 
     console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
-    console.log(`${logPrefix} [POSTPROCESS] Full scanConfig:`, JSON.stringify(scanConfig, null, 2))
     console.log(`${logPrefix} [POSTPROCESS] Config: max_tokens=${scanConfig.max_tokens}, temperature=${scanConfig.temperature}`)
 
     // Filter comments that need post-processing
@@ -383,7 +374,6 @@ serve(async (req) => {
          aiLogger.setFunctionStartTime(overallStartTime);
         
         const effectiveMaxTokens = getEffectiveMaxTokens(scanConfig);
-        console.log(`${logPrefix} [POSTPROCESS] Effective max tokens: ${effectiveMaxTokens} (config: ${scanConfig.max_tokens})`);
         
         const [rawRedacted, rawRephrased] = await Promise.all([
           callAI(

@@ -426,17 +426,30 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         setScanProgress(70);
         toast.info(`Phase 3: Post-processing ${commentsToProcess.length} flagged comments (identifiable)...`);
         
-        // Get AI configuration for post-processing
-        const { data: aiConfigs, error: configError } = await supabase
-          .from('ai_configurations')
-          .select('*')
-          .eq('scanner_type', 'scan_a')
-          .single();
+        // Get AI configuration and model configuration for post-processing
+        const [aiConfigsResult, modelConfigResult] = await Promise.all([
+          supabase
+            .from('ai_configurations')
+            .select('*')
+            .eq('scanner_type', 'scan_a')
+            .single(),
+          supabase
+            .from('model_configurations')
+            .select('*')
+            .eq('provider', 'openai')
+            .eq('model', 'gpt-4o-mini')
+            .single()
+        ]);
         
-        if (configError || !aiConfigs) {
+        if (aiConfigsResult.error || !aiConfigsResult.data) {
           console.warn('Failed to fetch AI configuration, using defaults');
         }
         
+        const aiConfigs = aiConfigsResult.data;
+        const modelConfig = modelConfigResult.data;
+        const maxTokens = modelConfig?.output_token_limit || 4096;
+        
+        console.log(`[POSTPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
         console.log(`[BATCH] Using dynamic batch sizing based on token limits and I/O ratios`);
         
         const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
@@ -458,7 +471,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
               rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
               temperature: aiConfigs?.temperature || 0.0,
-              max_tokens: aiConfigs?.output_token_limit || 4096
+              max_tokens: maxTokens
             },
             defaultMode,
             scanRunId
@@ -713,19 +726,32 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     }
     
     try {
-      // Get AI configuration for post-processing
-      const { data: aiConfigData } = await supabase
-        .from('ai_configurations')
-        .select('*')
-        .eq('scanner_type', 'scan_a')
-        .single();
+      // Get AI configuration and model configuration for post-processing
+      const [aiConfigResult, modelConfigResult] = await Promise.all([
+        supabase
+          .from('ai_configurations')
+          .select('*')
+          .eq('scanner_type', 'scan_a')
+          .single(),
+        supabase
+          .from('model_configurations')
+          .select('*')
+          .eq('provider', 'openai')
+          .eq('model', 'gpt-4o-mini')
+          .single()
+      ]);
+
+      const aiConfigData = aiConfigResult.data;
+      const modelConfig = modelConfigResult.data;
+      const maxTokens = modelConfig?.output_token_limit || 4096;
+
+      console.log(`[REPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
 
       const aiConfig = aiConfigData || {
         provider: 'openai',
         model: 'gpt-4o-mini',
         redact_prompt: 'Redact any personally identifiable information from this text while preserving the meaning.',
         rephrase_prompt: 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
-        
       };
 
       // Call post-process-comments directly since we already have scan results
@@ -740,7 +766,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             model: aiConfigData?.model || 'gpt-4o-mini',
             redact_prompt: aiConfigData?.redact_prompt || 'Redact any personally identifiable information from this text while preserving the meaning.',
             rephrase_prompt: aiConfigData?.rephrase_prompt || 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
-            max_tokens: aiConfigData?.output_token_limit || 4096
+            max_tokens: maxTokens
           },
           defaultMode: mode,
           scanRunId: `reprocess-${Date.now()}`
