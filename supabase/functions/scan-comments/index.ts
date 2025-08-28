@@ -373,6 +373,8 @@ serve(async (req) => {
     console.log(`  Scan A optimal: ${scanABatchSize} (I/O ratio: ${ioRatios.scan_a_io_ratio})`);
     console.log(`  Scan B optimal: ${scanBBatchSize} (I/O ratio: ${ioRatios.scan_b_io_ratio})`);
     console.log(`  Final batch size: ${finalBatchSize}`);
+    console.log(`[BATCH SIZING] Dataset size: ${inputComments.length} comments`);
+    console.log(`[BATCH SIZING] Estimated batches: ${Math.ceil(inputComments.length / finalBatchSize)}`);
     
     // Log token estimates for the first batch
     if (inputComments.length > 0) {
@@ -414,6 +416,26 @@ serve(async (req) => {
       // Parse and validate results
       const scanAResultsArray = parseBatchResults(scanAResults, batch.length, 'Scan A');
       const scanBResultsArray = parseBatchResults(scanBResults, batch.length, 'Scan B');
+
+      // CRITICAL FIX: Validate that we got complete results for all comments
+      if (scanAResultsArray.length !== batch.length) {
+        console.error(`[ERROR] Scan A returned ${scanAResultsArray.length} results for ${batch.length} comments - response may be truncated`);
+        console.error(`[ERROR] Scan A response length: ${scanAResults.length} characters`);
+        console.error(`[ERROR] Scan A response preview: ${scanAResults.substring(0, 500)}...`);
+      }
+      
+      if (scanBResultsArray.length !== batch.length) {
+        console.error(`[ERROR] Scan B returned ${scanBResultsArray.length} results for ${batch.length} comments - response may be truncated`);
+        console.error(`[ERROR] Scan B response length: ${scanBResults.length} characters`);
+        console.error(`[ERROR] Scan B response preview: ${scanBResults.substring(0, 500)}...`);
+      }
+
+      // CRITICAL FIX: Skip processing if we don't have complete results
+      if (scanAResultsArray.length !== batch.length || scanBResultsArray.length !== batch.length) {
+        console.error(`[ERROR] Incomplete batch results - skipping batch ${currentBatchStart + 1}-${batchEnd}`);
+        console.error(`[ERROR] Expected ${batch.length} results, got Scan A: ${scanAResultsArray.length}, Scan B: ${scanBResultsArray.length}`);
+        continue; // Skip this batch and move to the next
+      }
 
       // Process each comment in this batch
       for (let i = 0; i < batch.length; i++) {
