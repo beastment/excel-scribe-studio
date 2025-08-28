@@ -386,12 +386,13 @@ serve(async (req) => {
       const batch = inputComments.slice(currentBatchStart, currentBatchStart + finalBatchSize);
       const batchEnd = Math.min(currentBatchStart + finalBatchSize, inputComments.length);
       
-              console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize})`);
+                      console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize})`);
+        console.log(`[TOKENS] Scan A max_tokens: ${scanATokenLimits.output_token_limit}, Scan B max_tokens: ${scanBTokenLimits.output_token_limit}`);
 
-      // Process batch with Scan A and Scan B in parallel
+        // Process batch with Scan A and Scan B in parallel
               const [scanAResults, scanBResults] = await Promise.all([
-          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger),
-          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger)
+          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit),
+          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit)
         ]);
 
       console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
@@ -997,7 +998,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
   }
 }
 
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger) {
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger, maxTokens?: number) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
@@ -1005,7 +1006,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       { role: 'user', content: input }
     ],
     temperature: 0,
-    max_tokens: 8192  // Increased from 4096 to handle larger responses
+    max_tokens: maxTokens || 4096  // Use provided maxTokens or fallback to 4096
   };
 
   // Log the AI request if logger is provided
@@ -1021,7 +1022,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       requestPrompt: prompt,
       requestInput: input,
       requestTemperature: 0,
-      requestMaxTokens: 8192
+      requestMaxTokens: maxTokens || 4096
     });
   }
 
@@ -1129,7 +1130,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     const bedrockPayload = {
       anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 4096,  // Claude 3 Haiku maximum
+      max_tokens: maxTokens || 4096,  // Use provided maxTokens or fallback to 4096
       system: systemMessage,
       messages: [
         {
