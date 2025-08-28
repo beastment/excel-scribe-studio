@@ -165,6 +165,22 @@ serve(async (req) => {
 
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
 
+    // Fetch model configurations for token limits
+    const { data: modelConfigs, error: modelError } = await supabase
+      .from('model_configurations')
+      .select('*');
+
+    if (modelError) {
+      console.error('Database error fetching model configurations:', modelError);
+      throw new Error(`Database error: ${modelError.message || JSON.stringify(modelError)}`);
+    }
+
+    if (!modelConfigs || modelConfigs.length === 0) {
+      console.warn('No model configurations found, using default token limits');
+    }
+
+    console.log(`[MODEL_CONFIG] Found ${modelConfigs?.length || 0} model configurations`);
+
     // Check user credits before processing (only for Scan A, unless it's a demo scan)
     const creditsPerComment = 1; // 1 credit per comment for Scan A
     
@@ -321,14 +337,20 @@ serve(async (req) => {
     const scanAModelConfig = modelConfigs?.find(m => m.provider === scanA.provider && m.model === scanA.model);
     const scanBModelConfig = modelConfigs?.find(m => m.provider === scanB.provider && m.model === scanB.model);
     
+    console.log(`[MODEL_LOOKUP] Looking for Scan A: ${scanA.provider}/${scanA.model}`);
+    console.log(`[MODEL_LOOKUP] Looking for Scan B: ${scanB.provider}/${scanB.model}`);
+    console.log(`[MODEL_LOOKUP] Available models:`, modelConfigs?.map(m => `${m.provider}/${m.model}`));
+    
     if (!scanAModelConfig?.output_token_limit) {
       console.error(`[ERROR] Scan A model config missing output_token_limit:`, scanAModelConfig);
-      throw new Error(`Max Tokens is not defined for Scan A model (${scanA.provider}/${scanA.model})`);
+      console.error(`[ERROR] Available model configs:`, modelConfigs);
+      throw new Error(`Max Tokens is not defined for Scan A model (${scanA.provider}/${scanA.model}). Please check the Model Configuration section in your dashboard.`);
     }
     
     if (!scanBModelConfig?.output_token_limit) {
       console.error(`[ERROR] Scan B model config missing output_token_limit:`, scanBModelConfig);
-      throw new Error(`Max Tokens is not defined for Scan B model (${scanB.provider}/${scanB.model})`);
+      console.error(`[ERROR] Available model configs:`, modelConfigs);
+      throw new Error(`Max Tokens is not defined for Scan B model (${scanB.provider}/${scanB.model}). Please check the Model Configuration section in your dashboard.`);
     }
     
     const scanATokenLimits = {
