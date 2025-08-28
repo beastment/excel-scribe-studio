@@ -427,28 +427,31 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         toast.info(`Phase 3: Post-processing ${commentsToProcess.length} flagged comments (identifiable)...`);
         
         // Get AI configuration and model configuration for post-processing
-        const [aiConfigsResult, modelConfigResult] = await Promise.all([
-          supabase
-            .from('ai_configurations')
-            .select('*')
-            .eq('scanner_type', 'scan_a')
-            .single(),
-          supabase
-            .from('model_configurations')
-            .select('*')
-            .eq('provider', 'openai')
-            .eq('model', 'gpt-4o-mini')
-            .single()
-        ]);
+        // First get AI config to determine provider/model
+        const { data: aiConfigs, error: configError } = await supabase
+          .from('ai_configurations')
+          .select('*')
+          .eq('scanner_type', 'scan_a')
+          .single();
         
-        if (aiConfigsResult.error || !aiConfigsResult.data) {
+        if (configError || !aiConfigs) {
           console.warn('Failed to fetch AI configuration, using defaults');
         }
         
-        const aiConfigs = aiConfigsResult.data;
-        const modelConfig = modelConfigResult.data;
-        const maxTokens = modelConfig?.output_token_limit || 4096;
+        // Then get model config using the provider/model from AI config
+        const { data: modelConfig, error: modelError } = await supabase
+          .from('model_configurations')
+          .select('*')
+          .eq('provider', aiConfigs?.provider || 'openai')
+          .eq('model', aiConfigs?.model || 'gpt-4o-mini')
+          .single();
         
+        if (modelError) {
+          console.warn('Failed to fetch model configuration, using defaults');
+        }
+        
+        console.log(`[POSTPROCESS] Model config result:`, modelConfig);
+        console.log(`[POSTPROCESS] Model config data:`, modelConfig);
         console.log(`[POSTPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
         console.log(`[BATCH] Using dynamic batch sizing based on token limits and I/O ratios`);
         
@@ -726,25 +729,33 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     }
     
     try {
-      // Get AI configuration and model configuration for post-processing
-      const [aiConfigResult, modelConfigResult] = await Promise.all([
-        supabase
-          .from('ai_configurations')
-          .select('*')
-          .eq('scanner_type', 'scan_a')
-          .single(),
-        supabase
-          .from('model_configurations')
-          .select('*')
-          .eq('provider', 'openai')
-          .eq('model', 'gpt-4o-mini')
-          .single()
-      ]);
-
-      const aiConfigData = aiConfigResult.data;
-      const modelConfig = modelConfigResult.data;
+      // First get AI config to determine provider/model
+      const { data: aiConfigData, error: configError } = await supabase
+        .from('ai_configurations')
+        .select('*')
+        .eq('scanner_type', 'scan_a')
+        .single();
+      
+      if (configError) {
+        console.warn('Failed to fetch AI configuration, using defaults');
+      }
+      
+      // Then get model config using the provider/model from AI config
+      const { data: modelConfig, error: modelError } = await supabase
+        .from('model_configurations')
+        .select('*')
+        .eq('provider', aiConfigData?.provider || 'openai')
+        .eq('model', aiConfigData?.model || 'gpt-4o-mini')
+        .single();
+      
+      if (modelError) {
+        console.warn('Failed to fetch model configuration, using defaults');
+      }
+      
       const maxTokens = modelConfig?.output_token_limit || 4096;
 
+      console.log(`[REPROCESS] Model config result:`, modelConfig);
+      console.log(`[REPROCESS] Model config data:`, modelConfig);
       console.log(`[REPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
 
       const aiConfig = aiConfigData || {
