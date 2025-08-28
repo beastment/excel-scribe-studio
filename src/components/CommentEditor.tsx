@@ -457,7 +457,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               model: aiConfigs?.model || 'gpt-4o-mini',
               redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
               rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
-              temperature: aiConfigs?.temperature || 0.0
+              temperature: aiConfigs?.temperature || 0.0,
+              max_tokens: aiConfigs?.output_token_limit || 4096
             },
             defaultMode,
             scanRunId
@@ -738,7 +739,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             provider: aiConfigData?.provider || 'openai',
             model: aiConfigData?.model || 'gpt-4o-mini',
             redact_prompt: aiConfigData?.redact_prompt || 'Redact any personally identifiable information from this text while preserving the meaning.',
-            rephrase_prompt: aiConfigData?.rephrase_prompt || 'Rephrase this text to remove personally identifiable information while preserving the meaning.'
+            rephrase_prompt: aiConfigData?.rephrase_prompt || 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
+            max_tokens: aiConfigData?.output_token_limit || 4096
           },
           defaultMode: mode,
           scanRunId: `reprocess-${Date.now()}`

@@ -311,6 +311,7 @@ serve(async (req) => {
     const logPrefix = `[RUN ${runId}]`;
 
     console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
+    console.log(`${logPrefix} [POSTPROCESS] Config: max_tokens=${scanConfig.max_tokens}, temperature=${scanConfig.temperature}`)
 
     // Filter comments that need post-processing
     const flaggedComments = comments.filter(c => c.concerning || c.identifiable)
@@ -372,6 +373,9 @@ serve(async (req) => {
          const aiLogger = new AILogger();
          aiLogger.setFunctionStartTime(overallStartTime);
         
+        const effectiveMaxTokens = getEffectiveMaxTokens(scanConfig);
+        console.log(`${logPrefix} [POSTPROCESS] Effective max tokens: ${effectiveMaxTokens} (config: ${scanConfig.max_tokens})`);
+        
         const [rawRedacted, rawRephrased] = await Promise.all([
           callAI(
             scanConfig.provider,
@@ -379,7 +383,7 @@ serve(async (req) => {
             redactPrompt,
             sentinelInput,
             'batch_text',
-            getEffectiveMaxTokens(scanConfig),
+            effectiveMaxTokens,
             scanConfig.temperature,
             user.id,
             scanRunId,
@@ -392,7 +396,7 @@ serve(async (req) => {
             rephrasePrompt,
             sentinelInput,
             'batch_text',
-            getEffectiveMaxTokens(scanConfig),
+            effectiveMaxTokens,
             scanConfig.temperature,
             user.id,
             scanRunId,
