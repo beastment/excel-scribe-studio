@@ -526,14 +526,14 @@ serve(async (req) => {
     }
       
       totalSummary.total = allScannedComments.length;
-    console.log(`Successfully scanned ALL ${allScannedComments.length} comments across ${Math.ceil(inputComments.length / batchSize)} batches`);
+    console.log(`Successfully scanned ALL ${allScannedComments.length} comments across ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
     
     const totalRunTimeMs = Date.now() - overallStartTime;
     
     const response = { 
       comments: allScannedComments,
       batchStart: 0, // Always start from 0 since we process all
-      batchSize: allScannedComments.length, // Total processed
+      batchSize: finalBatchSize, // Batch size used for processing
       hasMore: false, // No more batches since we processed all
       totalComments: inputComments.length,
       summary: totalSummary,
@@ -542,7 +542,7 @@ serve(async (req) => {
     
     console.log('Returning response with comments count:', response.comments.length);
     console.log('Response summary:', response.summary);
-    console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / batchSize)} batches`);
+    console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
     console.log(`[TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`);
     
     // Deduct credits after successful scan completion (only for Scan A, unless it's a demo scan)
