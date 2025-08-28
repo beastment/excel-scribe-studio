@@ -239,6 +239,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
       console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
       console.log(`[DEBUG] Error keys:`, error ? Object.keys(error) : 'null');
+      console.log(`[DEBUG] Data structure:`, JSON.stringify(data, null, 2));
 
       // Check for insufficient credits in the response data
       if (data && (data.error || data.insufficientCredits || data.success === false)) {
@@ -339,6 +340,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         const adjudicatorMaxTokens = adjudicatorModelConfig?.output_token_limit || 4096;
         
         console.log(`[ADJUDICATOR] Model: ${adjudicatorConfigs?.provider}/${adjudicatorConfigs?.model}, Max Tokens: ${adjudicatorMaxTokens}`);
+        console.log(`[ADJUDICATOR] Model config:`, adjudicatorModelConfig);
+        console.log(`[ADJUDICATOR] Adjudicator configs:`, adjudicatorConfigs);
 
         // Prepare comments for adjudication
         const adjudicationComments = needsAdjudication.map((c: any) => ({
@@ -453,6 +456,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         console.log(`[POSTPROCESS] Model config result:`, modelConfig);
         console.log(`[POSTPROCESS] Model config data:`, modelConfig);
         console.log(`[POSTPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
+        console.log(`[POSTPROCESS] AI configs:`, aiConfigs);
         console.log(`[BATCH] Using dynamic batch sizing based on token limits and I/O ratios`);
         
         const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
@@ -754,9 +758,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       
       const maxTokens = modelConfig?.output_token_limit || 4096;
 
-      console.log(`[REPROCESS] Model config result:`, modelConfig);
-      console.log(`[REPROCESS] Model config data:`, modelConfig);
-      console.log(`[REPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
+                  console.log(`[REPROCESS] Model config result:`, modelConfig);
+            console.log(`[REPROCESS] Model config data:`, modelConfig);
+            console.log(`[REPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
+            console.log(`[REPROCESS] AI config data:`, aiConfigData);
 
       const aiConfig = aiConfigData || {
         provider: 'openai',
