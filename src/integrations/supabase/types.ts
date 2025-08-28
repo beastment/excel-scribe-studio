@@ -20,7 +20,6 @@ export type Database = {
           created_at: string
           id: string
           model: string
-          preferred_batch_size: number | null
           provider: string
           redact_prompt: string
           rephrase_prompt: string
@@ -33,13 +32,13 @@ export type Database = {
           adjudicator_io_ratio: number | null
           redaction_io_ratio: number | null
           rephrase_io_ratio: number | null
+          temperature: number | null
         }
         Insert: {
           analysis_prompt: string
           created_at?: string
           id?: string
           model: string
-          preferred_batch_size?: number | null
           provider: string
           redact_prompt: string
           rephrase_prompt: string
@@ -52,13 +51,13 @@ export type Database = {
           adjudicator_io_ratio?: number | null
           redaction_io_ratio?: number | null
           rephrase_io_ratio?: number | null
+          temperature?: number | null
         }
         Update: {
           analysis_prompt?: string
           created_at?: string
           id?: string
           model?: string
-          preferred_batch_size?: number | null
           provider?: string
           redact_prompt?: string
           rephrase_prompt?: string
@@ -71,6 +70,7 @@ export type Database = {
           adjudicator_io_ratio?: number | null
           redaction_io_ratio?: number | null
           rephrase_io_ratio?: number | null
+          temperature?: number | null
         }
         Relationships: []
       }

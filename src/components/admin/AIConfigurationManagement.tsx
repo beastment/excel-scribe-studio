@@ -22,12 +22,12 @@ interface AIConfiguration {
   tpm_limit?: number;
   input_token_limit?: number;
   output_token_limit?: number;
-  preferred_batch_size?: number;
   scan_a_io_ratio?: number;
   scan_b_io_ratio?: number;
   adjudicator_io_ratio?: number;
   redaction_io_ratio?: number;
   rephrase_io_ratio?: number;
+  temperature?: number;
 }
 
 const PROVIDERS = [
@@ -115,8 +115,7 @@ export const AIConfigurationManagement = () => {
           rpm_limit: config.rpm_limit || undefined,
           tpm_limit: config.tpm_limit || undefined,
           input_token_limit: undefined,
-          output_token_limit: undefined,
-          preferred_batch_size: config.preferred_batch_size || undefined
+          output_token_limit: undefined
         };
       });
 
@@ -214,7 +213,6 @@ export const AIConfigurationManagement = () => {
           analysis_prompt: config.analysis_prompt,
           redact_prompt: config.redact_prompt,
           rephrase_prompt: config.rephrase_prompt,
-          preferred_batch_size: config.preferred_batch_size,
           updated_at: new Date().toISOString(),
         });
 
@@ -445,15 +443,20 @@ export const AIConfigurationManagement = () => {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`batch-size-${scannerConfig.type}`}>Preferred Batch Size</Label>
+          <Label htmlFor={`temperature-${scannerConfig.type}`}>Temperature</Label>
           <Input
-            id={`batch-size-${scannerConfig.type}`}
+            id={`temperature-${scannerConfig.type}`}
             type="number"
-            value={config.preferred_batch_size || ''}
-            onChange={(e) => updateConfig(scannerConfig.type, { preferred_batch_size: e.target.value ? parseInt(e.target.value) : undefined })}
-            placeholder="Number of comments to process in batch"
-            min="1"
+            step="0.01"
+            value={config.temperature || ''}
+            onChange={(e) => updateConfig(scannerConfig.type, { temperature: e.target.value ? parseFloat(e.target.value) : undefined })}
+            placeholder="0.00"
+            min="0.0"
+            max="2.0"
           />
+          <p className="text-xs text-muted-foreground">
+            Controls response randomness (0.0 = deterministic, 1.0 = creative, 2.0 = very creative)
+          </p>
         </div>
 
         {/* I/O Ratio Fields - only show for scan_a since these are application-wide settings */}

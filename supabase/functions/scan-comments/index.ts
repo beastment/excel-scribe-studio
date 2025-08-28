@@ -348,17 +348,11 @@ serve(async (req) => {
     );
     
     // Use the smaller batch size to ensure both scans can process the same batches
-    const batchSize = Math.min(scanABatchSize, scanBBatchSize);
-    
-    // Also respect the preferred batch sizes if they're smaller
-    const preferredA = scanA.preferred_batch_size || batchSize;
-    const preferredB = scanB.preferred_batch_size || batchSize;
-    const finalBatchSize = Math.min(preferredA, preferredB, batchSize);
+    const finalBatchSize = Math.min(scanABatchSize, scanBBatchSize);
     
     console.log(`[BATCH SIZING] Dynamic calculation results:`);
     console.log(`  Scan A optimal: ${scanABatchSize} (I/O ratio: ${ioRatios.scan_a_io_ratio})`);
     console.log(`  Scan B optimal: ${scanBBatchSize} (I/O ratio: ${ioRatios.scan_b_io_ratio})`);
-    console.log(`  Preferred A: ${preferredA}, Preferred B: ${preferredB}`);
     console.log(`  Final batch size: ${finalBatchSize}`);
     
     // Log token estimates for the first batch
@@ -391,8 +385,8 @@ serve(async (req) => {
 
         // Process batch with Scan A and Scan B in parallel
               const [scanAResults, scanBResults] = await Promise.all([
-          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit),
-          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit)
+          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
         ]);
 
       console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
@@ -998,14 +992,14 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
   }
 }
 
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger, maxTokens?: number) {
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger, maxTokens?: number, temperature?: number) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: 0,
+    temperature: temperature || 0,  // Use provided temperature or fallback to 0
     max_tokens: maxTokens || 4096  // Use provided maxTokens or fallback to 4096
   };
 
@@ -1022,7 +1016,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       requestPrompt: prompt,
       requestInput: input,
       requestTemperature: 0,
-      requestMaxTokens: maxTokens || 4096
+      requestMaxTokens: maxTokens || 4096,
+      requestTemperature: temperature || 0
     });
   }
 
