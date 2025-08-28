@@ -203,18 +203,28 @@ export const AIConfigurationManagement = () => {
       }
 
       // Update this scanner's configuration (without limits - they're stored separately now)
+      const configToSave = {
+        id: config.id,
+        scanner_type: config.scanner_type,
+        provider: config.provider,
+        model: config.model,
+        analysis_prompt: config.analysis_prompt,
+        redact_prompt: config.redact_prompt,
+        rephrase_prompt: config.rephrase_prompt,
+        scan_a_io_ratio: config.scan_a_io_ratio,
+        scan_b_io_ratio: config.scan_b_io_ratio,
+        adjudicator_io_ratio: config.adjudicator_io_ratio,
+        redaction_io_ratio: config.redaction_io_ratio,
+        rephrase_io_ratio: config.rephrase_io_ratio,
+        temperature: config.temperature,
+        updated_at: new Date().toISOString(),
+      };
+      
+      console.log(`[SAVE] Saving configuration for ${scannerType}:`, configToSave);
+      
       const { error } = await supabase
         .from('ai_configurations')
-        .upsert({
-          id: config.id,
-          scanner_type: config.scanner_type,
-          provider: config.provider,
-          model: config.model,
-          analysis_prompt: config.analysis_prompt,
-          redact_prompt: config.redact_prompt,
-          rephrase_prompt: config.rephrase_prompt,
-          updated_at: new Date().toISOString(),
-        });
+        .upsert(configToSave);
 
       if (error) {
         console.error('Error saving AI configuration:', error);
@@ -279,6 +289,8 @@ export const AIConfigurationManagement = () => {
   };
 
   const updateConfig = (scannerType: string, updates: Partial<AIConfiguration>) => {
+    console.log(`[UPDATE] Updating ${scannerType} with:`, updates);
+    
     setConfigs(prev => {
       const updated = {
         ...prev,
