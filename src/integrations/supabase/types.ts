@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           id: string
           model: string
+          preferred_batch_size: number | null
           provider: string
           redact_prompt: string
           rephrase_prompt: string
@@ -27,19 +28,13 @@ export type Database = {
           scanner_type: string
           tpm_limit: number | null
           updated_at: string
-          scan_a_io_ratio: number | null
-          scan_b_io_ratio: number | null
-          adjudicator_io_ratio: number | null
-          redaction_io_ratio: number | null
-          rephrase_io_ratio: number | null
-          temperature: number | null
-          safety_margin_percent: number | null
         }
         Insert: {
           analysis_prompt: string
           created_at?: string
           id?: string
           model: string
+          preferred_batch_size?: number | null
           provider: string
           redact_prompt: string
           rephrase_prompt: string
@@ -47,19 +42,13 @@ export type Database = {
           scanner_type: string
           tpm_limit?: number | null
           updated_at?: string
-          scan_a_io_ratio?: number | null
-          scan_b_io_ratio?: number | null
-          adjudicator_io_ratio?: number | null
-          redaction_io_ratio?: number | null
-          rephrase_io_ratio?: number | null
-          temperature?: number | null
-          safety_margin_percent?: number | null
         }
         Update: {
           analysis_prompt?: string
           created_at?: string
           id?: string
           model?: string
+          preferred_batch_size?: number | null
           provider?: string
           redact_prompt?: string
           rephrase_prompt?: string
@@ -67,13 +56,42 @@ export type Database = {
           scanner_type?: string
           tpm_limit?: number | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      batch_sizing_config: {
+        Row: {
+          id: string
+          scan_a_io_ratio: number | null
+          scan_b_io_ratio: number | null
+          adjudicator_io_ratio: number | null
+          redaction_io_ratio: number | null
+          rephrase_io_ratio: number | null
+          safety_margin_percent: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
           scan_a_io_ratio?: number | null
           scan_b_io_ratio?: number | null
           adjudicator_io_ratio?: number | null
           redaction_io_ratio?: number | null
           rephrase_io_ratio?: number | null
-          temperature?: number | null
           safety_margin_percent?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          scan_a_io_ratio?: number | null
+          scan_b_io_ratio?: number | null
+          adjudicator_io_ratio?: number | null
+          redaction_io_ratio?: number | null
+          rephrase_io_ratio?: number | null
+          safety_margin_percent?: number | null
+          created_at?: string
+          updated_at?: string
         }
         Relationships: []
       }

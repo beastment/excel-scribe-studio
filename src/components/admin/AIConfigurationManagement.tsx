@@ -22,13 +22,7 @@ interface AIConfiguration {
   tpm_limit?: number;
   input_token_limit?: number;
   output_token_limit?: number;
-  scan_a_io_ratio?: number;
-  scan_b_io_ratio?: number;
-  adjudicator_io_ratio?: number;
-  redaction_io_ratio?: number;
-  rephrase_io_ratio?: number;
-  temperature?: number;
-  safety_margin_percent?: number;
+  preferred_batch_size?: number;
 }
 
 const PROVIDERS = [
@@ -65,6 +59,14 @@ export const AIConfigurationManagement = () => {
   const { toast } = useToast();
   const [configs, setConfigs] = useState<Record<string, AIConfiguration>>({});
   const [modelLimits, setModelLimits] = useState<Record<string, { rpm_limit?: number; tpm_limit?: number; input_token_limit?: number; output_token_limit?: number }>>({});
+  const [batchSizingConfig, setBatchSizingConfig] = useState<{
+    scan_a_io_ratio?: number;
+    scan_b_io_ratio?: number;
+    adjudicator_io_ratio?: number;
+    redaction_io_ratio?: number;
+    rephrase_io_ratio?: number;
+    safety_margin_percent?: number;
+  }>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('scan_a');
@@ -106,6 +108,22 @@ export const AIConfigurationManagement = () => {
         return;
       }
 
+      // Fetch batch sizing configuration
+      const { data: batchSizingData, error: batchSizingError } = await supabase
+        .from('batch_sizing_config')
+        .select('*')
+        .single();
+
+      if (batchSizingError && batchSizingError.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Error fetching batch sizing configuration:', batchSizingError);
+        toast({
+          title: "Error",
+          description: "Failed to load batch sizing configuration",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const configMap: Record<string, AIConfiguration> = {};
       const limitsMap: Record<string, { rpm_limit?: number; tpm_limit?: number; input_token_limit?: number; output_token_limit?: number }> = {};
       
@@ -116,7 +134,8 @@ export const AIConfigurationManagement = () => {
           rpm_limit: config.rpm_limit || undefined,
           tpm_limit: config.tpm_limit || undefined,
           input_token_limit: undefined,
-          output_token_limit: undefined
+          output_token_limit: undefined,
+          preferred_batch_size: config.preferred_batch_size || undefined
         };
       });
 
@@ -164,6 +183,7 @@ export const AIConfigurationManagement = () => {
       
       setConfigs(configMap);
       setModelLimits(limitsMap);
+      setBatchSizingConfig(batchSizingData || {});
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -204,29 +224,19 @@ export const AIConfigurationManagement = () => {
       }
 
       // Update this scanner's configuration (without limits - they're stored separately now)
-      const configToSave = {
-        id: config.id,
-        scanner_type: config.scanner_type,
-        provider: config.provider,
-        model: config.model,
-        analysis_prompt: config.analysis_prompt,
-        redact_prompt: config.redact_prompt,
-        rephrase_prompt: config.rephrase_prompt,
-        scan_a_io_ratio: config.scan_a_io_ratio,
-        scan_b_io_ratio: config.scan_b_io_ratio,
-        adjudicator_io_ratio: config.adjudicator_io_ratio,
-        redaction_io_ratio: config.redaction_io_ratio,
-        rephrase_io_ratio: config.rephrase_io_ratio,
-        temperature: config.temperature,
-        safety_margin_percent: config.safety_margin_percent,
-        updated_at: new Date().toISOString(),
-      };
-      
-      console.log(`[SAVE] Saving configuration for ${scannerType}:`, configToSave);
-      
       const { error } = await supabase
         .from('ai_configurations')
-        .upsert(configToSave);
+        .upsert({
+          id: config.id,
+          scanner_type: config.scanner_type,
+          provider: config.provider,
+          model: config.model,
+          analysis_prompt: config.analysis_prompt,
+          redact_prompt: config.redact_prompt,
+          rephrase_prompt: config.rephrase_prompt,
+          preferred_batch_size: config.preferred_batch_size,
+          updated_at: new Date().toISOString(),
+        });
 
       if (error) {
         console.error('Error saving AI configuration:', error);
@@ -282,6 +292,42 @@ export const AIConfigurationManagement = () => {
     }
   };
 
+  const handleSaveBatchSizing = async () => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('batch_sizing_config')
+        .upsert({
+          ...batchSizingConfig,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        console.error('Error saving batch sizing configuration:', error);
+        toast({
+          title: "Error",
+          description: "Failed to save batch sizing configuration",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Batch sizing configuration saved successfully",
+      });
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save batch sizing configuration",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleReset = (scannerType: string) => {
     fetchConfigurations();
     toast({
@@ -291,8 +337,6 @@ export const AIConfigurationManagement = () => {
   };
 
   const updateConfig = (scannerType: string, updates: Partial<AIConfiguration>) => {
-    console.log(`[UPDATE] Updating ${scannerType} with:`, updates);
-    
     setConfigs(prev => {
       const updated = {
         ...prev,
@@ -319,6 +363,13 @@ export const AIConfigurationManagement = () => {
       
       return updated;
     });
+  };
+
+  const updateBatchSizingConfig = (updates: Partial<typeof batchSizingConfig>) => {
+    setBatchSizingConfig(prev => ({
+      ...prev,
+      ...updates
+    }));
   };
 
   const handleModelChange = (scannerType: string, newModel: string) => {
@@ -457,26 +508,16 @@ export const AIConfigurationManagement = () => {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`temperature-${scannerConfig.type}`}>Temperature</Label>
+          <Label htmlFor={`batch-size-${scannerConfig.type}`}>Preferred Batch Size</Label>
           <Input
-            id={`temperature-${scannerConfig.type}`}
+            id={`batch-size-${scannerConfig.type}`}
             type="number"
-            step="0.01"
-            value={config.temperature || ''}
-            onChange={(e) => updateConfig(scannerConfig.type, { temperature: e.target.value ? parseFloat(e.target.value) : undefined })}
-            placeholder="0.00"
-            min="0.0"
-            max="2.0"
+            value={config.preferred_batch_size || ''}
+            onChange={(e) => updateConfig(scannerConfig.type, { preferred_batch_size: e.target.value ? parseInt(e.target.value) : undefined })}
+            placeholder="Number of comments to process in batch"
+            min="1"
           />
-          <p className="text-xs text-muted-foreground">
-            Controls response randomness (0.0 = deterministic, 1.0 = creative, 2.0 = very creative)
-          </p>
         </div>
-
-        {/* I/O Ratio Fields - only show for scan_a since these are application-wide settings */}
-
-            
-
 
         <div className="space-y-2">
           <Label htmlFor={`analysis_prompt-${scannerConfig.type}`}>Analysis Prompt</Label>
@@ -570,8 +611,8 @@ export const AIConfigurationManagement = () => {
                   id="scan-a-io-ratio"
                   type="number"
                   step="0.01"
-                  value={configs.scan_a?.scan_a_io_ratio || ''}
-                  onChange={(e) => updateConfig('scan_a', { scan_a_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  value={batchSizingConfig.scan_a_io_ratio || ''}
+                  onChange={(e) => updateBatchSizingConfig({ scan_a_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
                   placeholder="1.00"
                   min="0.1"
                   max="10.0"
@@ -585,8 +626,8 @@ export const AIConfigurationManagement = () => {
                   id="scan-b-io-ratio"
                   type="number"
                   step="0.01"
-                  value={configs.scan_a?.scan_b_io_ratio || ''}
-                  onChange={(e) => updateConfig('scan_a', { scan_b_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  value={batchSizingConfig.scan_b_io_ratio || ''}
+                  onChange={(e) => updateBatchSizingConfig({ scan_b_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
                   placeholder="0.90"
                   min="0.1"
                   max="10.0"
@@ -600,8 +641,8 @@ export const AIConfigurationManagement = () => {
                   id="adjudicator-io-ratio"
                   type="number"
                   step="0.01"
-                  value={configs.scan_a?.adjudicator_io_ratio || ''}
-                  onChange={(e) => updateConfig('scan_a', { adjudicator_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  value={batchSizingConfig.adjudicator_io_ratio || ''}
+                  onChange={(e) => updateBatchSizingConfig({ adjudicator_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
                   placeholder="6.20"
                   min="0.1"
                   max="10.0"
@@ -615,8 +656,8 @@ export const AIConfigurationManagement = () => {
                   id="redaction-io-ratio"
                   type="number"
                   step="0.01"
-                  value={configs.scan_a?.redaction_io_ratio || ''}
-                  onChange={(e) => updateConfig('scan_a', { redaction_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  value={batchSizingConfig.redaction_io_ratio || ''}
+                  onChange={(e) => updateBatchSizingConfig({ redaction_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
                   placeholder="1.70"
                   min="0.1"
                   max="10.0"
@@ -630,8 +671,8 @@ export const AIConfigurationManagement = () => {
                   id="rephrase-io-ratio"
                   type="number"
                   step="0.01"
-                  value={configs.scan_a?.rephrase_io_ratio || ''}
-                  onChange={(e) => updateConfig('scan_a', { rephrase_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  value={batchSizingConfig.rephrase_io_ratio || ''}
+                  onChange={(e) => updateBatchSizingConfig({ rephrase_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
                   placeholder="2.30"
                   min="0.1"
                   max="10.0"
@@ -645,8 +686,8 @@ export const AIConfigurationManagement = () => {
                   id="safety-margin-percent"
                   type="number"
                   step="1"
-                  value={configs.scan_a?.safety_margin_percent || ''}
-                  onChange={(e) => updateConfig('scan_a', { safety_margin_percent: e.target.value ? parseInt(e.target.value) : undefined })}
+                  value={batchSizingConfig.safety_margin_percent || ''}
+                  onChange={(e) => updateBatchSizingConfig({ safety_margin_percent: e.target.value ? parseInt(e.target.value) : undefined })}
                   placeholder="15"
                   min="5"
                   max="50"
@@ -656,11 +697,11 @@ export const AIConfigurationManagement = () => {
             </div>
             
             <div className="flex gap-3 pt-4">
-              <Button onClick={() => handleSave('scan_a')} disabled={saving} size="sm">
+              <Button onClick={handleSaveBatchSizing} disabled={saving} size="sm">
                 <Save className="w-4 h-4 mr-2" />
                 {saving ? 'Saving...' : 'Save Batch Sizing'}
               </Button>
-              <Button variant="outline" onClick={() => handleReset('scan_a')} size="sm">
+              <Button variant="outline" onClick={() => fetchConfigurations()} size="sm">
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Reset
               </Button>

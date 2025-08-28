@@ -140,24 +140,14 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     );
 
-    // Fetch AI configurations and model configurations
-    const [configsResult, modelConfigsResult] = await Promise.all([
-      supabase.from('ai_configurations').select('*'),
-      supabase.from('model_configurations').select('*')
-    ]);
+    const { data: configs, error: configError } = await supabase
+      .from('ai_configurations')
+      .select('*');
 
-    if (configsResult.error) {
-      console.error('Database error fetching AI configurations:', configsResult.error);
-      throw new Error(`Database error: ${configsResult.error.message || JSON.stringify(configsResult.error)}`);
+    if (configError) {
+      console.error('Database error fetching AI configurations:', configError);
+      throw new Error(`Database error: ${configError.message || JSON.stringify(configError)}`);
     }
-
-    if (modelConfigsResult.error) {
-      console.error('Database error fetching model configurations:', modelConfigsResult.error);
-      throw new Error(`Database error: ${modelConfigsResult.error.message || JSON.stringify(modelConfigsResult.error)}`);
-    }
-
-    const configs = configsResult.data;
-    const modelConfigs = modelConfigsResult.data;
 
     if (!configs || configs.length === 0) {
       console.error('No active AI configurations found');
@@ -165,7 +155,6 @@ serve(async (req) => {
     }
 
     console.log(`[CONFIG] Found ${configs.length} active configurations:`, configs.map(c => `${c.scanner_type}:${c.provider}/${c.model}`));
-    console.log(`[CONFIG] Raw config data:`, configs.map(c => ({ scanner_type: c.scanner_type, provider: c.provider, model: c.model, temperature: c.temperature })));
 
     const scanA = configs.find(c => c.scanner_type === 'scan_a');
     const scanB = configs.find(c => c.scanner_type === 'scan_b');
@@ -175,51 +164,6 @@ serve(async (req) => {
     }
 
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
-    console.log(`[CONFIG] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
-
-    // Get I/O ratios from scan_a configuration (these are application-wide settings)
-    const ioRatios = {
-      scan_a_io_ratio: scanA.scan_a_io_ratio || 1.0,
-      scan_b_io_ratio: scanA.scan_b_io_ratio || 0.9,
-      adjudicator_io_ratio: scanA.adjudicator_io_ratio || 6.2,
-      redaction_io_ratio: scanA.redaction_io_ratio || 1.7,
-      rephrase_io_ratio: scanA.rephrase_io_ratio || 2.3
-    };
-
-    // Get token limits for the models being used
-    const scanAModelConfig = modelConfigs?.find(m => m.provider === scanA.provider && m.model === scanA.model);
-    const scanBModelConfig = modelConfigs?.find(m => m.provider === scanB.provider && m.model === scanB.model);
-
-    console.log(`[MODEL CONFIG] Scan A model config:`, scanAModelConfig);
-    console.log(`[MODEL CONFIG] Scan B model config:`, scanBModelConfig);
-
-    // Validate that we have the required token limits
-    if (!scanAModelConfig?.output_token_limit) {
-      console.error(`[ERROR] Scan A model config missing output_token_limit:`, scanAModelConfig);
-      throw new Error(`Max Tokens is not defined for Scan A model (${scanA.provider}/${scanA.model})`);
-    }
-    
-    if (!scanBModelConfig?.output_token_limit) {
-      console.error(`[ERROR] Scan B model config missing output_token_limit:`, scanBModelConfig);
-      throw new Error(`Max Tokens is not defined for Scan B model (${scanB.provider}/${scanB.model})`);
-    }
-
-    const scanATokenLimits = {
-      input_token_limit: scanAModelConfig?.input_token_limit || 128000,
-      output_token_limit: scanAModelConfig.output_token_limit
-    };
-
-    const scanBTokenLimits = {
-      input_token_limit: scanBModelConfig?.input_token_limit || 128000,
-      output_token_limit: scanBModelConfig.output_token_limit
-    };
-
-    console.log(`[TOKEN LIMITS] Scan A:`, scanATokenLimits);
-    console.log(`[TOKEN LIMITS] Scan B:`, scanBTokenLimits);
-
-    console.log(`[TOKENS] Scan A limits: ${scanATokenLimits.input_token_limit} input, ${scanATokenLimits.output_token_limit} output`);
-    console.log(`[TOKENS] Scan B limits: ${scanBTokenLimits.input_token_limit} input, ${scanBTokenLimits.output_token_limit} output`);
-    console.log(`[I/O RATIOS] ${JSON.stringify(ioRatios)}`);
 
     // Check user credits before processing (only for Scan A, unless it's a demo scan)
     const creditsPerComment = 1; // 1 credit per comment for Scan A
@@ -287,6 +231,30 @@ serve(async (req) => {
       console.log(`[CREDITS] Sufficient credits available for Scan A: ${availableCredits} >= ${totalCreditsNeeded}`);
     }
 
+    // Get batch sizing configuration for dynamic batching
+    const { data: batchSizingData } = await supabase
+      .from('batch_sizing_config')
+      .select('*')
+      .single();
+    
+    if (!batchSizingData) {
+      console.warn('[BATCH] No batch sizing configuration found, using defaults');
+    }
+    
+    // Get I/O ratios and safety margin from configuration
+    const ioRatios = {
+      scan_a_io_ratio: batchSizingData?.scan_a_io_ratio || 1.0,
+      scan_b_io_ratio: batchSizingData?.scan_b_io_ratio || 0.9,
+      adjudicator_io_ratio: batchSizingData?.adjudicator_io_ratio || 6.2,
+      redaction_io_ratio: batchSizingData?.redaction_io_ratio || 1.7,
+      rephrase_io_ratio: batchSizingData?.rephrase_io_ratio || 2.3
+    };
+    
+    const safetyMarginPercent = batchSizingData?.safety_margin_percent || 15;
+    
+    console.log(`[BATCH] I/O Ratios:`, ioRatios);
+    console.log(`[BATCH] Safety Margin: ${safetyMarginPercent}%`);
+    
     // Calculate dynamic batch sizes based on I/O ratios and token limits
     const estimateTokens = (text: string) => Math.ceil(text.length / 4);
     
@@ -349,8 +317,32 @@ serve(async (req) => {
       return Math.max(1, batchSize); // Always return at least 1
     };
     
-    // Get safety margin from configuration (default to 15% if not set)
-    const safetyMarginPercent = scanA.safety_margin_percent || 15;
+    // Get token limits for the models being used
+    const scanAModelConfig = modelConfigs?.find(m => m.provider === scanA.provider && m.model === scanA.model);
+    const scanBModelConfig = modelConfigs?.find(m => m.provider === scanB.provider && m.model === scanB.model);
+    
+    if (!scanAModelConfig?.output_token_limit) {
+      console.error(`[ERROR] Scan A model config missing output_token_limit:`, scanAModelConfig);
+      throw new Error(`Max Tokens is not defined for Scan A model (${scanA.provider}/${scanA.model})`);
+    }
+    
+    if (!scanBModelConfig?.output_token_limit) {
+      console.error(`[ERROR] Scan B model config missing output_token_limit:`, scanBModelConfig);
+      throw new Error(`Max Tokens is not defined for Scan B model (${scanB.provider}/${scanB.model})`);
+    }
+    
+    const scanATokenLimits = {
+      input_token_limit: scanAModelConfig?.input_token_limit || 128000,
+      output_token_limit: scanAModelConfig.output_token_limit
+    };
+    
+    const scanBTokenLimits = {
+      input_token_limit: scanBModelConfig?.input_token_limit || 128000,
+      output_token_limit: scanBModelConfig.output_token_limit
+    };
+    
+    console.log(`[TOKEN LIMITS] Scan A:`, scanATokenLimits);
+    console.log(`[TOKEN LIMITS] Scan B:`, scanBTokenLimits);
     
     // Calculate optimal batch sizes for both scans
     const scanABatchSize = calculateOptimalBatchSize(
@@ -407,14 +399,14 @@ serve(async (req) => {
       const batch = inputComments.slice(currentBatchStart, currentBatchStart + finalBatchSize);
       const batchEnd = Math.min(currentBatchStart + finalBatchSize, inputComments.length);
       
-                      console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize})`);
-        console.log(`[TOKENS] Scan A max_tokens: ${scanATokenLimits.output_token_limit}, Scan B max_tokens: ${scanBTokenLimits.output_token_limit}`);
+      console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize})`);
+      console.log(`[TOKENS] Scan A max_tokens: ${scanATokenLimits.output_token_limit}, Scan B max_tokens: ${scanBTokenLimits.output_token_limit}`);
 
-        // Process batch with Scan A and Scan B in parallel
-              const [scanAResults, scanBResults] = await Promise.all([
-          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
-          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
-        ]);
+            // Process batch with Scan A and Scan B in parallel
+      const [scanAResults, scanBResults] = await Promise.all([
+        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+      ]);
 
       console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
       console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
@@ -510,9 +502,9 @@ serve(async (req) => {
       
       console.log(`[BATCH] Completed batch ${currentBatchStart + 1}-${batchEnd}, processed ${batch.length} comments`);
     }
-    
-    totalSummary.total = allScannedComments.length;
-            console.log(`Successfully scanned ALL ${allScannedComments.length} comments across ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
+      
+      totalSummary.total = allScannedComments.length;
+    console.log(`Successfully scanned ALL ${allScannedComments.length} comments across ${Math.ceil(inputComments.length / batchSize)} batches`);
     
     const totalRunTimeMs = Date.now() - overallStartTime;
     
@@ -528,7 +520,7 @@ serve(async (req) => {
     
     console.log('Returning response with comments count:', response.comments.length);
     console.log('Response summary:', response.summary);
-            console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
+    console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / batchSize)} batches`);
     console.log(`[TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`);
     
     // Deduct credits after successful scan completion (only for Scan A, unless it's a demo scan)
@@ -1039,18 +1031,15 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
   }
 }
 
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger, maxTokens?: number, temperature?: number) {
-  console.log(`[CALLAI] ${phase} - Received maxTokens: ${maxTokens}, using: ${maxTokens || 4096}`);
-  console.log(`[CALLAI] ${phase} - Received temperature: ${temperature}, using: ${temperature || 0}`);
-  
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: temperature || 0,  // Use provided temperature or fallback to 0
-    max_tokens: maxTokens || 4096  // Use provided maxTokens or fallback to 4096
+    temperature: 0,
+    max_tokens: 8192  // Increased from 4096 to handle larger responses
   };
 
   // Log the AI request if logger is provided
@@ -1065,8 +1054,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       phase,
       requestPrompt: prompt,
       requestInput: input,
-      requestTemperature: temperature || 0,
-      requestMaxTokens: maxTokens || 4096
+      requestTemperature: 0,
+      requestMaxTokens: 8192
     });
   }
 
@@ -1174,7 +1163,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     const bedrockPayload = {
       anthropic_version: "bedrock-2023-05-31",
-      max_tokens: maxTokens || 4096,  // Use provided maxTokens or fallback to 4096
+      max_tokens: 4096,  // Claude 3 Haiku maximum
       system: systemMessage,
       messages: [
         {

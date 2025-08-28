@@ -33,6 +33,7 @@ function getEffectiveMaxTokens(config: any): number {
 
 function getPreferredBatchSize(config: any, fallback: number): number {
   const candidates = [
+    (config && (config.preferred_batch_size ?? config.preferredBatchSize)),
     (config && (config.batch_size ?? config.batchSize)),
   ];
   for (const c of candidates) {
@@ -74,13 +75,13 @@ function enforceRedactionPolicy(text: string | null | undefined): string | null 
 }
 
 // AI calling function (simplified version for post-processing)
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, temperature?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger) {
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger) {
   const payload = {
     messages: [
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: temperature || 0,
+    temperature: 0,
     max_tokens: maxTokens || 4096
   };
 
@@ -96,7 +97,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       phase,
       requestPrompt: prompt,
       requestInput: input,
-      requestTemperature: temperature || 0,
+      requestTemperature: 0,
       requestMaxTokens: maxTokens || 4096
     });
   }
@@ -238,7 +239,6 @@ interface PostProcessRequest {
     redact_prompt: string;
     rephrase_prompt: string;
     max_tokens?: number;
-    temperature?: number;
   };
   defaultMode: 'redact' | 'rephrase';
   scanRunId?: string; // Add scanRunId to the interface
@@ -311,7 +311,6 @@ serve(async (req) => {
     const logPrefix = `[RUN ${runId}]`;
 
     console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
-    console.log(`${logPrefix} [POSTPROCESS] Config: max_tokens=${scanConfig.max_tokens}, temperature=${scanConfig.temperature}`)
 
     // Filter comments that need post-processing
     const flaggedComments = comments.filter(c => c.concerning || c.identifiable)
@@ -373,8 +372,6 @@ serve(async (req) => {
          const aiLogger = new AILogger();
          aiLogger.setFunctionStartTime(overallStartTime);
         
-        const effectiveMaxTokens = getEffectiveMaxTokens(scanConfig);
-        
         const [rawRedacted, rawRephrased] = await Promise.all([
           callAI(
             scanConfig.provider,
@@ -382,8 +379,7 @@ serve(async (req) => {
             redactPrompt,
             sentinelInput,
             'batch_text',
-            effectiveMaxTokens,
-            scanConfig.temperature,
+            getEffectiveMaxTokens(scanConfig),
             user.id,
             scanRunId,
             'redaction',
@@ -395,8 +391,7 @@ serve(async (req) => {
             rephrasePrompt,
             sentinelInput,
             'batch_text',
-            effectiveMaxTokens,
-            scanConfig.temperature,
+            getEffectiveMaxTokens(scanConfig),
             user.id,
             scanRunId,
             'rephrase',

@@ -239,7 +239,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
       console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
       console.log(`[DEBUG] Error keys:`, error ? Object.keys(error) : 'null');
-      console.log(`[DEBUG] Data structure:`, JSON.stringify(data, null, 2));
 
       // Check for insufficient credits in the response data
       if (data && (data.error || data.insufficientCredits || data.success === false)) {
@@ -308,40 +307,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         setScanProgress(40);
         toast.info(`Phase 2: Adjudicating ${needsAdjudication.length} comments with disagreements...`);
         
-        // Get adjudicator configuration and model limits
-        const [adjudicatorResult, modelConfigsResult] = await Promise.all([
-          supabase
-            .from('ai_configurations')
-            .select('*')
-            .eq('scanner_type', 'adjudicator')
-            .single(),
-          supabase
-            .from('model_configurations')
-            .select('*')
-        ]);
+        // Get adjudicator configuration
+        const { data: adjudicatorConfigs, error: configError } = await supabase
+          .from('ai_configurations')
+          .select('*')
+          .eq('scanner_type', 'adjudicator')
+          .single();
         
-        if (adjudicatorResult.error || !adjudicatorResult.data) {
+        if (configError || !adjudicatorConfigs) {
           console.warn('Failed to fetch adjudicator configuration, using defaults');
         }
-        
-        if (modelConfigsResult.error || !modelConfigsResult.data) {
-          console.warn('Failed to fetch model configurations, using defaults');
-        }
-        
-        const adjudicatorConfigs = adjudicatorResult.data;
-        const modelConfigs = modelConfigsResult.data;
-        
-        // Get token limits for the adjudicator model
-        const adjudicatorModelConfig = modelConfigs?.find(m => 
-          m.provider === adjudicatorConfigs?.provider && 
-          m.model === adjudicatorConfigs?.model
-        );
-        
-        const adjudicatorMaxTokens = adjudicatorModelConfig?.output_token_limit || 4096;
-        
-        console.log(`[ADJUDICATOR] Model: ${adjudicatorConfigs?.provider}/${adjudicatorConfigs?.model}, Max Tokens: ${adjudicatorMaxTokens}`);
-        console.log(`[ADJUDICATOR] Model config:`, adjudicatorModelConfig);
-        console.log(`[ADJUDICATOR] Adjudicator configs:`, adjudicatorConfigs);
 
         // Prepare comments for adjudication
         const adjudicationComments = needsAdjudication.map((c: any) => ({
@@ -360,9 +335,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             adjudicatorConfig: {
               provider: adjudicatorConfigs?.provider || 'openai',
               model: adjudicatorConfigs?.model || 'gpt-4o-mini',
-              prompt: adjudicatorConfigs?.analysis_prompt || 'You are an AI adjudicator resolving disagreements between two AI scanners.',
-              max_tokens: adjudicatorMaxTokens,
-              temperature: adjudicatorConfigs?.temperature || 0.0
+              prompt: adjudicatorConfigs?.analysis_prompt || 'You are an AI adjudicator resolving disagreements between two AI scanners.'
             },
             scanRunId
           }
@@ -429,8 +402,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         setScanProgress(70);
         toast.info(`Phase 3: Post-processing ${commentsToProcess.length} flagged comments (identifiable)...`);
         
-        // Get AI configuration and model configuration for post-processing
-        // First get AI config to determine provider/model
+        // Get AI configuration for post-processing
         const { data: aiConfigs, error: configError } = await supabase
           .from('ai_configurations')
           .select('*')
@@ -441,25 +413,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           console.warn('Failed to fetch AI configuration, using defaults');
         }
         
-        // Then get model config using the provider/model from AI config
-        const { data: modelConfig, error: modelError } = await supabase
-          .from('model_configurations')
-          .select('*')
-          .eq('provider', aiConfigs?.provider || 'openai')
-          .eq('model', aiConfigs?.model || 'gpt-4o-mini')
-          .single();
-        
-        if (modelError) {
-          console.warn('Failed to fetch model configuration, using defaults');
-        }
-        
-        const maxTokens = modelConfig?.output_token_limit || 4096;
-        
-        console.log(`[POSTPROCESS] Model config result:`, modelConfig);
-        console.log(`[POSTPROCESS] Model config data:`, modelConfig);
-        console.log(`[POSTPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
-        console.log(`[POSTPROCESS] AI configs:`, aiConfigs);
-        console.log(`[BATCH] Using dynamic batch sizing based on token limits and I/O ratios`);
+        console.log(`[BATCH] AI Config preferred_batch_size: ${aiConfigs?.preferred_batch_size || 'not set (using default 10)'}`);
         
         const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
           body: {
@@ -479,8 +433,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               model: aiConfigs?.model || 'gpt-4o-mini',
               redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
               rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
-              temperature: aiConfigs?.temperature || 0.0,
-              max_tokens: maxTokens
+              
+              preferred_batch_size: aiConfigs?.preferred_batch_size || 10
             },
             defaultMode,
             scanRunId
@@ -735,41 +689,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     }
     
     try {
-      // First get AI config to determine provider/model
-      const { data: aiConfigData, error: configError } = await supabase
+      // Get AI configuration for post-processing
+      const { data: aiConfigData } = await supabase
         .from('ai_configurations')
         .select('*')
         .eq('scanner_type', 'scan_a')
         .single();
-      
-      if (configError) {
-        console.warn('Failed to fetch AI configuration, using defaults');
-      }
-      
-      // Then get model config using the provider/model from AI config
-      const { data: modelConfig, error: modelError } = await supabase
-        .from('model_configurations')
-        .select('*')
-        .eq('provider', aiConfigData?.provider || 'openai')
-        .eq('model', aiConfigData?.model || 'gpt-4o-mini')
-        .single();
-      
-      if (modelError) {
-        console.warn('Failed to fetch model configuration, using defaults');
-      }
-      
-      const maxTokens = modelConfig?.output_token_limit || 4096;
-
-                  console.log(`[REPROCESS] Model config result:`, modelConfig);
-            console.log(`[REPROCESS] Model config data:`, modelConfig);
-            console.log(`[REPROCESS] Using max_tokens: ${maxTokens} from model config:`, modelConfig);
-            console.log(`[REPROCESS] AI config data:`, aiConfigData);
 
       const aiConfig = aiConfigData || {
         provider: 'openai',
         model: 'gpt-4o-mini',
         redact_prompt: 'Redact any personally identifiable information from this text while preserving the meaning.',
         rephrase_prompt: 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
+        
       };
 
       // Call post-process-comments directly since we already have scan results
@@ -784,7 +716,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             model: aiConfigData?.model || 'gpt-4o-mini',
             redact_prompt: aiConfigData?.redact_prompt || 'Redact any personally identifiable information from this text while preserving the meaning.',
             rephrase_prompt: aiConfigData?.rephrase_prompt || 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
-            max_tokens: maxTokens
+            
+            preferred_batch_size: aiConfigData?.preferred_batch_size || 10
           },
           defaultMode: mode,
           scanRunId: `reprocess-${Date.now()}`
