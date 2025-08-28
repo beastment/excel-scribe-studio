@@ -349,13 +349,17 @@ serve(async (req) => {
       return Math.max(1, batchSize); // Always return at least 1
     };
     
+    // Get safety margin from configuration (default to 15% if not set)
+    const safetyMarginPercent = scanA.safety_margin_percent || 15;
+    
     // Calculate optimal batch sizes for both scans
     const scanABatchSize = calculateOptimalBatchSize(
       'scan_a',
       inputComments,
       scanA.analysis_prompt,
       ioRatios.scan_a_io_ratio,
-      scanATokenLimits
+      scanATokenLimits,
+      safetyMarginPercent
     );
     
     const scanBBatchSize = calculateOptimalBatchSize(
@@ -363,7 +367,8 @@ serve(async (req) => {
       inputComments,
       scanB.analysis_prompt,
       ioRatios.scan_b_io_ratio,
-      scanBTokenLimits
+      scanBTokenLimits,
+      safetyMarginPercent
     );
     
     // Use the smaller batch size to ensure both scans can process the same batches
@@ -375,6 +380,7 @@ serve(async (req) => {
     console.log(`  Final batch size: ${finalBatchSize}`);
     console.log(`[BATCH SIZING] Dataset size: ${inputComments.length} comments`);
     console.log(`[BATCH SIZING] Estimated batches: ${Math.ceil(inputComments.length / finalBatchSize)}`);
+    console.log(`[BATCH SIZING] Safety margin: ${safetyMarginPercent}%`);
     
     // Log token estimates for the first batch
     if (inputComments.length > 0) {

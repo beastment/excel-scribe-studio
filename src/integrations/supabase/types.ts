@@ -33,6 +33,7 @@ export type Database = {
           redaction_io_ratio: number | null
           rephrase_io_ratio: number | null
           temperature: number | null
+          safety_margin_percent: number | null
         }
         Insert: {
           analysis_prompt: string
@@ -52,6 +53,7 @@ export type Database = {
           redaction_io_ratio?: number | null
           rephrase_io_ratio?: number | null
           temperature?: number | null
+          safety_margin_percent?: number | null
         }
         Update: {
           analysis_prompt?: string
@@ -71,6 +73,7 @@ export type Database = {
           redaction_io_ratio?: number | null
           rephrase_io_ratio?: number | null
           temperature?: number | null
+          safety_margin_percent?: number | null
         }
         Relationships: []
       }

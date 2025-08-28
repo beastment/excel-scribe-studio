@@ -28,6 +28,7 @@ interface AIConfiguration {
   redaction_io_ratio?: number;
   rephrase_io_ratio?: number;
   temperature?: number;
+  safety_margin_percent?: number;
 }
 
 const PROVIDERS = [
@@ -217,6 +218,7 @@ export const AIConfigurationManagement = () => {
         redaction_io_ratio: config.redaction_io_ratio,
         rephrase_io_ratio: config.rephrase_io_ratio,
         temperature: config.temperature,
+        safety_margin_percent: config.safety_margin_percent,
         updated_at: new Date().toISOString(),
       };
       
@@ -472,87 +474,9 @@ export const AIConfigurationManagement = () => {
         </div>
 
         {/* I/O Ratio Fields - only show for scan_a since these are application-wide settings */}
-        {scannerConfig.type === 'scan_a' && (
-          <div className="space-y-4 border-t pt-4">
-            <h4 className="text-sm font-medium text-muted-foreground">Dynamic Batch Sizing I/O Ratios</h4>
-            <p className="text-xs text-muted-foreground">
-              These ratios estimate the relationship between input and output tokens for each phase.
-              Used to calculate optimal batch sizes that fit within token limits.
-            </p>
+
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="scan-a-io-ratio">Scan A I/O Ratio</Label>
-                <Input
-                  id="scan-a-io-ratio"
-                  type="number"
-                  step="0.01"
-                  value={config.scan_a_io_ratio || ''}
-                  onChange={(e) => updateConfig(scannerConfig.type, { scan_a_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
-                  placeholder="1.00"
-                  min="0.1"
-                  max="10.0"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="scan-b-io-ratio">Scan B I/O Ratio</Label>
-                <Input
-                  id="scan-b-io-ratio"
-                  type="number"
-                  step="0.01"
-                  value={config.scan_b_io_ratio || ''}
-                  onChange={(e) => updateConfig(scannerConfig.type, { scan_b_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
-                  placeholder="0.90"
-                  min="0.1"
-                  max="10.0"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="adjudicator-io-ratio">Adjudicator I/O Ratio</Label>
-                <Input
-                  id="adjudicator-io-ratio"
-                  type="number"
-                  step="0.01"
-                  value={config.adjudicator_io_ratio || ''}
-                  onChange={(e) => updateConfig(scannerConfig.type, { adjudicator_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
-                  placeholder="6.20"
-                  min="0.1"
-                  max="10.0"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="redaction-io-ratio">Redaction I/O Ratio</Label>
-                <Input
-                  id="redaction-io-ratio"
-                  type="number"
-                  step="0.01"
-                  value={config.redaction_io_ratio || ''}
-                  onChange={(e) => updateConfig(scannerConfig.type, { redaction_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
-                  placeholder="1.70"
-                  min="0.1"
-                  max="10.0"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="rephrase-io-ratio">Rephrase I/O Ratio</Label>
-                <Input
-                  id="rephrase-io-ratio"
-                  type="number"
-                  step="0.01"
-                  value={config.rephrase_io_ratio || ''}
-                  onChange={(e) => updateConfig(scannerConfig.type, { rephrase_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
-                  placeholder="2.30"
-                  min="0.1"
-                  max="10.0"
-                />
-              </div>
-            </div>
-          </div>
-        )}
+
 
         <div className="space-y-2">
           <Label htmlFor={`analysis_prompt-${scannerConfig.type}`}>Analysis Prompt</Label>
@@ -629,6 +553,121 @@ export const AIConfigurationManagement = () => {
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {/* Batch Sizing Configuration - Application-wide settings */}
+        <div className="space-y-6 mb-6 p-4 bg-muted/50 rounded-lg">
+          <div>
+            <h4 className="font-medium mb-2">Batch Sizing Configuration</h4>
+            <p className="text-sm text-muted-foreground mb-4">
+              These settings control how the system calculates optimal batch sizes for AI processing.
+              I/O ratios estimate the relationship between input and output tokens for each phase.
+              Safety margin provides a buffer to prevent hitting token limits.
+            </p>
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="scan-a-io-ratio">Scan A I/O Ratio</Label>
+                <Input
+                  id="scan-a-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={configs.scan_a?.scan_a_io_ratio || ''}
+                  onChange={(e) => updateConfig('scan_a', { scan_a_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="1.00"
+                  min="0.1"
+                  max="10.0"
+                />
+                <p className="text-xs text-muted-foreground">Expected ratio for Scan A phase</p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="scan-b-io-ratio">Scan B I/O Ratio</Label>
+                <Input
+                  id="scan-b-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={configs.scan_a?.scan_b_io_ratio || ''}
+                  onChange={(e) => updateConfig('scan_a', { scan_b_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="0.90"
+                  min="0.1"
+                  max="10.0"
+                />
+                <p className="text-xs text-muted-foreground">Expected ratio for Scan B phase</p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="adjudicator-io-ratio">Adjudicator I/O Ratio</Label>
+                <Input
+                  id="adjudicator-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={configs.scan_a?.adjudicator_io_ratio || ''}
+                  onChange={(e) => updateConfig('scan_a', { adjudicator_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="6.20"
+                  min="0.1"
+                  max="10.0"
+                />
+                <p className="text-xs text-muted-foreground">Expected ratio for Adjudicator phase</p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="redaction-io-ratio">Redaction I/O Ratio</Label>
+                <Input
+                  id="redaction-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={configs.scan_a?.redaction_io_ratio || ''}
+                  onChange={(e) => updateConfig('scan_a', { redaction_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="1.70"
+                  min="0.1"
+                  max="10.0"
+                />
+                <p className="text-xs text-muted-foreground">Expected ratio for Redaction phase</p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="rephrase-io-ratio">Rephrase I/O Ratio</Label>
+                <Input
+                  id="rephrase-io-ratio"
+                  type="number"
+                  step="0.01"
+                  value={configs.scan_a?.rephrase_io_ratio || ''}
+                  onChange={(e) => updateConfig('scan_a', { rephrase_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="2.30"
+                  min="0.1"
+                  max="10.0"
+                />
+                <p className="text-xs text-muted-foreground">Expected ratio for Rephrase phase</p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="safety-margin-percent">Safety Margin (%)</Label>
+                <Input
+                  id="safety-margin-percent"
+                  type="number"
+                  step="1"
+                  value={configs.scan_a?.safety_margin_percent || ''}
+                  onChange={(e) => updateConfig('scan_a', { safety_margin_percent: e.target.value ? parseInt(e.target.value) : undefined })}
+                  placeholder="15"
+                  min="5"
+                  max="50"
+                />
+                <p className="text-xs text-muted-foreground">Buffer percentage to prevent token limit overruns</p>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 pt-4">
+              <Button onClick={() => handleSave('scan_a')} disabled={saving} size="sm">
+                <Save className="w-4 h-4 mr-2" />
+                {saving ? 'Saving...' : 'Save Batch Sizing'}
+              </Button>
+              <Button variant="outline" onClick={() => handleReset('scan_a')} size="sm">
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Reset
+              </Button>
+            </div>
+          </div>
+        </div>
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             {SCANNER_CONFIGS.map((scannerConfig) => (
