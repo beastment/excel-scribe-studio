@@ -316,11 +316,10 @@ serve(async (req) => {
 
     // Fetch the actual AI configuration to get correct token limits
     const { data: aiConfigs, error: aiConfigError } = await supabase
-      .from('ai_configurations')
+      .from('model_configurations')
       .select('*')
       .eq('provider', scanConfig.provider)
       .eq('model', scanConfig.model)
-      .eq('scanner_type', 'scan_a') // Use scan_a config as reference
       .single();
 
     if (aiConfigError) {

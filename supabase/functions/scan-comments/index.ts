@@ -1326,7 +1326,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     const bedrockPayload = {
       anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 4096,  // Claude 3 Haiku maximum
+      max_tokens: payload.max_tokens,  // Use actual AI configuration value
       system: systemMessage,
       messages: [
         {
@@ -1343,6 +1343,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     console.log(`[BEDROCK] Request timestamp: ${date.toISOString()}, AMZ date: ${amzDate}`);
     
     console.log(`[BEDROCK] Request payload:`, JSON.stringify(bedrockPayload, null, 2));
+    console.log(`[BEDROCK] Using max_tokens: ${bedrockPayload.max_tokens}, temperature: ${bedrockPayload.temperature}`);
     
     // Create signature using raw endpoint (without encoding) for canonical request
     const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
