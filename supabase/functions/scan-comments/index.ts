@@ -524,15 +524,18 @@ serve(async (req) => {
         console.error(`[ERROR] Scan B response preview: ${scanBResults.substring(0, 500)}...`);
       }
 
-      // CRITICAL FIX: Skip processing if we don't have complete results
+      // CRITICAL FIX: Log incomplete results but continue processing
       if (scanAResultsArray.length !== batch.length || scanBResultsArray.length !== batch.length) {
-        console.error(`[ERROR] Incomplete batch results - skipping batch ${currentBatchStart + 1}-${batchEnd}`);
+        console.error(`[ERROR] Incomplete batch results detected for batch ${currentBatchStart + 1}-${batchEnd}`);
         console.error(`[ERROR] Expected ${batch.length} results, got Scan A: ${scanAResultsArray.length}, Scan B: ${scanBResultsArray.length}`);
-        continue; // Skip this batch and move to the next
+        console.warn(`[WARNING] Continuing with padded results - missing items will be filled with defaults`);
       }
 
       // Process each comment in this batch
-      for (let i = 0; i < batch.length; i++) {
+      const maxResults = Math.max(scanAResultsArray.length, scanBResultsArray.length);
+      console.log(`[BATCH_DEBUG] Processing batch ${currentBatchStart + 1}-${batchEnd}: batch.length=${batch.length}, maxResults=${maxResults}`);
+      
+      for (let i = 0; i < maxResults && i < batch.length; i++) {
         const comment = batch[i];
         const scanAResult = scanAResultsArray[i];
         const scanBResult = scanBResultsArray[i];
@@ -605,11 +608,24 @@ serve(async (req) => {
         allScannedComments.push(processedComment);
       }
       
-      console.log(`[BATCH] Completed batch ${currentBatchStart + 1}-${batchEnd}, processed ${batch.length} comments`);
+      console.log(`[BATCH] Completed batch ${currentBatchStart + 1}-${batchEnd}, processed ${Math.min(maxResults, batch.length)} comments`);
+      console.log(`[BATCH] Results: Scan A: ${scanAResultsArray.length}, Scan B: ${scanBResultsArray.length}, Batch: ${batch.length}`);
+      console.log(`[BATCH] Total comments processed so far: ${allScannedComments.length}/${inputComments.length}`);
     }
       
       totalSummary.total = allScannedComments.length;
-    console.log(`Successfully scanned ALL ${allScannedComments.length} comments across ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
+    console.log(`Successfully scanned ${allScannedComments.length}/${inputComments.length} comments across ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
+    
+    // Log detailed breakdown of what was processed
+    if (allScannedComments.length < inputComments.length) {
+      console.warn(`[WARNING] Missing ${inputComments.length - allScannedComments.length} comments!`);
+      console.warn(`[WARNING] This suggests some batches were not fully processed`);
+      
+      // Log the range of comments we have
+      const firstCommentIndex = allScannedComments[0]?.originalRow || 1;
+      const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || allScannedComments.length;
+      console.warn(`[WARNING] Comment range: ${firstCommentIndex} to ${lastCommentIndex}`);
+    }
     
     const totalRunTimeMs = Date.now() - overallStartTime;
     
