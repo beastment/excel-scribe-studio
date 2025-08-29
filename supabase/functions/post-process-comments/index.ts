@@ -75,32 +75,34 @@ function enforceRedactionPolicy(text: string | null | undefined): string | null 
 }
 
 // AI calling function (simplified version for post-processing)
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger) {
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger, temperature?: number) {
   const payload = {
     messages: [
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: 0,
+    temperature: temperature || 0,
     max_tokens: maxTokens || 4096
   };
 
-  // Log the AI request if logger is provided
-  if (aiLogger && userId && scanRunId && phase) {
-    await aiLogger.logRequest({
-      userId,
-      scanRunId,
-      functionName: 'post-process-comments',
-      provider,
-      model,
-      requestType: responseType,
-      phase,
-      requestPrompt: prompt,
-      requestInput: input,
-      requestTemperature: 0,
-      requestMaxTokens: maxTokens || 4096
-    });
-  }
+  console.log(`[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 4096}, temperature=${temperature || 0}`);
+
+        // Log the AI request if logger is provided
+      if (aiLogger && userId && scanRunId && phase) {
+        await aiLogger.logRequest({
+          userId,
+          scanRunId,
+          functionName: 'post-process-comments',
+          provider,
+          model,
+          requestType: responseType,
+          phase,
+          requestPrompt: prompt,
+          requestInput: input,
+          requestTemperature: temperature || 0,
+          requestMaxTokens: maxTokens || 4096
+        });
+      }
 
   if (provider === 'azure') {
     const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -312,6 +314,30 @@ serve(async (req) => {
 
     console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
 
+    // Fetch the actual AI configuration to get correct token limits
+    const { data: aiConfigs, error: aiConfigError } = await supabase
+      .from('ai_configurations')
+      .select('*')
+      .eq('provider', scanConfig.provider)
+      .eq('model', scanConfig.model)
+      .eq('scanner_type', 'scan_a') // Use scan_a config as reference
+      .single();
+
+    if (aiConfigError) {
+      console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch AI config, using defaults:`, aiConfigError.message);
+    } else {
+      console.log(`${logPrefix} [POSTPROCESS] Fetched AI config: max_tokens=${aiConfigs?.max_tokens}, temperature=${aiConfigs?.temperature}`);
+    }
+
+    // Merge scanConfig with actual AI configuration
+    const effectiveConfig = {
+      ...scanConfig,
+      max_tokens: aiConfigs?.max_tokens || scanConfig.max_tokens || 4096,
+      temperature: aiConfigs?.temperature || scanConfig.temperature || 0
+    };
+
+    console.log(`${logPrefix} [POSTPROCESS] Effective config: max_tokens=${effectiveConfig.max_tokens}, temperature=${effectiveConfig.temperature}`);
+
     // Filter comments that need post-processing
     const flaggedComments = comments.filter(c => c.concerning || c.identifiable)
     const needsProcessing = flaggedComments.length > 0
@@ -359,10 +385,10 @@ serve(async (req) => {
         const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt + REDACTION_POLICY, chunk.length);
         const rephrasePrompt = buildBatchTextPrompt(scanConfig.rephrase_prompt, chunk.length);
         
-        console.log(`${logPrefix} [AI REQUEST] ${scanConfig.provider}/${scanConfig.model} type=batch_text phase=redaction`);
+        console.log(`${logPrefix} [AI REQUEST] ${effectiveConfig.provider}/${effectiveConfig.model} type=batch_text phase=redaction`);
         console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
-          provider: scanConfig.provider,
-          model: scanConfig.model,
+          provider: effectiveConfig.provider,
+          model: effectiveConfig.model,
           prompt_length: redactPrompt.length,
           input_length: sentinelInput.length,
           chunk_size: chunk.length
@@ -374,28 +400,30 @@ serve(async (req) => {
         
         const [rawRedacted, rawRephrased] = await Promise.all([
           callAI(
-            scanConfig.provider,
-            scanConfig.model,
+            effectiveConfig.provider,
+            effectiveConfig.model,
             redactPrompt,
             sentinelInput,
             'batch_text',
-            getEffectiveMaxTokens(scanConfig),
+            getEffectiveMaxTokens(effectiveConfig),
             user.id,
             scanRunId,
             'redaction',
-            aiLogger
+            aiLogger,
+            effectiveConfig.temperature
           ),
           callAI(
-            scanConfig.provider,
-            scanConfig.model,
+            effectiveConfig.provider,
+            effectiveConfig.model,
             rephrasePrompt,
             sentinelInput,
             'batch_text',
-            getEffectiveMaxTokens(scanConfig),
+            getEffectiveMaxTokens(effectiveConfig),
             user.id,
             scanRunId,
             'rephrase',
-            aiLogger
+            aiLogger,
+            effectiveConfig.temperature
           )
         ]);
         
