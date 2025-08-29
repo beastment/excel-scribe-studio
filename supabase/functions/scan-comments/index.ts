@@ -500,16 +500,16 @@ serve(async (req) => {
 
             // Process batch with Scan A and Scan B in parallel
       const [scanAResults, scanBResults] = await Promise.all([
-        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
-        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch, currentBatchStart + 1), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch, currentBatchStart + 1), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
       ]);
 
       console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
       console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
 
       // Parse and validate results
-      const scanAResultsArray = parseBatchResults(scanAResults, batch.length, 'Scan A');
-      const scanBResultsArray = parseBatchResults(scanBResults, batch.length, 'Scan B');
+      const scanAResultsArray = parseBatchResults(scanAResults, batch.length, 'Scan A', currentBatchStart + 1);
+      const scanBResultsArray = parseBatchResults(scanBResults, batch.length, 'Scan B', currentBatchStart + 1);
 
       // CRITICAL FIX: Validate that we got complete results for all comments
       if (scanAResultsArray.length !== batch.length) {
@@ -536,10 +536,19 @@ serve(async (req) => {
         const comment = batch[i];
         const scanAResult = scanAResultsArray[i];
         const scanBResult = scanBResultsArray[i];
+        const expectedIndex = currentBatchStart + i + 1;
 
         if (!scanAResult || !scanBResult) {
-          console.warn(`Missing scan results for comment ${currentBatchStart + i + 1}, skipping`);
+          console.warn(`Missing scan results for comment ${expectedIndex}, skipping`);
           continue;
+        }
+
+        // Validate that the AI returned the correct index
+        if (scanAResult.index !== expectedIndex) {
+          console.warn(`[WARNING] Scan A returned index ${scanAResult.index} for comment ${expectedIndex}`);
+        }
+        if (scanBResult.index !== expectedIndex) {
+          console.warn(`[WARNING] Scan B returned index ${scanBResult.index} for comment ${expectedIndex}`);
         }
 
         // Determine if adjudication is needed
@@ -718,11 +727,11 @@ serve(async (req) => {
 });
 
 // Utility functions
-function buildBatchInput(comments: any[]): string {
+function buildBatchInput(comments: any[], globalStartIndex: number): string {
   const items = comments.map((comment, i) => 
-    `<<<ITEM ${i + 1}>>>
+    `<<<ITEM ${globalStartIndex + i}>>>
 ${comment.originalText || comment.text}
-<<<END ${i + 1}>>>`
+<<<END ${globalStartIndex + i}>>>`
   ).join('\n\n');
   
   return `Comments to analyze (each bounded by sentinels):
@@ -730,7 +739,7 @@ ${comment.originalText || comment.text}
 ${items}`;
 }
 
-function parseBatchResults(response: any, expectedCount: number, source: string): any[] {
+function parseBatchResults(response: any, expectedCount: number, source: string, globalStartIndex: number): any[] {
   try {
     console.log(`${source}: parseBatchResults called with expectedCount: ${expectedCount}`);
     console.log(`${source}: Response type: ${typeof response}`);
@@ -1138,7 +1147,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
         const existingResult = parsed[i];
         if (existingResult) {
           paddedResults.push({
-            index: existingResult.index || i + 1,
+            index: existingResult.index || (globalStartIndex + i),
             concerning: Boolean(existingResult.concerning),
             identifiable: Boolean(existingResult.identifiable),
             reasoning: String(existingResult.reasoning || 'No reasoning provided')
@@ -1146,7 +1155,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
         } else {
           // Add default result for missing item
           paddedResults.push({
-            index: i + 1,
+            index: globalStartIndex + i,
             concerning: false,
             identifiable: false,
             reasoning: `No analysis provided by ${source} for this comment`
