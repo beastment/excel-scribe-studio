@@ -11,6 +11,8 @@ interface AdjudicationRequest {
   comments: Array<{
     id: string;
     originalText: string;
+    originalRow?: number; // Add originalRow for proper ID tracking
+    scannedIndex?: number; // Add scannedIndex for proper ID tracking
     scanAResult: {
       concerning: boolean;
       identifiable: boolean;
@@ -156,13 +158,16 @@ CRITICAL: Return ONLY the JSON array, no prose, no code fences, no explanations 
 // Build adjudication input
 function buildAdjudicationInput(comments: AdjudicationRequest['comments']): string {
   const items = comments.map((comment, i) => {
+    // Use the same ID system as scan-comments: originalRow if available, otherwise scannedIndex, fallback to i+1
+    const itemId = comment.originalRow || comment.scannedIndex || (i + 1);
+    
     const concerningStatus = comment.agreements.concerning === null ? 'No agreement' : 
       comment.agreements.concerning ? 'Both agree true' : 'Both agree false';
     const identifiableStatus = comment.agreements.identifiable === null ? 'No agreement' : 
       comment.agreements.identifiable ? 'Both agree true' : 
       comment.agreements.identifiable === false ? 'Both agree false' : 'Disagree';
     
-    return `<<<ITEM ${i + 1}>>>
+    return `<<<ITEM ${itemId}>>>
 Original Text: ${comment.originalText}
 
 Scan A (${comment.scanAResult.model}):
@@ -179,7 +184,7 @@ Agreements:
 - Concerning: ${concerningStatus}
 - Identifiable: ${identifiableStatus}
 
-<<<END ${i + 1}>>>`;
+<<<END ${itemId}>>>`;
   }).join('\n\n');
 
   return `Comments to adjudicate (each bounded by sentinels):

@@ -322,6 +322,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         const adjudicationComments = needsAdjudication.map((c: any) => ({
           id: c.id,
           originalText: c.originalText || c.text,
+          originalRow: c.originalRow, // Preserve original row number for proper ID tracking
+          scannedIndex: c.scannedIndex, // Preserve scanned index for proper ID tracking
           scanAResult: c.adjudicationData.scanAResult,
           scanBResult: c.adjudicationData.scanBResult,
           agreements: c.adjudicationData.agreements
@@ -419,6 +421,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           body: {
             comments: commentsToProcess.map((c: any) => ({
               id: c.id,
+              originalRow: c.originalRow, // Preserve original row number for proper ID tracking
               scannedIndex: c.scannedIndex,
               originalText: c.originalText || c.text,
               text: c.text,

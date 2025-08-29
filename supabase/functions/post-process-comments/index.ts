@@ -49,8 +49,18 @@ const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string =
   return `${basePrompt}\n\n${sentinels}`;
 };
 
-const buildSentinelInput = (texts: string[]): string => {
-  return `Comments to analyze (each bounded by sentinels):\n\n${texts.map((t, i) => `<<<ITEM ${i + 1}>>>\n${t}\n<<<END ${i + 1}>>>`).join('\n\n')}`;
+const buildSentinelInput = (texts: string[], comments?: any[]): string => {
+  if (comments && comments.length > 0) {
+    // Use the same ID system as scan-comments: originalRow if available, otherwise scannedIndex, fallback to i+1
+    return `Comments to analyze (each bounded by sentinels):\n\n${texts.map((t, i) => {
+      const comment = comments[i];
+      const itemId = comment?.originalRow || comment?.scannedIndex || (i + 1);
+      return `<<<ITEM ${itemId}>>>\n${t}\n<<<END ${itemId}>>>`;
+    }).join('\n\n')}`;
+  } else {
+    // Fallback to sequential numbering if no comment objects provided
+    return `Comments to analyze (each bounded by sentinels):\n\n${texts.map((t, i) => `<<<ITEM ${i + 1}>>>\n${t}\n<<<END ${i + 1}>>>`).join('\n\n')}`;
+  }
 };
 
 // Deterministic redaction enforcement to catch items models may miss
@@ -227,6 +237,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
 interface PostProcessRequest {
   comments: Array<{
     id: string;
+    originalRow?: number; // Add originalRow for proper ID tracking
     scannedIndex?: number; // Add scannedIndex for proper lookup
     originalText: string;
     text: string;
@@ -251,6 +262,7 @@ interface PostProcessResponse {
   success: boolean;
   processedComments: Array<{
     id: string;
+    originalRow?: number; // Preserve originalRow for proper ID tracking
     scannedIndex?: number; // Preserve scannedIndex for proper lookup
     redactedText?: string;
     rephrasedText?: string;
@@ -381,7 +393,7 @@ serve(async (req) => {
       for (const chunk of chunks) {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
         const chunkTexts = chunk.map(c => c.originalText || c.text);
-        const sentinelInput = buildSentinelInput(chunkTexts);
+        const sentinelInput = buildSentinelInput(chunkTexts, chunk);
         
         // Process redaction and rephrasing in parallel for each chunk
         const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt + REDACTION_POLICY, chunk.length);
@@ -478,7 +490,16 @@ serve(async (req) => {
           const byId = (list: { idx: number|null; text: string }[]) => {
             const out: string[] = Array(expected).fill('');
             for (const it of list) {
-              if (it.idx && it.idx >= 1 && it.idx <= expected) out[it.idx - 1] = it.text;
+              if (it.idx) {
+                // Find the comment in the chunk that matches this ID
+                const commentIndex = chunk.findIndex(c => 
+                  (c.originalRow && c.originalRow === it.idx) || 
+                  (c.scannedIndex && c.scannedIndex === it.idx)
+                );
+                if (commentIndex >= 0 && commentIndex < expected) {
+                  out[commentIndex] = it.text;
+                }
+              }
             }
             return out;
           };
@@ -521,6 +542,7 @@ serve(async (req) => {
 
           processedComments.push({
             id: comment.id,
+            originalRow: comment.originalRow, // Preserve originalRow for proper ID tracking
             scannedIndex: comment.scannedIndex, // Preserve scannedIndex
             redactedText,
             rephrasedText,
@@ -558,6 +580,8 @@ serve(async (req) => {
 
         processedComments.push({
           id: comment.id,
+          originalRow: comment.originalRow, // Preserve originalRow for proper ID tracking
+          scannedIndex: comment.scannedIndex, // Preserve scannedIndex for proper lookup
           redactedText,
           rephrasedText,
           finalText,
@@ -571,6 +595,8 @@ serve(async (req) => {
     for (const comment of unprocessedComments) {
       processedComments.push({
         id: comment.id,
+        originalRow: comment.originalRow, // Preserve originalRow for proper ID tracking
+        scannedIndex: comment.scannedIndex, // Preserve scannedIndex for proper lookup
         finalText: comment.text,
         mode: 'original'
       })
