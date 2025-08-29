@@ -1205,7 +1205,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
   console.log(`[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 8192}, temperature=${temperature || 0}`);
 
-        // Log the AI request if logger is provided
+      // Log the AI request if logger is provided
       if (aiLogger) {
         await aiLogger.logRequest({
           userId,
@@ -1218,7 +1218,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
           requestPrompt: prompt,
           requestInput: input,
           requestTemperature: temperature || 0,
-          requestMaxTokens: maxTokens || 8192
+          requestMaxTokens: maxTokens // Use the actual max_tokens from model_configurations
         });
       }
 

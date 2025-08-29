@@ -320,9 +320,25 @@ serve(async (req) => {
         comment_count: needsAdjudication.length
       }).substring(0, 500)}...`);
 
-             // Initialize AI logger
-       const aiLogger = new AILogger();
-       aiLogger.setFunctionStartTime(overallStartTime);
+      // Fetch the actual AI configuration to get correct token limits
+      const { data: aiConfigs, error: aiConfigError } = await supabase
+        .from('model_configurations')
+        .select('*')
+        .eq('provider', adjudicatorConfig.provider)
+        .eq('model', adjudicatorConfig.model)
+        .single();
+
+      let actualMaxTokens = adjudicatorConfig.max_tokens || 4096;
+      if (aiConfigError) {
+        console.warn(`${logPrefix} [ADJUDICATOR] Warning: Could not fetch AI config, using provided max_tokens:`, aiConfigError.message);
+      } else {
+        actualMaxTokens = aiConfigs?.output_token_limit || adjudicatorConfig.max_tokens || 4096;
+        console.log(`${logPrefix} [ADJUDICATOR] Using max_tokens from model_configurations: ${actualMaxTokens}`);
+      }
+
+      // Initialize AI logger
+      const aiLogger = new AILogger();
+      aiLogger.setFunctionStartTime(overallStartTime);
       
       // Log the AI request
       await aiLogger.logRequest({
@@ -336,7 +352,7 @@ serve(async (req) => {
         requestPrompt: prompt,
         requestInput: input,
         requestTemperature: 0,
-        requestMaxTokens: adjudicatorConfig.max_tokens || 4096
+        requestMaxTokens: actualMaxTokens
       });
       
       // Call AI for adjudication
@@ -345,7 +361,7 @@ serve(async (req) => {
         adjudicatorConfig.model,
         prompt,
         input,
-        adjudicatorConfig.max_tokens,
+        actualMaxTokens,
         user.id,
         runId.toString(),
         aiLogger

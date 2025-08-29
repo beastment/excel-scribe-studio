@@ -101,7 +101,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
           requestPrompt: prompt,
           requestInput: input,
           requestTemperature: temperature || 0,
-          requestMaxTokens: maxTokens || 4096
+          requestMaxTokens: maxTokens // Use the actual max_tokens passed from model_configurations
         });
       }
 
@@ -323,16 +323,18 @@ serve(async (req) => {
       .eq('model', scanConfig.model)
       .single();
 
+    let actualMaxTokens = getEffectiveMaxTokens(scanConfig);
     if (aiConfigError) {
       console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch AI config, using defaults:`, aiConfigError.message);
     } else {
-      console.log(`${logPrefix} [POSTPROCESS] Fetched AI config: max_tokens=${aiConfigs?.max_tokens}, temperature=${aiConfigs?.temperature}`);
+      actualMaxTokens = aiConfigs?.output_token_limit || getEffectiveMaxTokens(scanConfig);
+      console.log(`${logPrefix} [POSTPROCESS] Using max_tokens from model_configurations: ${actualMaxTokens}, temperature=${aiConfigs?.temperature}`);
     }
 
-    // Merge scanConfig with actual AI configuration
+    // Use the actual max_tokens from model_configurations
     const effectiveConfig = {
       ...scanConfig,
-      max_tokens: aiConfigs?.max_tokens || scanConfig.max_tokens || 4096,
+      max_tokens: actualMaxTokens,
       temperature: aiConfigs?.temperature || scanConfig.temperature || 0
     };
 
@@ -405,7 +407,7 @@ serve(async (req) => {
             redactPrompt,
             sentinelInput,
             'batch_text',
-            getEffectiveMaxTokens(effectiveConfig),
+            effectiveConfig.max_tokens,
             user.id,
             scanRunId,
             'redaction',
@@ -418,7 +420,7 @@ serve(async (req) => {
             rephrasePrompt,
             sentinelInput,
             'batch_text',
-            getEffectiveMaxTokens(effectiveConfig),
+            effectiveConfig.max_tokens,
             user.id,
             scanRunId,
             'rephrase',
