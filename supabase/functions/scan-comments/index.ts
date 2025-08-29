@@ -291,31 +291,53 @@ serve(async (req) => {
       tokenLimits: { input_token_limit: number; output_token_limit: number },
       safetyMarginPercent: number = 15
     ) => {
+      console.log(`[BATCH_CALC] ${phase}: Starting batch size calculation`);
+      console.log(`[BATCH_CALC] ${phase}: Input parameters:`, {
+        commentsCount: comments.length,
+        promptLength: prompt.length,
+        ioRatio,
+        inputTokenLimit: tokenLimits.input_token_limit,
+        outputTokenLimit: tokenLimits.output_token_limit,
+        safetyMarginPercent
+      });
+      
       const safetyMultiplier = 1 - (safetyMarginPercent / 100);
+      console.log(`[BATCH_CALC] ${phase}: Safety multiplier: ${safetyMultiplier} (${safetyMarginPercent}% safety margin)`);
       
       // Calculate maximum input tokens we can use
       const maxInputTokens = Math.floor(tokenLimits.input_token_limit * safetyMultiplier);
+      console.log(`[BATCH_CALC] ${phase}: Max input tokens: ${tokenLimits.input_token_limit} × ${safetyMultiplier} = ${maxInputTokens}`);
       
       // Calculate maximum output tokens we can generate
       const maxOutputTokens = Math.floor(tokenLimits.output_token_limit * safetyMultiplier);
+      console.log(`[BATCH_CALC] ${phase}: Max output tokens: ${tokenLimits.output_token_limit} × ${safetyMultiplier} = ${maxOutputTokens}`);
       
       // Calculate the maximum input tokens we can use based on output limits
       const maxInputTokensByOutput = Math.floor(maxOutputTokens / ioRatio);
+      console.log(`[BATCH_CALC] ${phase}: Max input tokens by output: ${maxOutputTokens} ÷ ${ioRatio} = ${maxInputTokensByOutput}`);
       
       // Use the more restrictive limit
       const effectiveMaxInputTokens = Math.min(maxInputTokens, maxInputTokensByOutput);
+      console.log(`[BATCH_CALC] ${phase}: Effective max input tokens: min(${maxInputTokens}, ${maxInputTokensByOutput}) = ${effectiveMaxInputTokens}`);
       
       // Estimate tokens for prompt
       const promptTokens = estimateTokens(prompt);
+      console.log(`[BATCH_CALC] ${phase}: Prompt tokens: ${prompt.length} chars ÷ 4 ≈ ${promptTokens}`);
+      
       const availableTokensForComments = effectiveMaxInputTokens - promptTokens;
+      console.log(`[BATCH_CALC] ${phase}: Available tokens for comments: ${effectiveMaxInputTokens} - ${promptTokens} = ${availableTokensForComments}`);
       
       if (availableTokensForComments <= 0) {
+        console.log(`[BATCH_CALC] ${phase}: No tokens available for comments, returning batch size 1`);
         return 1; // Can only process one comment if prompt is too long
       }
       
       // Calculate how many comments we can fit
       let batchSize = 0;
       let totalTokens = 0;
+      let commentTokenDetails: string[] = [];
+      
+      console.log(`[BATCH_CALC] ${phase}: Starting comment-by-comment token calculation...`);
       
       for (let i = 0; i < comments.length; i++) {
         const comment = comments[i];
@@ -325,10 +347,18 @@ serve(async (req) => {
         if (totalTokens + commentTokens <= availableTokensForComments) {
           totalTokens += commentTokens;
           batchSize++;
+          commentTokenDetails.push(`Comment ${i + 1}: ${commentTokens} tokens (${commentText.length} chars)`);
         } else {
+          console.log(`[BATCH_CALC] ${phase}: Comment ${i + 1} would exceed limit: ${totalTokens} + ${commentTokens} > ${availableTokensForComments}`);
           break;
         }
       }
+      
+      console.log(`[BATCH_CALC] ${phase}: Comment token breakdown:`);
+      commentTokenDetails.forEach(detail => console.log(`[BATCH_CALC] ${phase}:   ${detail}`));
+      console.log(`[BATCH_CALC] ${phase}: Total comment tokens: ${totalTokens}`);
+      console.log(`[BATCH_CALC] ${phase}: Calculated batch size: ${batchSize}`);
+      console.log(`[BATCH_CALC] ${phase}: Calculation complete`);
       
       return Math.max(1, batchSize); // Always return at least 1
     };
@@ -388,6 +418,17 @@ serve(async (req) => {
     // Use the smaller batch size to ensure both scans can process the same batches
     const finalBatchSize = Math.min(scanABatchSize, scanBBatchSize);
     
+    console.log(`[BATCH_SELECTION] Individual batch sizes calculated:`);
+    console.log(`[BATCH_SELECTION]   Scan A: ${scanABatchSize} comments`);
+    console.log(`[BATCH_SELECTION]   Scan B: ${scanBBatchSize} comments`);
+    console.log(`[BATCH_SELECTION] Final batch size: min(${scanABatchSize}, ${scanBBatchSize}) = ${finalBatchSize}`);
+    
+    if (finalBatchSize === scanABatchSize) {
+      console.log(`[BATCH_SELECTION] Scan A batch size is the limiting factor`);
+    } else {
+      console.log(`[BATCH_SELECTION] Scan B batch size is the limiting factor`);
+    }
+    
     console.log(`[BATCH SIZING] Dynamic calculation results:`);
     console.log(`  Scan A optimal: ${scanABatchSize} (I/O ratio: ${ioRatios.scan_a_io_ratio})`);
     console.log(`  Scan B optimal: ${scanBBatchSize} (I/O ratio: ${ioRatios.scan_b_io_ratio})`);
@@ -395,6 +436,8 @@ serve(async (req) => {
     console.log(`[BATCH SIZING] Dataset size: ${inputComments.length} comments`);
     console.log(`[BATCH SIZING] Estimated batches: ${Math.ceil(inputComments.length / finalBatchSize)}`);
     console.log(`[BATCH SIZING] Safety margin: ${safetyMarginPercent}%`);
+    console.log(`[BATCH SIZING] Token limits - Scan A: ${scanATokenLimits.output_token_limit}, Scan B: ${scanBTokenLimits.output_token_limit}`);
+    console.log(`[BATCH SIZING] Conservative batch sizing enabled to prevent truncation`);
     
     // Log token estimates for the first batch
     if (inputComments.length > 0) {
