@@ -497,6 +497,7 @@ serve(async (req) => {
       
       console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize})`);
       console.log(`[TOKENS] Scan A max_tokens: ${scanATokenLimits.output_token_limit}, Scan B max_tokens: ${scanBTokenLimits.output_token_limit}`);
+      console.log(`[TOKENS] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
 
             // Process batch with Scan A and Scan B in parallel
       const [scanAResults, scanBResults] = await Promise.all([
@@ -1191,33 +1192,35 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
   }
 }
 
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger) {
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, userId: string, scanRunId: string, phase: string, aiLogger?: AILogger, maxTokens?: number, temperature?: number) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: 0,
-    max_tokens: 8192  // Increased from 4096 to handle larger responses
+    temperature: temperature || 0,
+    max_tokens: maxTokens || 8192  // Use provided token limit or fallback to 8192
   };
 
-  // Log the AI request if logger is provided
-  if (aiLogger) {
-    await aiLogger.logRequest({
-      userId,
-      scanRunId,
-      functionName: 'scan-comments',
-      provider,
-      model,
-      requestType: responseType,
-      phase,
-      requestPrompt: prompt,
-      requestInput: input,
-      requestTemperature: 0,
-      requestMaxTokens: 8192
-    });
-  }
+  console.log(`[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 8192}, temperature=${temperature || 0}`);
+
+        // Log the AI request if logger is provided
+      if (aiLogger) {
+        await aiLogger.logRequest({
+          userId,
+          scanRunId,
+          functionName: 'scan-comments',
+          provider,
+          model,
+          requestType: responseType,
+          phase,
+          requestPrompt: prompt,
+          requestInput: input,
+          requestTemperature: temperature || 0,
+          requestMaxTokens: maxTokens || 8192
+        });
+      }
 
   if (provider === 'azure') {
     const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
