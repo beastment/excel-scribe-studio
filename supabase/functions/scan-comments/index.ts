@@ -181,24 +181,7 @@ serve(async (req) => {
 
     console.log(`[MODEL_CONFIG] Found ${modelConfigs?.length || 0} model configurations`);
 
-    // Add temperature configuration from model_configurations
-    const scanAModelConfig = modelConfigs?.find(m => m.provider === scanA.provider && m.model === scanA.model);
-    const scanBModelConfig = modelConfigs?.find(m => m.provider === scanB.provider && m.model === scanB.model);
-    
-    // Add temperature to scan configurations
-    if (scanAModelConfig?.temperature !== undefined) {
-      scanA.temperature = scanAModelConfig.temperature;
-    } else {
-      scanA.temperature = 0; // Default temperature
-    }
-    
-    if (scanBModelConfig?.temperature !== undefined) {
-      scanB.temperature = scanBModelConfig.temperature;
-    } else {
-      scanB.temperature = 0; // Default temperature
-    }
-    
-    console.log(`[CONFIG] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
+    // Temperature will be configured when model configs are fetched later
 
     // Check user credits before processing (only for Scan A, unless it's a demo scan)
     const creditsPerComment = 1; // 1 credit per comment for Scan A
@@ -403,7 +386,7 @@ serve(async (req) => {
       return Math.max(1, batchSize); // Always return at least 1
     };
     
-    // Get token limits for the models being used
+    // Get token limits and temperature for the models being used
     const scanAModelConfig = modelConfigs?.find(m => m.provider === scanA.provider && m.model === scanA.model);
     const scanBModelConfig = modelConfigs?.find(m => m.provider === scanB.provider && m.model === scanB.model);
     
@@ -422,6 +405,21 @@ serve(async (req) => {
       console.error(`[ERROR] Available model configs:`, modelConfigs);
       throw new Error(`Max Tokens is not defined for Scan B model (${scanB.provider}/${scanB.model}). Please check the Model Configuration section in your dashboard.`);
     }
+    
+    // Configure temperature for both scans
+    if (scanAModelConfig?.temperature !== undefined) {
+      scanA.temperature = scanAModelConfig.temperature;
+    } else {
+      scanA.temperature = 0; // Default temperature
+    }
+    
+    if (scanBModelConfig?.temperature !== undefined) {
+      scanB.temperature = scanBModelConfig.temperature;
+    } else {
+      scanB.temperature = 0; // Default temperature
+    }
+    
+    console.log(`[CONFIG] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
     
     const scanATokenLimits = {
       input_token_limit: scanAModelConfig?.input_token_limit || 128000,
