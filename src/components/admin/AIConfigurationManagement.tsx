@@ -22,7 +22,7 @@ interface AIConfiguration {
   tpm_limit?: number;
   input_token_limit?: number;
   output_token_limit?: number;
-  preferred_batch_size?: number;
+  temperature?: number;
 }
 
 const PROVIDERS = [
@@ -58,7 +58,13 @@ const SCANNER_CONFIGS = [
 export const AIConfigurationManagement = () => {
   const { toast } = useToast();
   const [configs, setConfigs] = useState<Record<string, AIConfiguration>>({});
-  const [modelLimits, setModelLimits] = useState<Record<string, { rpm_limit?: number; tpm_limit?: number; input_token_limit?: number; output_token_limit?: number }>>({});
+  const [modelLimits, setModelLimits] = useState<Record<string, { 
+    rpm_limit?: number; 
+    tpm_limit?: number; 
+    input_token_limit?: number; 
+    output_token_limit?: number;
+    temperature?: number;
+  }>>({});
   const [batchSizingConfig, setBatchSizingConfig] = useState<{
     scan_a_io_ratio?: number;
     scan_b_io_ratio?: number;
@@ -135,7 +141,7 @@ export const AIConfigurationManagement = () => {
           tpm_limit: config.tpm_limit || undefined,
           input_token_limit: undefined,
           output_token_limit: undefined,
-          preferred_batch_size: config.preferred_batch_size || undefined
+          temperature: config.temperature || undefined
         };
       });
 
@@ -208,6 +214,7 @@ export const AIConfigurationManagement = () => {
           tpm_limit: config.tpm_limit,
           input_token_limit: config.input_token_limit,
           output_token_limit: config.output_token_limit,
+          temperature: config.temperature,
           updated_at: new Date().toISOString(),
         }, {
           onConflict: 'provider,model'
@@ -234,7 +241,6 @@ export const AIConfigurationManagement = () => {
           analysis_prompt: config.analysis_prompt,
           redact_prompt: config.redact_prompt,
           rephrase_prompt: config.rephrase_prompt,
-          preferred_batch_size: config.preferred_batch_size,
           updated_at: new Date().toISOString(),
         });
 
@@ -255,7 +261,8 @@ export const AIConfigurationManagement = () => {
           rpm_limit: config.rpm_limit,
           tpm_limit: config.tpm_limit,
           input_token_limit: config.input_token_limit,
-          output_token_limit: config.output_token_limit
+          output_token_limit: config.output_token_limit,
+          temperature: config.temperature
         }
       }));
 
@@ -269,7 +276,8 @@ export const AIConfigurationManagement = () => {
               rpm_limit: config.rpm_limit,
               tpm_limit: config.tpm_limit,
               input_token_limit: config.input_token_limit,
-              output_token_limit: config.output_token_limit
+              output_token_limit: config.output_token_limit,
+              temperature: config.temperature
             };
           }
         });
@@ -356,7 +364,8 @@ export const AIConfigurationManagement = () => {
             rpm_limit: config.rpm_limit,
             tpm_limit: config.tpm_limit,
             input_token_limit: config.input_token_limit,
-            output_token_limit: config.output_token_limit
+            output_token_limit: config.output_token_limit,
+            temperature: config.temperature
           }
         }));
       }
@@ -387,11 +396,13 @@ export const AIConfigurationManagement = () => {
       updates.tpm_limit = savedLimits.tpm_limit;
       updates.input_token_limit = savedLimits.input_token_limit;
       updates.output_token_limit = savedLimits.output_token_limit;
+      updates.temperature = savedLimits.temperature;
     } else {
       updates.rpm_limit = undefined;
       updates.tpm_limit = undefined;
       updates.input_token_limit = undefined;
       updates.output_token_limit = undefined;
+      updates.temperature = undefined;
     }
 
     updateConfig(scannerType, updates);
@@ -508,15 +519,18 @@ export const AIConfigurationManagement = () => {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`batch-size-${scannerConfig.type}`}>Preferred Batch Size</Label>
+          <Label htmlFor={`temperature-${scannerConfig.type}`}>Temperature</Label>
           <Input
-            id={`batch-size-${scannerConfig.type}`}
+            id={`temperature-${scannerConfig.type}`}
             type="number"
-            value={config.preferred_batch_size || ''}
-            onChange={(e) => updateConfig(scannerConfig.type, { preferred_batch_size: e.target.value ? parseInt(e.target.value) : undefined })}
-            placeholder="Number of comments to process in batch"
-            min="1"
+            value={config.temperature || ''}
+            onChange={(e) => updateConfig(scannerConfig.type, { temperature: e.target.value ? parseFloat(e.target.value) : undefined })}
+            placeholder="0.0 to 1.0"
+            step="0.01"
+            min="0"
+            max="1"
           />
+          <p className="text-xs text-muted-foreground">Controls randomness in AI responses (0 = deterministic, 1 = creative)</p>
         </div>
 
         <div className="space-y-2">

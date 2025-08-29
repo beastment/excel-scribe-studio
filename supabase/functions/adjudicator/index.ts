@@ -57,14 +57,14 @@ interface AdjudicationResponse {
 }
 
 // AI calling function
-async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, scanRunId?: string, aiLogger?: AILogger) {
+async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, scanRunId?: string, aiLogger?: AILogger, temperature?: number) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: 0,
+    temperature: temperature || 0,
     max_tokens: maxTokens || 4096
   };
 
@@ -356,7 +356,7 @@ serve(async (req) => {
         phase: 'adjudication',
         requestPrompt: prompt,
         requestInput: input,
-        requestTemperature: 0,
+        requestTemperature: aiConfigs?.temperature || 0,
         requestMaxTokens: actualMaxTokens
       });
       
@@ -369,7 +369,8 @@ serve(async (req) => {
         actualMaxTokens,
         user.id,
         runId.toString(),
-        aiLogger
+        aiLogger,
+        aiConfigs?.temperature || 0
       );
 
       console.log(`${logPrefix} [AI RESPONSE] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);

@@ -415,7 +415,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           console.warn('Failed to fetch AI configuration, using defaults');
         }
         
-        console.log(`[BATCH] AI Config preferred_batch_size: ${aiConfigs?.preferred_batch_size || 'not set (using default 10)'}`);
+        console.log(`[BATCH] AI Config temperature: ${aiConfigs?.temperature || 'not set (using default 0)'}`);
         
         const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
           body: {
@@ -436,8 +436,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               model: aiConfigs?.model || 'gpt-4o-mini',
               redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
               rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
-              
-              preferred_batch_size: aiConfigs?.preferred_batch_size || 10
             },
             defaultMode,
             scanRunId
@@ -719,8 +717,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             model: aiConfigData?.model || 'gpt-4o-mini',
             redact_prompt: aiConfigData?.redact_prompt || 'Redact any personally identifiable information from this text while preserving the meaning.',
             rephrase_prompt: aiConfigData?.rephrase_prompt || 'Rephrase this text to remove personally identifiable information while preserving the meaning.',
-            
-            preferred_batch_size: aiConfigData?.preferred_batch_size || 10
           },
           defaultMode: mode,
           scanRunId: `reprocess-${Date.now()}`

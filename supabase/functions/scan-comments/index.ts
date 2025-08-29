@@ -181,6 +181,25 @@ serve(async (req) => {
 
     console.log(`[MODEL_CONFIG] Found ${modelConfigs?.length || 0} model configurations`);
 
+    // Add temperature configuration from model_configurations
+    const scanAModelConfig = modelConfigs?.find(m => m.provider === scanA.provider && m.model === scanA.model);
+    const scanBModelConfig = modelConfigs?.find(m => m.provider === scanB.provider && m.model === scanB.model);
+    
+    // Add temperature to scan configurations
+    if (scanAModelConfig?.temperature !== undefined) {
+      scanA.temperature = scanAModelConfig.temperature;
+    } else {
+      scanA.temperature = 0; // Default temperature
+    }
+    
+    if (scanBModelConfig?.temperature !== undefined) {
+      scanB.temperature = scanBModelConfig.temperature;
+    } else {
+      scanB.temperature = 0; // Default temperature
+    }
+    
+    console.log(`[CONFIG] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
+
     // Check user credits before processing (only for Scan A, unless it's a demo scan)
     const creditsPerComment = 1; // 1 credit per comment for Scan A
     

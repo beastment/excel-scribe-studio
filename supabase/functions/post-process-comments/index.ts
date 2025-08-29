@@ -32,17 +32,8 @@ function getEffectiveMaxTokens(config: any): number {
   return 1000;
 }
 
-function getPreferredBatchSize(config: any, fallback: number): number {
-  const candidates = [
-    (config && (config.preferred_batch_size ?? config.preferredBatchSize)),
-    (config && (config.batch_size ?? config.batchSize)),
-  ];
-  for (const c of candidates) {
-    const n = Number(c);
-    if (Number.isFinite(n) && n > 0) return Math.max(1, Math.floor(n));
-  }
-  return fallback;
-}
+// Use a fixed batch size for post-processing since preferred_batch_size is no longer configurable
+const POST_PROCESS_BATCH_SIZE = 10;
 
 const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
   const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ITEM k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.\n- IMPORTANT: The <<<ITEM k>>> prefix is ONLY for identification - do NOT include <<<END k>>> markers anywhere in your output.`;
@@ -385,10 +376,9 @@ serve(async (req) => {
 
     try {
       // Use batch processing for efficiency
-      const preferredBatchSize = getPreferredBatchSize(scanConfig, 10);
-      const chunks = chunkArray(flaggedComments, preferredBatchSize);
+      const chunks = chunkArray(flaggedComments, POST_PROCESS_BATCH_SIZE);
       
-      console.log(`${logPrefix} [POSTPROCESS] Processing ${flaggedComments.length} comments in ${chunks.length} chunks of size ${preferredBatchSize}`);
+      console.log(`${logPrefix} [POSTPROCESS] Processing ${flaggedComments.length} comments in ${chunks.length} chunks of size ${POST_PROCESS_BATCH_SIZE}`);
       
       for (const chunk of chunks) {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
