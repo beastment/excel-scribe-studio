@@ -732,6 +732,12 @@ ${items}`;
 
 function parseBatchResults(response: any, expectedCount: number, source: string): any[] {
   try {
+    console.log(`${source}: parseBatchResults called with expectedCount: ${expectedCount}`);
+    console.log(`${source}: Response type: ${typeof response}`);
+    if (typeof response === 'string') {
+      console.log(`${source}: Response length: ${response.length} characters`);
+    }
+    
     if (!response) {
       throw new Error('Empty response');
     }
@@ -771,7 +777,9 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
     if (!jsonMatch) {
       console.warn(`${source}: No complete JSON array found, attempting to extract partial response`);
       console.log(`${source}: Response length: ${decodedResponse.length} characters`);
+      console.log(`${source}: Expected items: ${expectedCount}`);
       console.log(`${source}: Response preview: ${decodedResponse.substring(0, 200)}...`);
+      console.log(`${source}: Response ending: ...${decodedResponse.substring(decodedResponse.length - 200)}`);
       
       // Look for the start of a JSON array
       const arrayStart = decodedResponse.indexOf('[');
@@ -802,6 +810,19 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
         const completeJson = partialJson.substring(0, lastCompleteObject) + ']';
         console.warn(`${source}: Response was truncated, extracted ${lastCompleteObject} characters of JSON`);
         console.log(`${source}: Extracted JSON preview: ${completeJson.substring(0, 200)}...`);
+        
+        // Count the number of complete objects found
+        let objectCount = 0;
+        let braceCount = 0;
+        for (let i = 0; i < lastCompleteObject; i++) {
+          if (partialJson[i] === '{') braceCount++;
+          if (partialJson[i] === '}') {
+            braceCount--;
+            if (braceCount === 0) objectCount++;
+          }
+        }
+        console.warn(`${source}: Found ${objectCount} complete objects out of ${expectedCount} expected`);
+        console.warn(`${source}: Response was truncated after object ${objectCount}, missing ${expectedCount - objectCount} objects`);
         
         // Validate the extracted JSON before using it
         try {
@@ -915,6 +936,8 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
             if (validObjects.length > 0) {
               const reconstructedJson = '[' + validObjects.join(',') + ']';
               console.warn(`${source}: Reconstructed JSON from ${validObjects.length} valid objects`);
+              console.warn(`${source}: Found ${validObjects.length} complete objects out of ${expectedCount} expected`);
+              console.warn(`${source}: Missing ${expectedCount - validObjects.length} objects due to truncation`);
               console.log(`${source}: First object:`, validObjects[0].substring(0, 200) + '...');
               console.log(`${source}: Last object:`, validObjects[validObjects.length - 1].substring(0, 200) + '...');
               
@@ -944,6 +967,11 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
       
       // Log the original response for debugging
       console.log(`${source}: Original response length: ${cleanedJson.length} characters`);
+      
+      // If we found a complete JSON array, log it
+      if (jsonMatch && jsonMatch[0]) {
+        console.log(`${source}: Found complete JSON array, length: ${jsonMatch[0].length} characters`);
+      }
       
       // More sophisticated JSON cleaning approach
       // First, try to identify and fix the specific issue mentioned in the error
@@ -1037,6 +1065,8 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
           
           if (validObjects.length > 0) {
             console.warn(`${source}: Successfully extracted ${validObjects.length} valid objects from malformed JSON`);
+            console.warn(`${source}: Found ${validObjects.length} complete objects out of ${expectedCount} expected`);
+            console.warn(`${source}: Missing ${expectedCount - validObjects.length} objects due to malformed JSON`);
             return validObjects;
           }
         }
@@ -1078,6 +1108,10 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
         try {
           const manualParsed = JSON.parse(manuallyFixed);
           console.warn(`${source}: Manual JSON repair successful!`);
+          if (Array.isArray(manualParsed)) {
+            console.warn(`${source}: Found ${manualParsed.length} objects after manual repair out of ${expectedCount} expected`);
+            console.warn(`${source}: Missing ${expectedCount - manualParsed.length} objects due to JSON issues`);
+          }
           return manualParsed;
         } catch (manualError) {
           console.error(`${source}: Manual JSON repair failed:`, manualError.message);
@@ -1091,9 +1125,12 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
       throw new Error('Response is not an array');
     }
 
+    console.log(`${source}: Successfully parsed JSON array with ${parsed.length} items`);
+
     // Handle cases where AI returns fewer results than expected
     if (parsed.length < expectedCount) {
       console.warn(`${source}: Expected ${expectedCount} items, got ${parsed.length}. Padding with default results.`);
+      console.warn(`${source}: This suggests the AI response was truncated or incomplete`);
       
       // Create default results for missing items
       const paddedResults = [];
@@ -1117,9 +1154,11 @@ function parseBatchResults(response: any, expectedCount: number, source: string)
         }
       }
       
+      console.log(`${source}: Returning ${paddedResults.length} padded results (${parsed.length} original + ${paddedResults.length - parsed.length} defaults)`);
       return paddedResults;
     }
 
+    console.log(`${source}: Returning ${parsed.length} parsed results (exactly as expected)`);
     return parsed;
   } catch (error) {
     console.error(`${source}: Error in parseBatchResults:`, error);
