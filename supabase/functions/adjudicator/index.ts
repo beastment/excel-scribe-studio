@@ -36,7 +36,7 @@ interface AdjudicationRequest {
   };
   scanRunId?: string;
 }
-
+//
 interface AdjudicationResponse {
   success: boolean;
   adjudicatedComments: Array<{

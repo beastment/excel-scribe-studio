@@ -339,7 +339,7 @@ serve(async (req) => {
       const promptTokens = await getPreciseTokens(prompt, provider, model);
       const promptTime = Date.now() - promptStartTime;
       console.log(`[BATCH_CALC] ${phase}: Prompt tokens: ${prompt.length} chars, precise count: ${promptTokens} (${promptTime}ms)`);
-      
+      //
       const availableTokensForComments = effectiveMaxInputTokens - promptTokens;
       console.log(`[BATCH_CALC] ${phase}: Available tokens for comments: ${effectiveMaxInputTokens} - ${promptTokens} = ${availableTokensForComments}`);
       
