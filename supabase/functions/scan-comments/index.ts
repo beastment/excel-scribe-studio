@@ -355,7 +355,7 @@ serve(async (req) => {
       }
       
       console.log(`[BATCH_CALC] ${phase}: Comment token breakdown:`);
-      commentTokenDetails.forEach(detail => console.log(`[BATCH_CALC] ${phase}:   ${detail}`));
+      // commentTokenDetails.forEach(detail => console.log(`[BATCH_CALC] ${phase}:   ${detail}`));
       console.log(`[BATCH_CALC] ${phase}: Total comment tokens: ${totalTokens}`);
       console.log(`[BATCH_CALC] ${phase}: Calculated batch size: ${batchSize}`);
       console.log(`[BATCH_CALC] ${phase}: Calculation complete`);
