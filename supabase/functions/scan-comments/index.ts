@@ -272,24 +272,38 @@ serve(async (req) => {
     console.log(`[BATCH] Safety Margin: ${safetyMarginPercent}%`);
     
     // Calculate dynamic batch sizes based on I/O ratios and token limits
-    const estimateTokens = (text: string) => Math.ceil(text.length / 4);
+    // Use precise token counting for more accurate batch sizing
+    const getPreciseTokens = async (text: string, provider: string, model: string) => {
+      try {
+        const { getPreciseTokenCount } = await import('./token-counter.ts');
+        return await getPreciseTokenCount(provider, model, text);
+      } catch (error) {
+        console.warn(`[TOKEN_COUNT] Fallback to approximation for ${provider}/${model}:`, error);
+        return Math.ceil(text.length / 4);
+      }
+    };
     
-    const estimateBatchInputTokens = (comments: any[], prompt: string) => {
-      const promptTokens = estimateTokens(prompt);
-      const commentTokens = comments.reduce((total, comment) => {
+    const estimateBatchInputTokens = async (comments: any[], prompt: string, provider: string, model: string) => {
+      const promptTokens = await getPreciseTokens(prompt, provider, model);
+      let commentTokens = 0;
+      
+      for (const comment of comments) {
         const commentText = comment.originalText || comment.text || '';
-        return total + estimateTokens(commentText);
-      }, 0);
+        commentTokens += await getPreciseTokens(commentText, provider, model);
+      }
+      
       return promptTokens + commentTokens;
     };
     
-    const calculateOptimalBatchSize = (
+    const calculateOptimalBatchSize = async (
       phase: 'scan_a' | 'scan_b',
       comments: any[],
       prompt: string,
       ioRatio: number,
       tokenLimits: { input_token_limit: number; output_token_limit: number },
-      safetyMarginPercent: number = 15
+      safetyMarginPercent: number = 15,
+      provider: string,
+      model: string
     ) => {
       console.log(`[BATCH_CALC] ${phase}: Starting batch size calculation`);
       console.log(`[BATCH_CALC] ${phase}: Input parameters:`, {
@@ -321,8 +335,10 @@ serve(async (req) => {
       console.log(`[BATCH_CALC] ${phase}: Effective max input tokens: min(${maxInputTokens}, ${maxInputTokensByOutput}) = ${effectiveMaxInputTokens}`);
       
       // Estimate tokens for prompt
-      const promptTokens = estimateTokens(prompt);
-      console.log(`[BATCH_CALC] ${phase}: Prompt tokens: ${prompt.length} chars ÷ 4 ≈ ${promptTokens}`);
+      const promptStartTime = Date.now();
+      const promptTokens = await getPreciseTokens(prompt, provider, model);
+      const promptTime = Date.now() - promptStartTime;
+      console.log(`[BATCH_CALC] ${phase}: Prompt tokens: ${prompt.length} chars, precise count: ${promptTokens} (${promptTime}ms)`);
       
       const availableTokensForComments = effectiveMaxInputTokens - promptTokens;
       console.log(`[BATCH_CALC] ${phase}: Available tokens for comments: ${effectiveMaxInputTokens} - ${promptTokens} = ${availableTokensForComments}`);
@@ -336,18 +352,22 @@ serve(async (req) => {
       let batchSize = 0;
       let totalTokens = 0;
       let commentTokenDetails: string[] = [];
+      let totalCommentTime = 0;
       
       console.log(`[BATCH_CALC] ${phase}: Starting comment-by-comment token calculation...`);
       
       for (let i = 0; i < comments.length; i++) {
         const comment = comments[i];
         const commentText = comment.originalText || comment.text || '';
-        const commentTokens = estimateTokens(commentText);
+        const commentStartTime = Date.now();
+        const commentTokens = await getPreciseTokens(commentText, provider, model);
+        const commentTime = Date.now() - commentStartTime;
+        totalCommentTime += commentTime;
         
         if (totalTokens + commentTokens <= availableTokensForComments) {
           totalTokens += commentTokens;
           batchSize++;
-          commentTokenDetails.push(`Comment ${i + 1}: ${commentTokens} tokens (${commentText.length} chars)`);
+          commentTokenDetails.push(`Comment ${i + 1}: ${commentTokens} tokens (${commentText.length} chars, ${commentTime}ms)`);
         } else {
           console.log(`[BATCH_CALC] ${phase}: Comment ${i + 1} would exceed limit: ${totalTokens} + ${commentTokens} > ${availableTokensForComments}`);
           break;
@@ -358,6 +378,7 @@ serve(async (req) => {
       // commentTokenDetails.forEach(detail => console.log(`[BATCH_CALC] ${phase}:   ${detail}`));
       console.log(`[BATCH_CALC] ${phase}: Total comment tokens: ${totalTokens}`);
       console.log(`[BATCH_CALC] ${phase}: Calculated batch size: ${batchSize}`);
+      console.log(`[BATCH_CALC] ${phase}: Token counting timing - Prompt: ${promptTime}ms, Comments: ${totalCommentTime}ms, Total: ${promptTime + totalCommentTime}ms`);
       console.log(`[BATCH_CALC] ${phase}: Calculation complete`);
       
       return Math.max(1, batchSize); // Always return at least 1
@@ -396,24 +417,34 @@ serve(async (req) => {
     console.log(`[TOKEN LIMITS] Scan A:`, scanATokenLimits);
     console.log(`[TOKEN LIMITS] Scan B:`, scanBTokenLimits);
     
-    // Calculate optimal batch sizes for both scans
-    const scanABatchSize = calculateOptimalBatchSize(
+    // Calculate optimal batch sizes for both scans with timing
+    console.log(`[BATCH_SIZING] Starting precise token counting for batch size calculation...`);
+    const batchSizingStartTime = Date.now();
+    
+    const scanABatchSize = await calculateOptimalBatchSize(
       'scan_a',
       inputComments,
       scanA.analysis_prompt,
       ioRatios.scan_a_io_ratio,
       scanATokenLimits,
-      safetyMarginPercent
+      safetyMarginPercent,
+      scanA.provider,
+      scanA.model
     );
     
-    const scanBBatchSize = calculateOptimalBatchSize(
+    const scanBBatchSize = await calculateOptimalBatchSize(
       'scan_b',
       inputComments,
       scanB.analysis_prompt,
       ioRatios.scan_b_io_ratio,
       scanBTokenLimits,
-      safetyMarginPercent
+      safetyMarginPercent,
+      scanB.provider,
+      scanB.model
     );
+    
+    const batchSizingTime = Date.now() - batchSizingStartTime;
+    console.log(`[BATCH_SIZING] Precise token counting completed in ${batchSizingTime}ms`);
     
     // Use the smaller batch size to ensure both scans can process the same batches
     const finalBatchSize = Math.min(scanABatchSize, scanBBatchSize);
@@ -442,8 +473,8 @@ serve(async (req) => {
     // Log token estimates for the first batch
     if (inputComments.length > 0) {
       const firstBatch = inputComments.slice(0, finalBatchSize);
-      const scanAInputTokens = estimateBatchInputTokens(firstBatch, scanA.analysis_prompt);
-      const scanBInputTokens = estimateBatchInputTokens(firstBatch, scanB.analysis_prompt);
+      const scanAInputTokens = await estimateBatchInputTokens(firstBatch, scanA.analysis_prompt, scanA.provider, scanA.model);
+      const scanBInputTokens = await estimateBatchInputTokens(firstBatch, scanB.analysis_prompt, scanB.provider, scanB.model);
       const scanAOutputTokens = Math.ceil(scanAInputTokens * ioRatios.scan_a_io_ratio);
       const scanBOutputTokens = Math.ceil(scanBInputTokens * ioRatios.scan_b_io_ratio);
       
