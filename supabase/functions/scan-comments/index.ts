@@ -524,6 +524,9 @@ serve(async (req) => {
 
       console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
       console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
+      
+      // Log the row ranges being processed
+      console.log(`[BATCH_ROWS] Processing comments from rows ${currentBatchStart + 1} to ${batchEnd}`);
 
       // Parse and validate results
       const scanAResultsArray = parseBatchResults(scanAResults, batch.length, 'Scan A', currentBatchStart + 1);
@@ -628,6 +631,7 @@ serve(async (req) => {
       
       console.log(`[BATCH] Completed batch ${currentBatchStart + 1}-${batchEnd}, processed ${Math.min(maxResults, batch.length)} comments`);
       console.log(`[BATCH] Results: Scan A: ${scanAResultsArray.length}, Scan B: ${scanBResultsArray.length}, Batch: ${batch.length}`);
+      console.log(`[BATCH] Comments processed: rows ${currentBatchStart + 1} to ${currentBatchStart + Math.min(maxResults, batch.length)}`);
       console.log(`[BATCH] Total comments processed so far: ${allScannedComments.length}/${inputComments.length}`);
     }
       
@@ -643,6 +647,11 @@ serve(async (req) => {
       const firstCommentIndex = allScannedComments[0]?.originalRow || 1;
       const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || allScannedComments.length;
       console.warn(`[WARNING] Comment range: ${firstCommentIndex} to ${lastCommentIndex}`);
+    } else {
+      // Log successful processing range
+      const firstCommentIndex = allScannedComments[0]?.originalRow || 1;
+      const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || allScannedComments.length;
+      console.log(`[SUCCESS] All comments processed successfully: rows ${firstCommentIndex} to ${lastCommentIndex}`);
     }
     
     const totalRunTimeMs = Date.now() - overallStartTime;
