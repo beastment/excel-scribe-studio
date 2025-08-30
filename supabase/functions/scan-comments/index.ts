@@ -805,9 +805,8 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
     let cleanedJson = decodedResponse;
     let jsonMatch = null;
     
-    // If direct parse fails, try to find JSON array pattern
     try {
-      JSON.parse(cleanedJson);
+      parsed = JSON.parse(cleanedJson);
       console.log(`${source}: Response is valid JSON directly`);
     } catch (directParseError) {
       console.log(`${source}: Direct parse failed, searching for JSON array pattern: ${directParseError.message}`);
@@ -816,6 +815,38 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
       if (!jsonMatch) {
         console.error(`${source}: No JSON array found in response`);
         console.log(`${source}: Response preview: ${decodedResponse.substring(0, 500)}...`);
+        
+        // Try to extract individual JSON objects as fallback
+        const objectMatches = decodedResponse.match(/\{[^{}]*\}/g);
+        if (objectMatches && objectMatches.length > 0) {
+          console.log(`${source}: Found ${objectMatches.length} potential JSON objects, attempting extraction`);
+          const extractedObjects = [];
+          for (let i = 0; i < objectMatches.length && i < expectedCount; i++) {
+            try {
+              const obj = JSON.parse(objectMatches[i]);
+              extractedObjects.push({
+                index: obj.index || (globalStartIndex + i),
+                concerning: Boolean(obj.concerning),
+                identifiable: Boolean(obj.identifiable),
+                reasoning: String(obj.reasoning || 'Extracted from partial response')
+              });
+            } catch (objError) {
+              console.warn(`${source}: Failed to parse object ${i}: ${objError.message}`);
+            }
+          }
+          
+          if (extractedObjects.length > 0) {
+            console.log(`${source}: Successfully extracted ${extractedObjects.length} objects, using as fallback`);
+            return extractedObjects.length < expectedCount ? 
+              [...extractedObjects, ...Array(expectedCount - extractedObjects.length).fill(null).map((_, i) => ({
+                index: globalStartIndex + extractedObjects.length + i,
+                concerning: false,
+                identifiable: false,
+                reasoning: `Fallback result due to parsing issues`
+              }))] : extractedObjects;
+          }
+        }
+        
         throw new Error('No JSON array found in response');
       }
       
