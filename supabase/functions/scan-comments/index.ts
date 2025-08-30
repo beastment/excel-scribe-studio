@@ -866,6 +866,22 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
       return out;
     };
 
+    // Additional robust JSON repair function for common escaping issues
+    const repairJsonEscaping = (jsonStr: string): string => {
+      // Simple approach: find all unescaped quotes within string values and escape them
+      // This regex finds any quote that's not preceded by a backslash
+      let repaired = jsonStr.replace(/(?<!\\)"/g, '\\"');
+      
+      // But we need to be careful not to escape the outer quotes of JSON properties
+      // So we need to unescape the property names and outer quotes
+      repaired = repaired.replace(/\\"([^"]+)\\":/g, '"$1":');
+      repaired = repaired.replace(/\\"([^"]+)\\":\s*\\"/g, '"$1": "');
+      repaired = repaired.replace(/\\"\s*[,}\]]/g, '"$1');
+      
+      console.log(`${source}: [JSON_REPAIR] Applied robust JSON escaping repair`);
+      return repaired;
+    };
+
     // First try to parse the entire response as JSON directly
     let cleanedJson = decodedResponse;
     let parsed: any;
@@ -933,9 +949,17 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         parsed = JSON.parse(sanitized);
         console.log(`${source}: Sanitization succeeded`);
       } catch (e2) {
-        console.error(`${source}: JSON parse error:`, parseError);
-        console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
-        throw new Error(`Invalid JSON in response: ${parseError.message}`);
+        // If sanitization fails, try the robust repair function
+        console.warn(`${source}: Sanitization failed, attempting robust repair: ${e2.message}`);
+        const repaired = repairJsonEscaping(cleanedJson);
+        try {
+          parsed = JSON.parse(repaired);
+          console.log(`${source}: Robust repair succeeded`);
+        } catch (e3) {
+          console.error(`${source}: JSON parse error:`, parseError);
+          console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
+          throw new Error(`Invalid JSON in response: ${parseError.message}`);
+        }
       }
     }
     
