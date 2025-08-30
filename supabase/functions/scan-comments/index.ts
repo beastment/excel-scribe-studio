@@ -868,17 +868,34 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
 
     // Additional robust JSON repair function for common escaping issues
     const repairJsonEscaping = (jsonStr: string): string => {
-      // Simple approach: find all unescaped quotes within string values and escape them
-      // This regex finds any quote that's not preceded by a backslash
-      let repaired = jsonStr.replace(/(?<!\\)"/g, '\\"');
+      // More careful approach: only escape quotes that are clearly inside string values
+      // Look for patterns like "reasoning": "text with "quotes" inside"
+      let repaired = jsonStr;
       
-      // But we need to be careful not to escape the outer quotes of JSON properties
-      // So we need to unescape the property names and outer quotes
-      repaired = repaired.replace(/\\"([^"]+)\\":/g, '"$1":');
-      repaired = repaired.replace(/\\"([^"]+)\\":\s*\\"/g, '"$1": "');
-      repaired = repaired.replace(/\\"\s*[,}\]]/g, '"$1');
+      // Find and fix unescaped quotes in reasoning fields specifically
+      repaired = repaired.replace(/"reasoning":\s*"([^"]*(?:"[^"]*)*?)(?="\s*[,}])/g, (match, content) => {
+        const escapedContent = content.replace(/"/g, '\\"');
+        return `"reasoning": "${escapedContent}"`;
+      });
       
-      console.log(`${source}: [JSON_REPAIR] Applied robust JSON escaping repair`);
+      // Find and fix unescaped quotes in other string fields
+      repaired = repaired.replace(/"([^"]+)"\s*:\s*"([^"]*(?:"[^"]*)*?)(?="\s*[,}])/g, (match, key, content) => {
+        const escapedContent = content.replace(/"/g, '\\"');
+        return `"${key}": "${escapedContent}"`;
+      });
+      
+      console.log(`${source}: [JSON_REPAIR] Applied targeted JSON escaping repair`);
+      
+      // Validate that the repair didn't break the JSON structure
+      try {
+        JSON.parse(repaired);
+        console.log(`${source}: [JSON_REPAIR] Validation passed - repaired JSON is valid`);
+      } catch (validationError) {
+        console.warn(`${source}: [JSON_REPAIR] Validation failed - repair may have corrupted JSON:`, validationError.message);
+        // Return original if repair made it worse
+        return jsonStr;
+      }
+      
       return repaired;
     };
 
@@ -937,6 +954,23 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
       console.log(`${source}: Response length: ${cleanedJson.length} characters`);
       console.log(`${source}: JSON starts with: ${cleanedJson.substring(0, 100)}...`);
       console.log(`${source}: JSON ends with: ...${cleanedJson.substring(cleanedJson.length - 100)}`);
+      
+      // Check for common truncation indicators
+      if (cleanedJson.includes('...') || cleanedJson.includes('…') || cleanedJson.includes('truncated')) {
+        console.warn(`${source}: Response appears to be truncated`);
+      }
+      
+      // Check if the JSON is properly closed
+      const openBraces = (cleanedJson.match(/\{/g) || []).length;
+      const closeBraces = (cleanedJson.match(/\}/g) || []).length;
+      const openBrackets = (cleanedJson.match(/\[/g) || []).length;
+      const closeBrackets = (cleanedJson.match(/\]/g) || []).length;
+      
+      console.log(`${source}: JSON structure check - Braces: ${openBraces}/${closeBraces}, Brackets: ${openBrackets}/${closeBrackets}`);
+      
+      if (openBraces !== closeBraces || openBrackets !== closeBrackets) {
+        console.warn(`${source}: JSON structure is unbalanced - this may indicate truncation`);
+      }
     }
 
     try {
@@ -956,9 +990,70 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
           parsed = JSON.parse(repaired);
           console.log(`${source}: Robust repair succeeded`);
         } catch (e3) {
-          console.error(`${source}: JSON parse error:`, parseError);
-          console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
-          throw new Error(`Invalid JSON in response: ${parseError.message}`);
+          // Final attempt: check if JSON is truncated and try to complete it
+          console.warn(`${source}: Robust repair failed, checking for truncation: ${e3.message}`);
+          
+          let completedJson = cleanedJson;
+          let needsCompletion = false;
+          
+          // Count brackets and braces to see if they're balanced
+          const openBraces = (cleanedJson.match(/\{/g) || []).length;
+          const closeBraces = (cleanedJson.match(/\}/g) || []).length;
+          const openBrackets = (cleanedJson.match(/\[/g) || []).length;
+          const closeBrackets = (cleanedJson.match(/\]/g) || []).length;
+          
+          // If we have more opening than closing, try to complete the JSON
+          if (openBraces > closeBraces || openBrackets > closeBrackets) {
+            needsCompletion = true;
+            // Add missing closing characters
+            while (openBraces > closeBraces) {
+              completedJson += '}';
+              closeBraces++;
+            }
+            while (openBrackets > closeBrackets) {
+              completedJson += ']';
+              closeBrackets++;
+            }
+            console.log(`${source}: Attempting to complete truncated JSON by adding ${openBraces - (cleanedJson.match(/\{/g) || []).length} braces and ${openBrackets - (cleanedJson.match(/\[/g) || []).length} brackets`);
+          }
+          
+          if (needsCompletion) {
+            try {
+              parsed = JSON.parse(completedJson);
+              console.log(`${source}: JSON completion succeeded`);
+            } catch (e4) {
+              console.error(`${source}: JSON completion failed: ${e4.message}`);
+              // Show the error area for debugging
+              if (parseError.message.includes('position')) {
+                const positionMatch = parseError.message.match(/position (\d+)/);
+                if (positionMatch) {
+                  const position = parseInt(positionMatch[1]);
+                  const start = Math.max(0, position - 100);
+                  const end = Math.min(cleanedJson.length, position + 100);
+                  console.error(`${source}: Error area around position ${position}:`);
+                  console.error(`${source}: ...${cleanedJson.substring(start, end)}...`);
+                }
+              }
+              throw new Error(`Invalid JSON in response: ${parseError.message}`);
+            }
+          } else {
+            console.error(`${source}: JSON parse error:`, parseError);
+            console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
+            
+            // If we have a position error, show the area around that position
+            if (parseError.message.includes('position')) {
+              const positionMatch = parseError.message.match(/position (\d+)/);
+              if (positionMatch) {
+                const position = parseInt(positionMatch[1]);
+                const start = Math.max(0, position - 100);
+                const end = Math.min(cleanedJson.length, position + 100);
+                console.error(`${source}: Error area around position ${position}:`);
+                console.error(`${source}: ...${cleanedJson.substring(start, end)}...`);
+              }
+            }
+            
+            throw new Error(`Invalid JSON in response: ${parseError.message}`);
+          }
         }
       }
     }
@@ -1060,6 +1155,24 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
     console.log(`[AZURE] Response length: ${responseText.length} characters`);
+    
+    // Check for truncation indicators in Azure responses
+    if (responseText.includes('...') || responseText.includes('…') || responseText.includes('truncated')) {
+      console.warn(`[AZURE] Response contains truncation indicators`);
+    }
+    
+    // Check if response ends abruptly (common truncation pattern)
+    const trimmedResponse = responseText.trim();
+    if (!trimmedResponse.endsWith(']') && !trimmedResponse.endsWith('}') && !trimmedResponse.endsWith(']')) {
+      console.warn(`[AZURE] Response does not end with proper JSON closing character - may be truncated`);
+      console.warn(`[AZURE] Response ends with: ...${trimmedResponse.substring(trimmedResponse.length - 50)}`);
+    }
+    
+    // Check if we hit the token limit (common cause of truncation)
+    if (result.choices?.[0]?.finish_reason === 'length' || result.choices?.[0]?.finish_reason === 'max_tokens') {
+      console.warn(`[AZURE] Response stopped due to token limit (${result.choices[0].finish_reason}) - this may cause truncation`);
+    }
+    
     if (responseText.length > 8000) {
       console.warn(`[AZURE] Response is very long (${responseText.length} chars), may be approaching token limits`);
     }
@@ -1100,6 +1213,24 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
     console.log(`[OPENAI] Response length: ${responseText.length} characters`);
+    
+    // Check for truncation indicators in OpenAI responses
+    if (responseText.includes('...') || responseText.includes('truncated')) {
+      console.warn(`[OPENAI] Response contains truncation indicators`);
+    }
+    
+    // Check if response ends abruptly (common truncation pattern)
+    const trimmedResponse = responseText.trim();
+    if (!trimmedResponse.endsWith(']') && !trimmedResponse.endsWith('}')) {
+      console.warn(`[OPENAI] Response does not end with proper JSON closing character - may be truncated`);
+      console.warn(`[OPENAI] Response ends with: ...${trimmedResponse.substring(trimmedResponse.length - 50)}`);
+    }
+    
+    // Check if we hit the token limit (common cause of truncation)
+    if (result.choices?.[0]?.finish_reason === 'length' || result.choices?.[0]?.finish_reason === 'max_tokens') {
+      console.warn(`[OPENAI] Response stopped due to token limit (${result.choices[0].finish_reason}) - this may cause truncation`);
+    }
+    
     if (responseText.length > 8000) {
       console.warn(`[OPENAI] Response is very long (${responseText.length} chars), may be approaching token limits`);
     }
@@ -1199,6 +1330,24 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const result = await response.json();
     const responseText = result.content[0]?.text || '';
     console.log(`[BEDROCK] Response length: ${responseText.length} characters`);
+    
+    // Check for truncation indicators in Bedrock responses
+    if (responseText.includes('...') || responseText.includes('…') || responseText.includes('truncated')) {
+      console.warn(`[BEDROCK] Response contains truncation indicators`);
+    }
+    
+    // Check if response ends abruptly (common truncation pattern)
+    const trimmedResponse = responseText.trim();
+    if (!trimmedResponse.endsWith(']') && !trimmedResponse.endsWith('}')) {
+      console.warn(`[BEDROCK] Response does not end with proper JSON closing character - may be truncated`);
+      console.warn(`[BEDROCK] Response ends with: ...${trimmedResponse.substring(trimmedResponse.length - 50)}`);
+    }
+    
+    // Check if we hit the token limit (common cause of truncation)
+    if (result.stop_reason === 'max_tokens' || result.stop_reason === 'length') {
+      console.warn(`[BEDROCK] Response stopped due to token limit (${result.stop_reason}) - this may cause truncation`);
+    }
+    
     if (responseText.length > 8000) {
       console.warn(`[BEDROCK] Response is very long (${responseText.length} chars), may be approaching token limits`);
     }
