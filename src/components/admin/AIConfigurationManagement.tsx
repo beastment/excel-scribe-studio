@@ -140,8 +140,7 @@ export const AIConfigurationManagement = () => {
           rpm_limit: config.rpm_limit || undefined,
           tpm_limit: config.tpm_limit || undefined,
           input_token_limit: undefined,
-          output_token_limit: undefined,
-          temperature: config.temperature || undefined
+          output_token_limit: undefined
         };
       });
 

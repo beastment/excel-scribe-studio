@@ -801,16 +801,27 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
     let decodedResponse = response;
 
     // Extract JSON from the response - the AI response should be a complete JSON array
-    let jsonMatch = decodedResponse.match(/\[[\s\S]*\]/);
+    // First try to parse the entire response as JSON directly
+    let cleanedJson = decodedResponse;
+    let jsonMatch = null;
     
-    if (!jsonMatch) {
-      console.error(`${source}: No JSON array found in response`);
-      console.log(`${source}: Response preview: ${decodedResponse.substring(0, 200)}...`);
-      throw new Error('No JSON array found in response');
+    // If direct parse fails, try to find JSON array pattern
+    try {
+      JSON.parse(cleanedJson);
+      console.log(`${source}: Response is valid JSON directly`);
+    } catch (directParseError) {
+      console.log(`${source}: Direct parse failed, searching for JSON array pattern: ${directParseError.message}`);
+      jsonMatch = decodedResponse.match(/\[[\s\S]*\]/);
+      
+      if (!jsonMatch) {
+        console.error(`${source}: No JSON array found in response`);
+        console.log(`${source}: Response preview: ${decodedResponse.substring(0, 500)}...`);
+        throw new Error('No JSON array found in response');
+      }
+      
+      cleanedJson = jsonMatch[0];
+      console.log(`${source}: Extracted JSON array from response`);
     }
-
-    // Use the JSON as-is since the AI response appears to be valid
-    let cleanedJson = jsonMatch[0];
     if (typeof cleanedJson === 'string') {
       // Log the response for debugging
       console.log(`${source}: Response length: ${cleanedJson.length} characters`);

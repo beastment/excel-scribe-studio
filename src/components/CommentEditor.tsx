@@ -415,7 +415,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           console.warn('Failed to fetch AI configuration, using defaults');
         }
         
-        console.log(`[BATCH] AI Config temperature: ${aiConfigs?.temperature || 'not set (using default 0)'}`);
+        console.log(`[BATCH] AI Config loaded for post-processing`);
         
         const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
           body: {
