@@ -407,17 +407,15 @@ serve(async (req) => {
     }
     
     // Configure temperature for both scans
-    if (scanAModelConfig?.temperature !== undefined) {
-      scanA.temperature = scanAModelConfig.temperature;
-    } else {
-      scanA.temperature = 0; // Default temperature
-    }
-    
-    if (scanBModelConfig?.temperature !== undefined) {
-      scanB.temperature = scanBModelConfig.temperature;
-    } else {
-      scanB.temperature = 0; // Default temperature
-    }
+    // Prefer Dashboard AI Config (ai_configurations.temperature), fallback to model_configurations.temperature, else 0
+    const aiTempA = (scanA as any)?.temperature;
+    const aiTempB = (scanB as any)?.temperature;
+    scanA.temperature = (aiTempA !== undefined && aiTempA !== null)
+      ? aiTempA
+      : (scanAModelConfig?.temperature ?? 0);
+    scanB.temperature = (aiTempB !== undefined && aiTempB !== null)
+      ? aiTempB
+      : (scanBModelConfig?.temperature ?? 0);
     
     console.log(`[CONFIG] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
     
@@ -800,19 +798,84 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
     // Use response as-is since it appears to be valid JSON
     let decodedResponse = response;
 
-    // Extract JSON from the response - the AI response should be a complete JSON array
+    // Helper to extract the first balanced JSON array from arbitrary text
+    const extractJsonArray = (str: string): string | null => {
+      let start = -1;
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      for (let i = 0; i < str.length; i++) {
+        const ch = str[i];
+        if (inString) {
+          if (escape) { escape = false; continue; }
+          if (ch === '\\') { escape = true; continue; }
+          if (ch === '"') { inString = false; continue; }
+          continue;
+        }
+        if (ch === '"') { inString = true; continue; }
+        if (ch === '[') {
+          if (depth === 0) start = i;
+          depth++;
+        } else if (ch === ']') {
+          if (depth > 0) depth--;
+          if (depth === 0 && start !== -1) {
+            return str.slice(start, i + 1);
+          }
+        }
+      }
+      return null;
+    };
+
+    // Light sanitizer: escape naked quotes inside reasoning values if present
+    const sanitizeReasoningQuotes = (jsonStr: string): string => {
+      let out = jsonStr;
+      let cursor = 0;
+      const key = '"reasoning"';
+      while (true) {
+        const k = out.indexOf(key, cursor);
+        if (k === -1) break;
+        // Find the opening quote of the value
+        const colon = out.indexOf(':', k + key.length);
+        if (colon === -1) break;
+        let i = colon + 1;
+        // Skip whitespace
+        while (i < out.length && /\s/.test(out[i])) i++;
+        if (out[i] !== '"') { cursor = i; continue; }
+        i++; // move past opening quote
+        // Walk until the closing quote that terminates the value (", or "\n or "\r or "})
+        let j = i;
+        let inEscape = false;
+        while (j < out.length) {
+          const c = out[j];
+          if (inEscape) { inEscape = false; j++; continue; }
+          if (c === '\\') { inEscape = true; j++; continue; }
+          if (c === '"') {
+            // Peek ahead to see if this looks like the end of the value
+            const ahead = out.slice(j, j + 3);
+            if (ahead === '", ' || ahead === '",\n' || ahead === '",\r' || out[j + 1] === '}' || out[j + 1] === '\n' || out[j + 1] === '\r') {
+              break; // treat as terminator
+            }
+          }
+          j++;
+        }
+        // Now i..j is the value content; escape any remaining naked quotes inside it
+        const value = out.slice(i, j).replace(/\"/g, '\\"').replace(/"/g, '\\"');
+        out = out.slice(0, i) + value + out.slice(j);
+        cursor = j + 1;
+      }
+      return out;
+    };
+
     // First try to parse the entire response as JSON directly
     let cleanedJson = decodedResponse;
-    let jsonMatch = null;
-    
+    let parsed: any;
     try {
       parsed = JSON.parse(cleanedJson);
       console.log(`${source}: Response is valid JSON directly`);
     } catch (directParseError) {
-      console.log(`${source}: Direct parse failed, searching for JSON array pattern: ${directParseError.message}`);
-      jsonMatch = decodedResponse.match(/\[[\s\S]*\]/);
-      
-      if (!jsonMatch) {
+      console.log(`${source}: Direct parse failed; attempting balanced array extraction: ${directParseError.message}`);
+      const arr = extractJsonArray(decodedResponse);
+      if (!arr) {
         console.error(`${source}: No JSON array found in response`);
         console.log(`${source}: Response preview: ${decodedResponse.substring(0, 500)}...`);
         
@@ -820,10 +883,11 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         const objectMatches = decodedResponse.match(/\{[^{}]*\}/g);
         if (objectMatches && objectMatches.length > 0) {
           console.log(`${source}: Found ${objectMatches.length} potential JSON objects, attempting extraction`);
-          const extractedObjects = [];
+          const extractedObjects: any[] = [];
           for (let i = 0; i < objectMatches.length && i < expectedCount; i++) {
             try {
-              const obj = JSON.parse(objectMatches[i]);
+              const tryStr = sanitizeReasoningQuotes(objectMatches[i]);
+              const obj = JSON.parse(tryStr);
               extractedObjects.push({
                 index: obj.index || (globalStartIndex + i),
                 concerning: Boolean(obj.concerning),
@@ -849,58 +913,30 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         
         throw new Error('No JSON array found in response');
       }
-      
-      cleanedJson = jsonMatch[0];
+      cleanedJson = arr;
       console.log(`${source}: Extracted JSON array from response`);
     }
+
     if (typeof cleanedJson === 'string') {
-      // Log the response for debugging
       console.log(`${source}: Response length: ${cleanedJson.length} characters`);
-      
-      // If we found a complete JSON array, log it
-      if (jsonMatch && jsonMatch[0]) {
-        console.log(`${source}: Found complete JSON array, length: ${jsonMatch[0].length} characters`);
-        
-        // Log the start and end of the extracted JSON for debugging
-        console.log(`${source}: JSON starts with: ${cleanedJson.substring(0, 100)}...`);
-        console.log(`${source}: JSON ends with: ...${cleanedJson.substring(cleanedJson.length - 100)}`);
-        
-        // Check for potential JSON issues
-        if (cleanedJson.includes('"gaslighted"')) {
-          console.log(`${source}: Found 'gaslighted' in response - checking for quote escaping issues`);
-        }
-      }
+      console.log(`${source}: JSON starts with: ${cleanedJson.substring(0, 100)}...`);
+      console.log(`${source}: JSON ends with: ...${cleanedJson.substring(cleanedJson.length - 100)}`);
     }
 
-    let parsed;
     try {
       parsed = JSON.parse(cleanedJson);
     } catch (parseError) {
-      console.error(`${source}: JSON parse error:`, parseError);
-      console.error(`${source}: Attempted to parse:`, cleanedJson);
-      
-      // Log the specific area around the error position if available
-      if (parseError.message.includes('position')) {
-        const positionMatch = parseError.message.match(/position (\d+)/);
-        if (positionMatch) {
-          const errorPosition = parseInt(positionMatch[1]);
-          const startPos = Math.max(0, errorPosition - 100);
-          const endPos = Math.min(cleanedJson.length, errorPosition + 100);
-          console.error(`${source}: Error area around position ${errorPosition}:`);
-          console.error(`${source}: ${cleanedJson.substring(startPos, endPos)}`);
-        }
+      // Attempt sanitization for unescaped quotes in reasoning fields, then parse again
+      console.warn(`${source}: JSON parse error, attempting sanitization: ${parseError.message}`);
+      const sanitized = sanitizeReasoningQuotes(cleanedJson);
+      try {
+        parsed = JSON.parse(sanitized);
+        console.log(`${source}: Sanitization succeeded`);
+      } catch (e2) {
+        console.error(`${source}: JSON parse error:`, parseError);
+        console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
+        throw new Error(`Invalid JSON in response: ${parseError.message}`);
       }
-      
-      // Log additional debugging information
-      console.error(`${source}: Full response length: ${response.length} characters`);
-      console.error(`${source}: Extracted JSON length: ${cleanedJson.length} characters`);
-      console.error(`${source}: JSON starts with: ${cleanedJson.substring(0, 200)}...`);
-      console.error(`${source}: JSON ends with: ...${cleanedJson.substring(cleanedJson.length - 200)}`);
-      
-      // If JSON parsing fails, log the error and throw
-      console.error(`${source}: JSON parsing failed with error: ${parseError.message}`);
-      console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
-      throw new Error(`Invalid JSON in response: ${parseError.message}`);
     }
     
     if (!Array.isArray(parsed)) {

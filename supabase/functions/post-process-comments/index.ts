@@ -318,27 +318,39 @@ serve(async (req) => {
 
     console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
 
-    // Fetch the actual AI configuration to get correct token limits
-    const { data: aiConfigs, error: aiConfigError } = await supabase
+    // Fetch the actual AI configuration to get correct token limits and temperature
+    const { data: modelCfg, error: modelCfgError } = await supabase
       .from('model_configurations')
       .select('*')
       .eq('provider', scanConfig.provider)
       .eq('model', scanConfig.model)
       .single();
 
+    const { data: aiCfg, error: aiCfgError } = await supabase
+      .from('ai_configurations')
+      .select('temperature')
+      .eq('provider', scanConfig.provider)
+      .eq('model', scanConfig.model)
+      .limit(1)
+      .single();
+
     let actualMaxTokens = getEffectiveMaxTokens(scanConfig);
-    if (aiConfigError) {
-      console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch AI config, using defaults:`, aiConfigError.message);
+    if (modelCfgError) {
+      console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations, using defaults:`, modelCfgError.message);
     } else {
-      actualMaxTokens = aiConfigs?.output_token_limit || getEffectiveMaxTokens(scanConfig);
-      console.log(`${logPrefix} [POSTPROCESS] Using max_tokens from model_configurations: ${actualMaxTokens}, temperature=${aiConfigs?.temperature}`);
+      actualMaxTokens = modelCfg?.output_token_limit || getEffectiveMaxTokens(scanConfig);
+      console.log(`${logPrefix} [POSTPROCESS] Using max_tokens from model_configurations: ${actualMaxTokens}, model_temperature=${modelCfg?.temperature}`);
     }
+
+    const effectiveTemperature = (aiCfg && aiCfg.temperature !== null && aiCfg.temperature !== undefined)
+      ? aiCfg.temperature
+      : (modelCfg?.temperature ?? scanConfig.temperature ?? 0);
 
     // Use the actual max_tokens from model_configurations
     const effectiveConfig = {
       ...scanConfig,
       max_tokens: actualMaxTokens,
-      temperature: aiConfigs?.temperature || scanConfig.temperature || 0
+      temperature: effectiveTemperature
     };
 
     console.log(`${logPrefix} [POSTPROCESS] Effective config: max_tokens=${effectiveConfig.max_tokens}, temperature=${effectiveConfig.temperature}`);

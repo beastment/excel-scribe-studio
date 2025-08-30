@@ -325,21 +325,33 @@ serve(async (req) => {
         comment_count: needsAdjudication.length
       }).substring(0, 500)}...`);
 
-      // Fetch the actual AI configuration to get correct token limits
-      const { data: aiConfigs, error: aiConfigError } = await supabase
+      // Fetch limits from model_configurations and temperature from Dashboard AI Config
+      const { data: modelCfg, error: modelCfgError } = await supabase
         .from('model_configurations')
         .select('*')
         .eq('provider', adjudicatorConfig.provider)
         .eq('model', adjudicatorConfig.model)
         .single();
 
+      const { data: aiCfg, error: aiCfgError } = await supabase
+        .from('ai_configurations')
+        .select('temperature')
+        .eq('scanner_type', 'adjudicator')
+        .eq('provider', adjudicatorConfig.provider)
+        .eq('model', adjudicatorConfig.model)
+        .single();
+
       let actualMaxTokens = adjudicatorConfig.max_tokens || 4096;
-      if (aiConfigError) {
-        console.warn(`${logPrefix} [ADJUDICATOR] Warning: Could not fetch AI config, using provided max_tokens:`, aiConfigError.message);
+      if (modelCfgError) {
+        console.warn(`${logPrefix} [ADJUDICATOR] Warning: Could not fetch model_configurations, using provided max_tokens:`, modelCfgError.message);
       } else {
-        actualMaxTokens = aiConfigs?.output_token_limit || adjudicatorConfig.max_tokens || 4096;
+        actualMaxTokens = modelCfg?.output_token_limit || adjudicatorConfig.max_tokens || 4096;
         console.log(`${logPrefix} [ADJUDICATOR] Using max_tokens from model_configurations: ${actualMaxTokens}`);
       }
+
+      const effectiveTemperature = (aiCfg && aiCfg.temperature !== null && aiCfg.temperature !== undefined)
+        ? aiCfg.temperature
+        : (modelCfg?.temperature ?? 0);
 
       // Initialize AI logger
       const aiLogger = new AILogger();
@@ -356,7 +368,7 @@ serve(async (req) => {
         phase: 'adjudication',
         requestPrompt: prompt,
         requestInput: input,
-        requestTemperature: aiConfigs?.temperature || 0,
+        requestTemperature: effectiveTemperature,
         requestMaxTokens: actualMaxTokens
       });
       
@@ -370,7 +382,7 @@ serve(async (req) => {
         user.id,
         runId.toString(),
         aiLogger,
-        aiConfigs?.temperature || 0
+        effectiveTemperature
       );
 
       console.log(`${logPrefix} [AI RESPONSE] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
