@@ -524,7 +524,7 @@ export const AIConfigurationManagement = () => {
             id={`temperature-${scannerConfig.type}`}
             type="number"
             value={config.temperature || ''}
-            onChange={(e) => updateConfig(scannerConfig.type, { temperature: e.target.value ? parseFloat(e.target.value) : undefined })}
+            onChange={(e) => updateConfig(scannerConfig.type, { temperature: e.target.value !== '' ? parseFloat(e.target.value) : undefined })}
             placeholder="0.0 to 1.0"
             step="0.01"
             min="0"
