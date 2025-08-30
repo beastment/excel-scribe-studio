@@ -487,6 +487,9 @@ serve(async (req) => {
     console.log(`[BATCH SIZING] Token limits - Scan A: ${scanATokenLimits.output_token_limit}, Scan B: ${scanBTokenLimits.output_token_limit}`);
     console.log(`[BATCH SIZING] Conservative batch sizing enabled to prevent truncation`);
     
+    // Log I/O ratios for reference
+    console.log(`[BATCH SIZING] I/O ratios - Scan A: ${ioRatios.scan_a_io_ratio}, Scan B: ${ioRatios.scan_b_io_ratio}`);
+    
     // Log token estimates for the first batch
     if (inputComments.length > 0) {
       const firstBatch = inputComments.slice(0, finalBatchSize);
@@ -815,6 +818,15 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
       // If we found a complete JSON array, log it
       if (jsonMatch && jsonMatch[0]) {
         console.log(`${source}: Found complete JSON array, length: ${jsonMatch[0].length} characters`);
+        
+        // Log the start and end of the extracted JSON for debugging
+        console.log(`${source}: JSON starts with: ${cleanedJson.substring(0, 100)}...`);
+        console.log(`${source}: JSON ends with: ...${cleanedJson.substring(cleanedJson.length - 100)}`);
+        
+        // Check for potential JSON issues
+        if (cleanedJson.includes('"gaslighted"')) {
+          console.log(`${source}: Found 'gaslighted' in response - checking for quote escaping issues`);
+        }
       }
     }
 
@@ -824,6 +836,24 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
     } catch (parseError) {
       console.error(`${source}: JSON parse error:`, parseError);
       console.error(`${source}: Attempted to parse:`, cleanedJson);
+      
+      // Log the specific area around the error position if available
+      if (parseError.message.includes('position')) {
+        const positionMatch = parseError.message.match(/position (\d+)/);
+        if (positionMatch) {
+          const errorPosition = parseInt(positionMatch[1]);
+          const startPos = Math.max(0, errorPosition - 100);
+          const endPos = Math.min(cleanedJson.length, errorPosition + 100);
+          console.error(`${source}: Error area around position ${errorPosition}:`);
+          console.error(`${source}: ${cleanedJson.substring(startPos, endPos)}`);
+        }
+      }
+      
+      // Log additional debugging information
+      console.error(`${source}: Full response length: ${response.length} characters`);
+      console.error(`${source}: Extracted JSON length: ${cleanedJson.length} characters`);
+      console.error(`${source}: JSON starts with: ${cleanedJson.substring(0, 200)}...`);
+      console.error(`${source}: JSON ends with: ...${cleanedJson.substring(cleanedJson.length - 200)}`);
       
       // If JSON parsing fails, log the error and throw
       console.error(`${source}: JSON parsing failed with error: ${parseError.message}`);
