@@ -828,42 +828,31 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
 
     // Light sanitizer: escape naked quotes inside reasoning values if present
     const sanitizeReasoningQuotes = (jsonStr: string): string => {
-      let out = jsonStr;
-      let cursor = 0;
-      const key = '"reasoning"';
-      while (true) {
-        const k = out.indexOf(key, cursor);
-        if (k === -1) break;
-        // Find the opening quote of the value
-        const colon = out.indexOf(':', k + key.length);
-        if (colon === -1) break;
-        let i = colon + 1;
-        // Skip whitespace
-        while (i < out.length && /\s/.test(out[i])) i++;
-        if (out[i] !== '"') { cursor = i; continue; }
-        i++; // move past opening quote
-        // Walk until the closing quote that terminates the value (", or "\n or "\r or "})
-        let j = i;
-        let inEscape = false;
-        while (j < out.length) {
-          const c = out[j];
-          if (inEscape) { inEscape = false; j++; continue; }
-          if (c === '\\') { inEscape = true; j++; continue; }
-          if (c === '"') {
-            // Peek ahead to see if this looks like the end of the value
-            const ahead = out.slice(j, j + 3);
-            if (ahead === '", ' || ahead === '",\n' || ahead === '",\r' || out[j + 1] === '}' || out[j + 1] === '\n' || out[j + 1] === '\r') {
-              break; // treat as terminator
-            }
-          }
-          j++;
+      console.log(`${source}: [SANITIZE] Starting sanitization of JSON`);
+      
+      // Try a simple approach: find all reasoning fields and fix any unescaped quotes
+      let result = jsonStr;
+      let changes = 0;
+      
+      // Look for reasoning fields and fix them one by one
+      const reasoningPattern = /"reasoning":\s*"([^"]*(?:"[^"]*)*?)(?="\s*[,}])/g;
+      let match;
+      while ((match = reasoningPattern.exec(jsonStr)) !== null) {
+        const fullMatch = match[0];
+        const content = match[1];
+        
+        // Check if there are any unescaped quotes in the content
+        if (content.includes('"') && !content.includes('\\"')) {
+          const escapedContent = content.replace(/"/g, '\\"');
+          const newMatch = `"reasoning": "${escapedContent}"`;
+          result = result.replace(fullMatch, newMatch);
+          changes++;
+          console.log(`${source}: [SANITIZE] Fixed reasoning field: "${content}" -> "${escapedContent}"`);
         }
-        // Now i..j is the value content; escape any remaining naked quotes inside it
-        const value = out.slice(i, j).replace(/\"/g, '\\"').replace(/"/g, '\\"');
-        out = out.slice(0, i) + value + out.slice(j);
-        cursor = j + 1;
       }
-      return out;
+      
+      console.log(`${source}: [SANITIZE] Made ${changes} changes to reasoning fields`);
+      return result;
     };
 
     // Additional robust JSON repair function for common escaping issues
@@ -978,7 +967,22 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
     } catch (parseError) {
       // Attempt sanitization for unescaped quotes in reasoning fields, then parse again
       console.warn(`${source}: JSON parse error, attempting sanitization: ${parseError.message}`);
+      console.log(`${source}: [DEBUG] Original JSON length: ${cleanedJson.length}`);
+      
+      // Show the area around the error position for debugging
+      if (parseError.message.includes('position')) {
+        const positionMatch = parseError.message.match(/position (\d+)/);
+        if (positionMatch) {
+          const position = parseInt(positionMatch[1]);
+          const start = Math.max(0, position - 50);
+          const end = Math.min(cleanedJson.length, position + 50);
+          console.log(`${source}: [DEBUG] Error area around position ${position}:`);
+          console.log(`${source}: [DEBUG] ...${cleanedJson.substring(start, end)}...`);
+        }
+      }
+      
       const sanitized = sanitizeReasoningQuotes(cleanedJson);
+      console.log(`${source}: [DEBUG] Sanitized JSON length: ${sanitized.length}`);
       try {
         parsed = JSON.parse(sanitized);
         console.log(`${source}: Sanitization succeeded`);
