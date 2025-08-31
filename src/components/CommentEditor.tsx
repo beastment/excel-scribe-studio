@@ -218,7 +218,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     const scanRunId = String(Math.floor(1000 + Math.random() * 9000));
 
     try {
-      // Phase 1: Scan comments with Scan A and Scan B
+      // Phase 1: Scan comments with Scan A and Scan B (with incremental processing)
       setScanProgress(10);
       if (isDemoData) {
         toast.info('Phase 1: Scanning demo comments (FREE - no credits deducted)...');
@@ -226,76 +226,111 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         toast.info('Phase 1: Scanning comments for concerning/identifiable content...');
       }
       
-      const { data, error } = await supabase.functions.invoke('scan-comments', {
-        body: {
-          comments,
-          defaultMode,
-          scanRunId,
-          isDemoScan: isDemoData
-        }
-      });
-
-      console.log(`Scan response:`, { data, error });
-      console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
-      console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
-      console.log(`[DEBUG] Error keys:`, error ? Object.keys(error) : 'null');
-
-      // Check for insufficient credits in the response data
-      if (data && (data.error || data.insufficientCredits || data.success === false)) {
-        console.log('[FRONTEND] Checking response for insufficient credits:', data);
+      // Incremental processing: collect all comments from multiple requests
+      let allScannedComments: any[] = [];
+      let batchStart = 0;
+      let hasMore = true;
+      let batchCount = 0;
+      
+      while (hasMore) {
+        batchCount++;
+        console.log(`[INCREMENTAL] Making request ${batchCount} starting from batch ${batchStart}`);
         
-        // Check if this is an insufficient credits error
-        if (data.insufficientCredits || (data.error && data.error.includes('Insufficient credits'))) {
-          console.log('[FRONTEND] Insufficient credits detected in response data');
+        const { data, error } = await supabase.functions.invoke('scan-comments', {
+          body: {
+            comments,
+            defaultMode,
+            scanRunId,
+            isDemoScan: isDemoData,
+            batchStart, // Tell the backend where to start processing
+            batchSize: 20 // Use the same batch size as backend
+          }
+        });
+
+        console.log(`Scan response (batch ${batchCount}):`, { data, error });
+        console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
+        console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
+        console.log(`[DEBUG] Error keys:`, error ? Object.keys(error) : 'null');
+
+        // Check for insufficient credits in the response data
+        if (data && (data.error || data.insufficientCredits || data.success === false)) {
+          console.log('[FRONTEND] Checking response for insufficient credits:', data);
           
-          // Extract credit information from response
-          let creditsNeeded = data.requiredCredits || comments.length;
-          let creditsAvailable = data.availableCredits || 0;
-          
-          // If we don't have the structured data, try to parse the error message
-          if (!data.requiredCredits || !data.availableCredits) {
-            try {
-              const match = data.error.match(/You have (\d+) credits available, but need (\d+) credits/);
-              if (match) {
-                creditsAvailable = parseInt(match[1]);
-                creditsNeeded = parseInt(match[2]);
+          // Check if this is an insufficient credits error
+          if (data.insufficientCredits || (data.error && data.error.includes('Insufficient credits'))) {
+            console.log('[FRONTEND] Insufficient credits detected in response data');
+            
+            // Extract credit information from response
+            let creditsNeeded = data.requiredCredits || comments.length;
+            let creditsAvailable = data.availableCredits || 0;
+            
+            // If we don't have the structured data, try to parse the error message
+            if (!data.requiredCredits || !data.availableCredits) {
+              try {
+                const match = data.error.match(/You have (\d+) credits available, but need (\d+) credits/);
+                if (match) {
+                  creditsAvailable = parseInt(match[1]);
+                  creditsNeeded = parseInt(match[2]);
+                }
+              } catch (parseError) {
+                console.warn('Could not parse credit information from error message:', parseError);
               }
-            } catch (parseError) {
-              console.warn('Could not parse credit information from error message:', parseError);
             }
+            
+            console.log(`[FRONTEND] Credits needed: ${creditsNeeded}, available: ${creditsAvailable}`);
+            
+            // Show insufficient credits dialog
+            if (onCreditsError) {
+              onCreditsError(creditsNeeded, creditsAvailable);
+            }
+            
+            // Reset scanning state
+            setIsScanning(false);
+            setScanProgress(0);
+            scanInFlightRef.current = false;
+            
+            return; // Don't proceed with scan
           }
-          
-          console.log(`[FRONTEND] Credits needed: ${creditsNeeded}, available: ${creditsAvailable}`);
-          
-          // Show insufficient credits dialog
-          if (onCreditsError) {
-            onCreditsError(creditsNeeded, creditsAvailable);
+        }
+
+        // Handle other errors
+        if (error) {
+          console.error(`Scan error (batch ${batchCount}):`, error);
+          throw new Error(error.message || error.error || JSON.stringify(error));
+        }
+
+        if (!data?.comments) {
+          // Check if this is because of insufficient credits
+          if (data?.insufficientCredits || data?.error) {
+            console.log('[FRONTEND] No comments in response, but insufficient credits detected');
+            // This should have been handled above, but just in case
+            return;
           }
-          
-          // Reset scanning state
-          setIsScanning(false);
-          setScanProgress(0);
-          scanInFlightRef.current = false;
-          
-          return; // Don't proceed with scan
+          throw new Error(`No comment data received from batch ${batchCount}`);
+        }
+
+        // Accumulate comments from this batch
+        allScannedComments = allScannedComments.concat(data.comments);
+        console.log(`[INCREMENTAL] Accumulated ${allScannedComments.length} comments so far`);
+        
+        // Update progress based on how many comments we've processed
+        const progressPercent = Math.min(25, 10 + (allScannedComments.length / comments.length) * 15);
+        setScanProgress(progressPercent);
+        
+        // Check if there are more batches to process
+        hasMore = data.hasMore || false;
+        batchStart = data.nextBatchStart || 0;
+        
+        if (hasMore) {
+          console.log(`[INCREMENTAL] More batches available. Next batch starts at ${batchStart}`);
+          toast.info(`Processed ${allScannedComments.length}/${comments.length} comments, continuing...`);
+        } else {
+          console.log(`[INCREMENTAL] All batches processed. Total comments: ${allScannedComments.length}`);
         }
       }
-
-      // Handle other errors
-      if (error) {
-        console.error(`Scan error:`, error);
-        throw new Error(error.message || error.error || JSON.stringify(error));
-      }
-
-      if (!data?.comments) {
-        // Check if this is because of insufficient credits
-        if (data?.insufficientCredits || data?.error) {
-          console.log('[FRONTEND] No comments in response, but insufficient credits detected');
-          // This should have been handled above, but just in case
-          return;
-        }
-        throw new Error(`No comment data received`);
-      }
+      
+      // Replace the data.comments with our accumulated comments
+      const data = { comments: allScannedComments };
 
       setScanProgress(30);
       toast.info('Phase 1 complete: Comments scanned and flagged');

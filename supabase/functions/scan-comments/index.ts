@@ -535,7 +535,7 @@ serve(async (req) => {
     aiLogger.setFunctionStartTime(overallStartTime);
     
     let batchesProcessed = 0;
-    for (let currentBatchStart = 0; currentBatchStart < inputComments.length; currentBatchStart += finalBatchSize) {
+    for (let currentBatchStart = batchStart; currentBatchStart < inputComments.length; currentBatchStart += finalBatchSize) {
       // Check for timeout before processing each batch
       const currentTime = Date.now();
       const elapsedTime = currentTime - overallStartTime;
@@ -736,13 +736,14 @@ serve(async (req) => {
     
     const response = { 
       comments: allScannedComments,
-      batchStart: 0, // Always start from 0 since we process all
+      batchStart: batchStart, // Starting batch for this request
       batchSize: finalBatchSize, // Batch size used for processing
       hasMore: false, // No more batches since we processed all
       totalComments: inputComments.length,
       summary: totalSummary,
       totalRunTimeMs: totalRunTimeMs,
-      batchesProcessed: batchesProcessed
+      batchesProcessed: batchesProcessed,
+      nextBatchStart: inputComments.length // All comments processed
     };
     
     console.log('Returning response with comments count:', response.comments.length);
