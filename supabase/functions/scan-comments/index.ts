@@ -68,7 +68,9 @@ serve(async (req) => {
 
     // Allow incremental processing: only block duplicate initial requests (batchStart=0)
     const isCached = Boolean(requestBody.useCachedAnalysis);
-    const isIncrementalRequest = Number.isFinite(requestBody.batchStart) && (requestBody.batchStart as number) > 0;
+    const batchStartValue = typeof requestBody.batchStart === 'number' ? requestBody.batchStart : 
+                           typeof requestBody.batchStart === 'string' ? parseInt(requestBody.batchStart) : 0;
+    const isIncrementalRequest = Number.isFinite(batchStartValue) && batchStartValue > 0;
     
     if (!isCached && !isIncrementalRequest) {
       // Only block duplicate initial requests (batchStart=0 or undefined)
@@ -76,7 +78,7 @@ serve(async (req) => {
         console.log(`[DUPLICATE ANALYSIS] scanRunId=${scanRunId} received a second initial analysis request. Ignoring.`);
         return new Response(JSON.stringify({
           comments: [],
-          batchStart: requestBody.batchStart || 0,
+          batchStart: batchStartValue,
           batchSize: 0,
           hasMore: false,
           totalComments: requestBody.comments?.length || 0,
@@ -85,7 +87,7 @@ serve(async (req) => {
       }
       gAny.__analysisStarted.add(scanRunId);
     } else if (isIncrementalRequest) {
-      console.log(`[INCREMENTAL] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${requestBody.batchStart}`);
+      console.log(`[INCREMENTAL] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${batchStartValue}`);
     }
 
     // If this run id has already completed, short-circuit to avoid duplicate model calls
@@ -93,7 +95,7 @@ serve(async (req) => {
       console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed. Skipping.`);
       return new Response(JSON.stringify({
         comments: [],
-        batchStart: requestBody.batchStart || 0,
+        batchStart: batchStartValue,
         batchSize: 0,
         hasMore: false,
         totalComments: requestBody.comments?.length || 0,
@@ -106,7 +108,7 @@ serve(async (req) => {
       console.log(`[RUN IN PROGRESS] scanRunId=${scanRunId} received duplicate initial request. Ignoring to prevent duplicate analysis calls.`);
       return new Response(JSON.stringify({
         comments: [],
-        batchStart: requestBody.batchStart || 0,
+        batchStart: batchStartValue,
         batchSize: 0,
         hasMore: false,
         totalComments: requestBody.comments?.length || 0,
@@ -120,10 +122,12 @@ serve(async (req) => {
     const { 
       comments: inputComments, 
       defaultMode = 'redact',
-      batchStart = 0,
       useCachedAnalysis = false,
       isDemoScan = false
     } = requestBody;
+    
+    // Use the parsed batchStartValue instead of the raw requestBody.batchStart
+    const batchStart = batchStartValue;
 
     console.log(`[REQUEST] Received request body:`, {
       commentsCount: inputComments?.length,
@@ -722,12 +726,14 @@ serve(async (req) => {
     console.log(`Successfully scanned ${allScannedComments.length}/${inputComments.length} comments across ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
     
     // Log detailed breakdown of what was processed
-    const isIncrementalRequest = Number.isFinite(requestBody.batchStart) && (requestBody.batchStart as number) > 0;
+    const batchStartValue = typeof requestBody.batchStart === 'number' ? requestBody.batchStart : 
+                           typeof requestBody.batchStart === 'string' ? parseInt(requestBody.batchStart) : 0;
+    const isIncrementalRequest = Number.isFinite(batchStartValue) && batchStartValue > 0;
     
     if (isIncrementalRequest) {
       // For incremental requests, we only process a subset of the total comments
-      const firstCommentIndex = allScannedComments[0]?.originalRow || (batchStart + 1);
-      const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || (batchStart + allScannedComments.length);
+      const firstCommentIndex = allScannedComments[0]?.originalRow || (batchStartValue + 1);
+      const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || (batchStartValue + allScannedComments.length);
       console.log(`[INCREMENTAL] Processed batch: rows ${firstCommentIndex} to ${lastCommentIndex} (${allScannedComments.length} comments)`);
     } else {
       // For initial requests, check if we processed all comments in this invocation
