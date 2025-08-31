@@ -140,7 +140,8 @@ export const AIConfigurationManagement = () => {
           rpm_limit: config.rpm_limit || undefined,
           tpm_limit: config.tpm_limit || undefined,
           input_token_limit: undefined,
-          output_token_limit: undefined
+          output_token_limit: undefined,
+          temperature: config.temperature || undefined
         };
       });
 
@@ -522,8 +523,8 @@ export const AIConfigurationManagement = () => {
           <Input
             id={`temperature-${scannerConfig.type}`}
             type="number"
-            value={config.temperature !== undefined && config.temperature !== null ? config.temperature : ''}
-            onChange={(e) => updateConfig(scannerConfig.type, { temperature: e.target.value !== '' ? parseFloat(e.target.value) : undefined })}
+            value={config.temperature || ''}
+            onChange={(e) => updateConfig(scannerConfig.type, { temperature: e.target.value ? parseFloat(e.target.value) : undefined })}
             placeholder="0.0 to 1.0"
             step="0.01"
             min="0"

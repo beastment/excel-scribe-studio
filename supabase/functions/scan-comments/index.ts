@@ -690,32 +690,16 @@ serve(async (req) => {
           mode, // Add the mode field
           needsAdjudication,
           adjudicationData: {
-            scanAResult: { 
-              concerning: scanAResult.A === 'Y', 
-              identifiable: scanAResult.B === 'Y', 
-              model: `${scanA.provider}/${scanA.model}` 
-            },
-            scanBResult: { 
-              concerning: scanBResult.A === 'Y', 
-              identifiable: scanBResult.B === 'Y', 
-              model: `${scanB.provider}/${scanB.model}` 
-            },
+            scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
+            scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
             agreements: {
-              concerning: !concerningDisagreement ? (scanAResult.A === 'Y') : null,
-              identifiable: !identifiableDisagreement ? (scanBResult.B === 'Y') : null
+              concerning: !concerningDisagreement ? scanAResult.concerning : null,
+              identifiable: !identifiableDisagreement ? scanBResult.identifiable : null
             }
           },
           debugInfo: {
-            scanAResult: { 
-              concerning: scanAResult.A === 'Y', 
-              identifiable: scanAResult.B === 'Y', 
-              model: `${scanA.provider}/${scanA.model}` 
-            },
-            scanBResult: { 
-              concerning: scanBResult.A === 'Y', 
-              identifiable: scanBResult.B === 'Y', 
-              model: `${scanB.provider}/${scanB.model}` 
-            },
+            scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
+            scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
             needsAdjudication,
             scanRunId
           }
@@ -955,52 +939,101 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
 
 
 
-    // First try to parse the entire response as JSON directly
-    let cleanedJson = decodedResponse;
+    // First try to parse the simple key-value format (i:1\nA:N\nB:Y)
     let parsed: any;
-    try {
-      parsed = JSON.parse(cleanedJson);
-      console.log(`${source}: Response is valid JSON directly`);
-    } catch (directParseError) {
-      console.log(`${source}: Direct parse failed; attempting balanced array extraction: ${directParseError.message}`);
-      const arr = extractJsonArray(decodedResponse);
-      if (!arr) {
-        console.error(`${source}: No JSON array found in response`);
-        console.log(`${source}: Response preview: ${decodedResponse.substring(0, 500)}...`);
+    
+    // Check if response is in the simple format
+    if (decodedResponse.includes('i:') && decodedResponse.includes('A:') && decodedResponse.includes('B:')) {
+      console.log(`${source}: Detected simple key-value format, parsing directly`);
+      
+      try {
+        const lines = decodedResponse.split('\n').filter(line => line.trim().length > 0);
+        const results: any[] = [];
+        let currentItem: any = {};
         
-        // Try to extract individual JSON objects as fallback
-        const objectMatches = decodedResponse.match(/\{[^{}]*\}/g);
-        if (objectMatches && objectMatches.length > 0) {
-          console.log(`${source}: Found ${objectMatches.length} potential JSON objects, attempting extraction`);
-          const extractedObjects: any[] = [];
-          for (let i = 0; i < objectMatches.length && i < expectedCount; i++) {
-            try {
-              const obj = JSON.parse(objectMatches[i]);
-              extractedObjects.push({
-                index: obj.i || obj.Item || obj.index || (globalStartIndex + i),
-                A: obj.A === 'Y' ? 'Y' : 'N', // concerning
-                B: obj.B === 'Y' ? 'Y' : 'N'  // identifiable
-              });
-            } catch (objError) {
-              console.warn(`${source}: Failed to parse object ${i}: ${objError.message}`);
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine.startsWith('i:')) {
+            // Save previous item if exists
+            if (currentItem.index !== undefined) {
+              results.push(currentItem);
             }
-          }
-          
-          if (extractedObjects.length > 0) {
-            console.log(`${source}: Successfully extracted ${extractedObjects.length} objects, using as fallback`);
-            return extractedObjects.length < expectedCount ? 
-              [...extractedObjects, ...Array(expectedCount - extractedObjects.length).fill(null).map((_, i) => ({
-                index: globalStartIndex + extractedObjects.length + i,
-                A: 'N', // concerning
-                B: 'N'  // identifiable
-              }))] : extractedObjects;
+            // Start new item
+            const index = parseInt(trimmedLine.substring(2));
+            currentItem = { index };
+          } else if (trimmedLine.startsWith('A:')) {
+            const value = trimmedLine.substring(2).trim();
+            currentItem.concerning = value === 'Y';
+          } else if (trimmedLine.startsWith('B:')) {
+            const value = trimmedLine.substring(2).trim();
+            currentItem.identifiable = value === 'Y';
           }
         }
         
-        throw new Error('No JSON array found in response');
+        // Add the last item
+        if (currentItem.index !== undefined) {
+          results.push(currentItem);
+        }
+        
+        if (results.length > 0) {
+          console.log(`${source}: Successfully parsed ${results.length} items from simple format`);
+          parsed = results;
+        } else {
+          throw new Error('No valid items found in simple format');
+        }
+      } catch (simpleParseError) {
+        console.warn(`${source}: Simple format parsing failed: ${simpleParseError.message}`);
+        // Fall back to JSON parsing
       }
-      cleanedJson = arr;
-      console.log(`${source}: Extracted JSON array from response`);
+    }
+    
+    // If simple format parsing failed or wasn't detected, try JSON parsing
+    if (!parsed) {
+      let cleanedJson = decodedResponse;
+      try {
+        parsed = JSON.parse(cleanedJson);
+        console.log(`${source}: Response is valid JSON directly`);
+      } catch (directParseError) {
+        console.log(`${source}: Direct parse failed; attempting balanced array extraction: ${directParseError.message}`);
+        const arr = extractJsonArray(decodedResponse);
+        if (!arr) {
+          console.error(`${source}: No JSON array found in response`);
+          console.log(`${source}: Response preview: ${decodedResponse.substring(0, 500)}...`);
+          
+          // Try to extract individual JSON objects as fallback
+          const objectMatches = decodedResponse.match(/\{[^{}]*\}/g);
+          if (objectMatches && objectMatches.length > 0) {
+            console.log(`${source}: Found ${objectMatches.length} potential JSON objects, attempting extraction`);
+            const extractedObjects: any[] = [];
+            for (let i = 0; i < objectMatches.length && i < expectedCount; i++) {
+              try {
+                const obj = JSON.parse(objectMatches[i]);
+                extractedObjects.push({
+                  index: obj.index || (globalStartIndex + i),
+                  concerning: Boolean(obj.concerning),
+                  identifiable: Boolean(obj.identifiable)
+                });
+              } catch (objError) {
+                console.warn(`${source}: Failed to parse object ${i}: ${objError.message}`);
+              }
+            }
+            
+            if (extractedObjects.length > 0) {
+              console.log(`${source}: Successfully extracted ${extractedObjects.length} objects, using as fallback`);
+              return extractedObjects.length < expectedCount ? 
+                [...extractedObjects, ...Array(expectedCount - extractedObjects.length).fill(null).map((_, i) => ({
+                  index: globalStartIndex + extractedObjects.length + i,
+                  concerning: false,
+                  identifiable: false
+                }))] : extractedObjects;
+            }
+          }
+          
+          throw new Error('No valid format found in response');
+        }
+        cleanedJson = arr;
+        console.log(`${source}: Extracted JSON array from response`);
+      }
     }
 
     if (typeof cleanedJson === 'string') {
@@ -1029,21 +1062,9 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
     try {
       parsed = JSON.parse(cleanedJson);
     } catch (parseError) {
-      // Try to fix unquoted Y/N values before other fallback attempts
-      console.warn(`${source}: JSON parse error, attempting to fix unquoted Y/N values: ${parseError.message}`);
-      
-      try {
-        // Fix unquoted Y and N values
-        let fixedJson = cleanedJson;
-        fixedJson = fixedJson.replace(/:\s*Y\s*([,}])/g, ': "Y"$1');
-        fixedJson = fixedJson.replace(/:\s*N\s*([,}])/g, ': "N"$1');
-        
-        console.log(`${source}: Attempting to parse fixed JSON`);
-        parsed = JSON.parse(fixedJson);
-        console.log(`${source}: Fixed JSON parse succeeded`);
-      } catch (fixError) {
-        console.warn(`${source}: JSON fix failed, attempting other fallback methods: ${fixError.message}`);
-        console.log(`${source}: [DEBUG] Original JSON length: ${cleanedJson.length}`);
+      // Attempt sanitization for unescaped quotes in reasoning fields, then parse again
+      console.warn(`${source}: JSON parse error, attempting sanitization: ${parseError.message}`);
+      console.log(`${source}: [DEBUG] Original JSON length: ${cleanedJson.length}`);
       
       // Show the area around the error position for debugging
       if (parseError.message.includes('position')) {
@@ -1067,10 +1088,17 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         }
       }
       
-      // Try the JSON completion logic directly
       try {
+        parsed = JSON.parse(cleanedJson);
+        console.log(`${source}: JSON parse succeeded`);
+      } catch (e2) {
+        // If JSON parse fails, try JSON completion logic
+        console.warn(`${source}: JSON parse failed, attempting JSON completion: ${e2.message}`);
+        
+        // Try the JSON completion logic directly
+        try {
           // Final attempt: check if JSON is truncated and try to complete it
-          console.warn(`${source}: Checking for truncation after JSON parse failed: ${parseError.message}`);
+          console.warn(`${source}: Checking for truncation after JSON parse failed: ${e2.message}`);
           
           let completedJson = cleanedJson; // Use original version
           let needsCompletion = false;
@@ -1103,8 +1131,8 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
             } catch (e4) {
               console.error(`${source}: JSON completion failed: ${e4.message}`);
               // Show the error area for debugging
-              if (parseError.message.includes('position')) {
-                const positionMatch = parseError.message.match(/position (\d+)/);
+              if (e2.message.includes('position')) {
+                const positionMatch = e2.message.match(/position (\d+)/);
                 if (positionMatch) {
                   const position = parseInt(positionMatch[1]);
                   const start = Math.max(0, position - 100);
@@ -1113,15 +1141,15 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
                   console.error(`${source}: ...${cleanedJson.substring(start, end)}...`);
                 }
               }
-              throw new Error(`Invalid JSON in response: ${parseError.message}`);
+              throw new Error(`Invalid JSON in response: ${e2.message}`);
             }
           } else {
-            console.error(`${source}: JSON parse error:`, parseError);
+            console.error(`${source}: JSON parse error:`, e2);
             console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
             
             // If we have a position error, show the area around that position
-            if (parseError.message.includes('position')) {
-              const positionMatch = parseError.message.match(/position (\d+)/);
+            if (e2.message.includes('position')) {
+              const positionMatch = e2.message.match(/position (\d+)/);
               if (positionMatch) {
                 const position = parseInt(positionMatch[1]);
                 const start = Math.max(0, position - 100);
@@ -1131,11 +1159,11 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
               }
             }
             
-            throw new Error(`Invalid JSON in response: ${parseError.message}`);
+            throw new Error(`Invalid JSON in response: ${e2.message}`);
           }
         } catch (e3) {
           console.error(`${source}: JSON completion logic failed: ${e3.message}`);
-          throw new Error(`Invalid JSON in response: ${parseError.message}`);
+          throw new Error(`Invalid JSON in response: ${e2.message}`);
         }
       }
     }
@@ -1157,16 +1185,16 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         const existingResult = parsed[i];
         if (existingResult) {
           paddedResults.push({
-            index: existingResult.i || existingResult.Item || existingResult.index || (globalStartIndex + i),
-            A: existingResult.A === 'Y' ? 'Y' : 'N', // concerning
-            B: existingResult.B === 'Y' ? 'Y' : 'N'  // identifiable
+            index: existingResult.index || (globalStartIndex + i),
+            concerning: Boolean(existingResult.concerning),
+            identifiable: Boolean(existingResult.identifiable)
           });
                   } else {
             // Add default result for missing item
             paddedResults.push({
               index: globalStartIndex + i,
-              A: 'N', // concerning
-              B: 'N'  // identifiable
+              concerning: false,
+              identifiable: false
             });
           }
       }

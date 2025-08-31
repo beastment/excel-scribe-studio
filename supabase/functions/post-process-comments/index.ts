@@ -182,24 +182,6 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       .trim();
   };
 
-  // First, check if this is a JSON response (which is what we expect from the AI)
-  if (typeof parsed === 'string' && parsed.trim().startsWith('[')) {
-    try {
-      const jsonResponse = JSON.parse(parsed);
-      if (Array.isArray(jsonResponse)) {
-        // Extract the text fields from the JSON response
-        return jsonResponse.map(item => {
-          if (item.redacted) return item.redacted;
-          if (item.rephrased) return item.rephrased;
-          if (item.text) return item.text;
-          return '';
-        }).filter(text => text.length > 0);
-      }
-    } catch (e) {
-      console.warn('[NORMALIZE] Failed to parse JSON response, falling back to text parsing:', e);
-    }
-  }
-
   if (Array.isArray(parsed)) {
     const cleaned = parsed
       .filter((v) => v != null)

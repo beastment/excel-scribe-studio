@@ -16,11 +16,13 @@ interface AdjudicationRequest {
     scanAResult: {
       concerning: boolean;
       identifiable: boolean;
+      reasoning: string;
       model: string;
     };
     scanBResult: {
       concerning: boolean;
       identifiable: boolean;
+      reasoning: string;
       model: string;
     };
     agreements: {
@@ -43,6 +45,7 @@ interface AdjudicationResponse {
     id: string;
     concerning: boolean;
     identifiable: boolean;
+    reasoning: string;
     model: string;
   }>;
   summary: {
@@ -138,18 +141,17 @@ ANALYSIS RULES:
 2. Personally identifiable information: names, employee IDs, specific job levels (e.g., "Level 5"), tenure statements (e.g., "3 years experience"), contact details
 
 OUTPUT FORMAT:
-Return ONLY a JSON array with exactly ${commentCount} objects in this exact format:
-[
-  {
-    "i": 1,
-    "A": "Y",
-    "B": "N"
-  },
-  ...
-]
+Return ONLY the results in this simple format (one per line):
+i:1
+A:Y
+B:N
+i:2
+A:N
+B:Y
+...
 
-CRITICAL: Return ONLY the JSON array, no prose, no code fences, no explanations before/after.
-IMPORTANT: The values "Y" and "N" MUST be quoted strings in the JSON output!`;
+CRITICAL: Return ONLY the results in this format, no prose, no code fences, no explanations before/after.
+IMPORTANT: Use Y or N (not quoted) for A and B values.`;
 }
 
 // Build adjudication input
@@ -170,10 +172,12 @@ Original Text: ${comment.originalText}
 Scan A (${comment.scanAResult.model}):
 - Concerning: ${comment.scanAResult.concerning}
 - Identifiable: ${comment.scanAResult.identifiable}
+- Reasoning: ${comment.scanAResult.reasoning}
 
 Scan B (${comment.scanBResult.model}):
 - Concerning: ${comment.scanBResult.concerning}
 - Identifiable: ${comment.scanBResult.identifiable}
+- Reasoning: ${comment.scanBResult.reasoning}
 
 Agreements:
 - Concerning: ${concerningStatus}
@@ -190,10 +194,49 @@ ${items}`;
 // Parse adjudication response
 function parseAdjudicationResponse(response: string, expectedCount: number): Array<{ index: number; concerning: boolean; identifiable: boolean }> {
   try {
-    // Try to extract JSON from the response
+    // First try to parse the simple key-value format (i:1\nA:N\nB:Y)
+    if (response.includes('i:') && response.includes('A:') && response.includes('B:')) {
+      console.log('Detected simple key-value format, parsing directly');
+      
+      const lines = response.split('\n').filter(line => line.trim().length > 0);
+      const results: any[] = [];
+      let currentItem: any = {};
+      
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith('i:')) {
+          // Save previous item if exists
+          if (currentItem.index !== undefined) {
+            results.push(currentItem);
+          }
+          // Start new item
+          const index = parseInt(trimmedLine.substring(2));
+          currentItem = { index };
+        } else if (trimmedLine.startsWith('A:')) {
+          const value = trimmedLine.substring(2).trim();
+          currentItem.concerning = value === 'Y';
+        } else if (trimmedLine.startsWith('B:')) {
+          const value = trimmedLine.substring(2).trim();
+          currentItem.identifiable = value === 'Y';
+        }
+      }
+      
+      // Add the last item
+      if (currentItem.index !== undefined) {
+        results.push(currentItem);
+      }
+      
+      if (results.length !== expectedCount) {
+        throw new Error(`Expected ${expectedCount} items, got ${results.length}`);
+      }
+      
+      return results;
+    }
+    
+    // Fallback to JSON parsing if simple format not detected
     const jsonMatch = response.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      throw new Error('No JSON array found in response');
+      throw new Error('No valid format found in response');
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
@@ -206,9 +249,9 @@ function parseAdjudicationResponse(response: string, expectedCount: number): Arr
     }
 
     return parsed.map((item, i) => ({
-      index: item.i || item.Item || item.index || i + 1,
-      A: item.A === 'Y' ? 'Y' : 'N', // concerning
-      B: item.B === 'Y' ? 'Y' : 'N'  // identifiable
+      index: item.index || i + 1,
+      concerning: Boolean(item.concerning),
+      identifiable: Boolean(item.identifiable)
     }));
   } catch (error) {
     console.error('Failed to parse adjudication response:', error);
@@ -290,6 +333,7 @@ serve(async (req) => {
             id: c.id,
             concerning: c.agreements.concerning !== null ? c.agreements.concerning : c.scanAResult.concerning,
             identifiable: c.agreements.identifiable !== null ? c.agreements.identifiable : c.scanAResult.identifiable,
+            reasoning: 'No adjudication needed - scanners agreed',
             model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
           })),
           summary: {
@@ -397,8 +441,9 @@ serve(async (req) => {
           if (adjudicated) {
             return {
               id: comment.id,
-              concerning: adjudicated.A === 'Y',
-              identifiable: adjudicated.B === 'Y',
+              concerning: adjudicated.concerning,
+              identifiable: adjudicated.identifiable,
+              reasoning: adjudicated.reasoning,
               model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
             };
           }
@@ -409,6 +454,7 @@ serve(async (req) => {
           id: comment.id,
           concerning: comment.agreements.concerning !== null ? comment.agreements.concerning : comment.scanAResult.concerning,
           identifiable: comment.agreements.identifiable !== null ? comment.agreements.identifiable : comment.scanAResult.identifiable,
+          reasoning: 'No adjudication needed - scanners agreed',
           model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
         };
       });
