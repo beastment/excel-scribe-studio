@@ -1000,6 +1000,11 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
           if (position > cleanedJson.length * 0.9) {
             console.warn(`${source}: [DEBUG] Error is near the end of the JSON (position ${position} of ${cleanedJson.length}) - possible truncation`);
           }
+          
+          // Check if this is a very long response that might be hitting token limits
+          if (cleanedJson.length > 10000) {
+            console.warn(`${source}: [DEBUG] Very long response (${cleanedJson.length} chars) - may be hitting token limits`);
+          }
         }
       }
       
@@ -1009,24 +1014,23 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         parsed = JSON.parse(sanitized);
         console.log(`${source}: Sanitization succeeded`);
       } catch (e2) {
-        // If sanitization fails, try the robust repair function
-        console.warn(`${source}: Sanitization failed, attempting robust repair: ${e2.message}`);
-        const repaired = repairJsonEscaping(cleanedJson);
+        // If sanitization fails, skip the repair function as it's causing more problems
+        console.warn(`${source}: Sanitization failed, skipping repair function to avoid corruption: ${e2.message}`);
+        console.warn(`${source}: Repair function disabled due to JSON corruption issues`);
+        
+        // Try the JSON completion logic directly
         try {
-          parsed = JSON.parse(repaired);
-          console.log(`${source}: Robust repair succeeded`);
-        } catch (e3) {
           // Final attempt: check if JSON is truncated and try to complete it
-          console.warn(`${source}: Robust repair failed, checking for truncation: ${e3.message}`);
+          console.warn(`${source}: Checking for truncation after sanitization failed: ${e2.message}`);
           
-          let completedJson = cleanedJson;
+          let completedJson = sanitized; // Use sanitized version instead of original
           let needsCompletion = false;
           
           // Count brackets and braces to see if they're balanced
-          const openBraces = (cleanedJson.match(/\{/g) || []).length;
-          const closeBraces = (cleanedJson.match(/\}/g) || []).length;
-          const openBrackets = (cleanedJson.match(/\[/g) || []).length;
-          const closeBrackets = (cleanedJson.match(/\]/g) || []).length;
+          const openBraces = (sanitized.match(/\{/g) || []).length;
+          const closeBraces = (sanitized.match(/\}/g) || []).length;
+          const openBrackets = (sanitized.match(/\[/g) || []).length;
+          const closeBrackets = (sanitized.match(/\]/g) || []).length;
           
           // If we have more opening than closing, try to complete the JSON
           if (openBraces > closeBraces || openBrackets > closeBrackets) {
@@ -1040,7 +1044,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
               completedJson += ']';
               closeBrackets++;
             }
-            console.log(`${source}: Attempting to complete truncated JSON by adding ${openBraces - (cleanedJson.match(/\{/g) || []).length} braces and ${openBrackets - (cleanedJson.match(/\[/g) || []).length} brackets`);
+            console.log(`${source}: Attempting to complete truncated JSON by adding ${openBraces - (sanitized.match(/\{/g) || []).length} braces and ${openBrackets - (sanitized.match(/\[/g) || []).length} brackets`);
           }
           
           if (needsCompletion) {
@@ -1050,36 +1054,39 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
             } catch (e4) {
               console.error(`${source}: JSON completion failed: ${e4.message}`);
               // Show the error area for debugging
-              if (parseError.message.includes('position')) {
-                const positionMatch = parseError.message.match(/position (\d+)/);
+              if (e2.message.includes('position')) {
+                const positionMatch = e2.message.match(/position (\d+)/);
                 if (positionMatch) {
                   const position = parseInt(positionMatch[1]);
                   const start = Math.max(0, position - 100);
-                  const end = Math.min(cleanedJson.length, position + 100);
+                  const end = Math.min(sanitized.length, position + 100);
                   console.error(`${source}: Error area around position ${position}:`);
-                  console.error(`${source}: ...${cleanedJson.substring(start, end)}...`);
+                  console.error(`${source}: ...${sanitized.substring(start, end)}...`);
                 }
               }
-              throw new Error(`Invalid JSON in response: ${parseError.message}`);
+              throw new Error(`Invalid JSON in response: ${e2.message}`);
             }
           } else {
-            console.error(`${source}: JSON parse error:`, parseError);
-            console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
+            console.error(`${source}: JSON parse error:`, e2);
+            console.error(`${source}: Attempted to parse: ${sanitized.substring(0, 500)}...`);
             
             // If we have a position error, show the area around that position
-            if (parseError.message.includes('position')) {
-              const positionMatch = parseError.message.match(/position (\d+)/);
+            if (e2.message.includes('position')) {
+              const positionMatch = e2.message.match(/position (\d+)/);
               if (positionMatch) {
                 const position = parseInt(positionMatch[1]);
                 const start = Math.max(0, position - 100);
-                const end = Math.min(cleanedJson.length, position + 100);
+                const end = Math.min(sanitized.length, position + 100);
                 console.error(`${source}: Error area around position ${position}:`);
-                console.error(`${source}: ...${cleanedJson.substring(start, end)}...`);
+                console.error(`${source}: ...${sanitized.substring(start, end)}...`);
               }
             }
             
-            throw new Error(`Invalid JSON in response: ${parseError.message}`);
+            throw new Error(`Invalid JSON in response: ${e2.message}`);
           }
+        } catch (e3) {
+          console.error(`${source}: JSON completion logic failed: ${e3.message}`);
+          throw new Error(`Invalid JSON in response: ${e2.message}`);
         }
       }
     }
