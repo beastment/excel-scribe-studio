@@ -722,19 +722,29 @@ serve(async (req) => {
     console.log(`Successfully scanned ${allScannedComments.length}/${inputComments.length} comments across ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
     
     // Log detailed breakdown of what was processed
-    if (allScannedComments.length < inputComments.length) {
-      console.warn(`[WARNING] Missing ${inputComments.length - allScannedComments.length} comments!`);
-      console.warn(`[WARNING] This suggests some batches were not fully processed`);
-      
-      // Log the range of comments we have
-      const firstCommentIndex = allScannedComments[0]?.originalRow || 1;
-      const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || allScannedComments.length;
-      console.warn(`[WARNING] Comment range: ${firstCommentIndex} to ${lastCommentIndex}`);
+    const isIncrementalRequest = Number.isFinite(requestBody.batchStart) && (requestBody.batchStart as number) > 0;
+    
+    if (isIncrementalRequest) {
+      // For incremental requests, we only process a subset of the total comments
+      const firstCommentIndex = allScannedComments[0]?.originalRow || (batchStart + 1);
+      const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || (batchStart + allScannedComments.length);
+      console.log(`[INCREMENTAL] Processed batch: rows ${firstCommentIndex} to ${lastCommentIndex} (${allScannedComments.length} comments)`);
     } else {
-      // Log successful processing range
-      const firstCommentIndex = allScannedComments[0]?.originalRow || 1;
-      const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || allScannedComments.length;
-      console.log(`[SUCCESS] All comments processed successfully: rows ${firstCommentIndex} to ${lastCommentIndex}`);
+      // For initial requests, check if we processed all comments in this invocation
+      if (allScannedComments.length < inputComments.length) {
+        console.warn(`[WARNING] Missing ${inputComments.length - allScannedComments.length} comments!`);
+        console.warn(`[WARNING] This suggests some batches were not fully processed`);
+        
+        // Log the range of comments we have
+        const firstCommentIndex = allScannedComments[0]?.originalRow || 1;
+        const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || allScannedComments.length;
+        console.warn(`[WARNING] Comment range: ${firstCommentIndex} to ${lastCommentIndex}`);
+      } else {
+        // Log successful processing range
+        const firstCommentIndex = allScannedComments[0]?.originalRow || 1;
+        const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || allScannedComments.length;
+        console.log(`[SUCCESS] All comments processed successfully: rows ${firstCommentIndex} to ${lastCommentIndex}`);
+      }
     }
     
     const totalRunTimeMs = Date.now() - overallStartTime;

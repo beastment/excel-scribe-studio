@@ -226,8 +226,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         toast.info('Phase 1: Scanning comments for concerning/identifiable content...');
       }
       
-      // Incremental processing: collect all comments from multiple requests
+      // Incremental processing: collect all comments and aggregate data from multiple requests
       let allScannedComments: any[] = [];
+      let aggregatedSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
+      let totalRunTimeMs = 0;
+      let totalBatchesProcessed = 0;
+      let finalCreditInfo: any = null;
       let batchStart = 0;
       let hasMore = true;
       let batchCount = 0;
@@ -313,6 +317,29 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         allScannedComments = allScannedComments.concat(data.comments);
         console.log(`[INCREMENTAL] Accumulated ${allScannedComments.length} comments so far`);
         
+        // Aggregate summary data
+        if (data.summary) {
+          aggregatedSummary.total += data.summary.total || 0;
+          aggregatedSummary.concerning += data.summary.concerning || 0;
+          aggregatedSummary.identifiable += data.summary.identifiable || 0;
+          aggregatedSummary.needsAdjudication += data.summary.needsAdjudication || 0;
+        }
+        
+        // Accumulate runtime
+        if (data.totalRunTimeMs) {
+          totalRunTimeMs += data.totalRunTimeMs;
+        }
+        
+        // Track batches processed
+        if (data.batchesProcessed) {
+          totalBatchesProcessed += data.batchesProcessed;
+        }
+        
+        // Keep the most recent credit info (should be consistent across batches)
+        if (data.creditInfo) {
+          finalCreditInfo = data.creditInfo;
+        }
+        
         // Update progress based on how many comments we've processed
         const progressPercent = Math.min(25, 10 + (allScannedComments.length / comments.length) * 15);
         setScanProgress(progressPercent);
@@ -329,14 +356,28 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
       }
       
-      // Replace the data.comments with our accumulated comments
-      const data = { comments: allScannedComments };
+      // Create the final aggregated response object
+      const finalAggregatedResponse = {
+        comments: allScannedComments,
+        summary: aggregatedSummary,
+        totalRunTimeMs: totalRunTimeMs,
+        batchesProcessed: totalBatchesProcessed,
+        creditInfo: finalCreditInfo,
+        totalComments: comments.length
+      };
+      
+      console.log(`[INCREMENTAL] Final aggregated response:`, {
+        commentsCount: finalAggregatedResponse.comments.length,
+        summary: finalAggregatedResponse.summary,
+        totalRunTimeMs: finalAggregatedResponse.totalRunTimeMs,
+        batchesProcessed: finalAggregatedResponse.batchesProcessed
+      });
 
       setScanProgress(30);
       toast.info('Phase 1 complete: Comments scanned and flagged');
 
       // Phase 2: Adjudicate any disagreements between Scan A and Scan B
-      const needsAdjudication = data.comments.filter((c: any) => c.needsAdjudication);
+      const needsAdjudication = finalAggregatedResponse.comments.filter((c: any) => c.needsAdjudication);
       
       if (needsAdjudication.length > 0) {
         setScanProgress(40);
@@ -387,7 +428,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           // Update scan results with adjudication outcomes
           const adjudicatedMap = new Map(adjudicationData.adjudicatedComments.map((c: any) => [c.id, c]));
           
-          data.comments = data.comments.map((comment: any) => {
+          finalAggregatedResponse.comments = finalAggregatedResponse.comments.map((comment: any) => {
             if (comment.needsAdjudication) {
               const adjudicated = adjudicatedMap.get(comment.id);
               if (adjudicated) {
@@ -415,13 +456,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       // Phase 3: Post-process flagged comments
       // Process comments that are identifiable (with or without concerning)
       // Comments that are only concerning (but not identifiable) should be set to revert mode
-      const commentsToProcess = data.comments.filter((c: any) => c.identifiable);
-      const commentsToRevert = data.comments.filter((c: any) => c.concerning && !c.identifiable);
+      const commentsToProcess = finalAggregatedResponse.comments.filter((c: any) => c.identifiable);
+      const commentsToRevert = finalAggregatedResponse.comments.filter((c: any) => c.concerning && !c.identifiable);
       
       // Set comments that are only concerning to revert mode
       if (commentsToRevert.length > 0) {
         console.log(`Setting ${commentsToRevert.length} comments to revert mode (concerning but not identifiable)`);
-        data.comments = data.comments.map((comment: any) => {
+        finalAggregatedResponse.comments = finalAggregatedResponse.comments.map((comment: any) => {
           if (comment.concerning && !comment.identifiable) {
             return {
               ...comment,
@@ -491,7 +532,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           console.log(`Created processedMap with ${processedMap.size} entries:`, Array.from(processedMap.keys()));
           
           // Merge post-processing results back into the scan data
-          const finalComments = data.comments.map((comment: any) => {
+          const finalComments = finalAggregatedResponse.comments.map((comment: any) => {
             // Process comments that are identifiable (with or without concerning)
             if (comment.identifiable) {
               const processed = processedMap.get(comment.id) as any;
@@ -549,7 +590,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           });
           
           // Update processedComments with the merged results
-          data.comments = finalComments;
+          finalAggregatedResponse.comments = finalComments;
           
           // Show success message with post-processing summary
           const summary = postProcessData.summary;
@@ -574,8 +615,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       // Final update with all processed comments
       setScanProgress(100);
       setHasScanRun(true);
-      onCommentsUpdate(data.comments);
-      toast.success(`Scan complete: ${data.comments.length} comments processed`);
+      onCommentsUpdate(finalAggregatedResponse.comments);
+      toast.success(`Scan complete: ${finalAggregatedResponse.comments.length} comments processed`);
       
       // Refresh credits after successful scan completion
       if (onCreditsRefresh) {
