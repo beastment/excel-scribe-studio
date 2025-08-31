@@ -36,7 +36,7 @@ function getEffectiveMaxTokens(config: any): number {
 const POST_PROCESS_BATCH_SIZE = 10;
 
 const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
-  const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ITEM k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.\n- IMPORTANT: The <<<ITEM k>>> prefix is ONLY for identification - do NOT include <<<END k>>> markers anywhere in your output.`;
+  const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ITEM k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.\n- IMPORTANT: The <<<ITEM k>>> prefix is ONLY for identification - do NOT include <<<END k>>> markers anywhere in your output.\n- ALTERNATIVE FORMAT: If you prefer, you can also return results in this simple format:\n  <<<ITEM 1>>> [redacted/rephrased text]\n  <<<ITEM 2>>> [redacted/rephrased text]\n  ...\n  <<<ITEM ${expectedLen}>>> [redacted/rephrased text]`;
   return `${basePrompt}\n\n${sentinels}`;
 };
 
@@ -228,11 +228,38 @@ function normalizeBatchTextParsed(parsed: any): string[] {
 
   // Fallback: try to parse as string
   const content = String(parsed || '');
+  
+  // Check if this is the simple format with ITEM markers
   if (content.includes('<<<ITEM')) {
     // Extract content between ITEM markers
     const itemRegex = /<<<ITEM\s+\d+>>>\s*([\s\S]*?)(?=<<<ITEM\s+\d+>>>|$)/g;
     const matches = [...content.matchAll(itemRegex)];
     return matches.map(m => m[1].trim()).filter(s => s.length > 0);
+  }
+  
+  // Check if this is a JSON array (the AI might return the entire array as a string)
+  if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
+    try {
+      const jsonArray = JSON.parse(content);
+      if (Array.isArray(jsonArray)) {
+        return jsonArray.map(item => {
+          if (typeof item === 'string') {
+            return cleanSentinels(item.trim());
+          } else if (typeof item === 'object' && item !== null) {
+            // Handle JSON objects with redacted/rephrased/text fields
+            if (item.redacted) return cleanSentinels(item.redacted);
+            if (item.rephrased) return cleanSentinels(item.rephrased);
+            if (item.text) return cleanSentinels(item.text);
+            // Fallback to stringifying the object
+            return cleanSentinels(JSON.stringify(item));
+          } else {
+            return cleanSentinels(String(item));
+          }
+        }).filter(s => s.length > 0);
+      }
+    } catch (e) {
+      console.warn('[NORMALIZE] Failed to parse JSON array, falling back to string parsing:', e);
+    }
   }
 
   return [String(parsed || '')];
