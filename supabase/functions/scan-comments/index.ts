@@ -955,12 +955,17 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
 
 
 
-    // First try to parse the entire response as JSON directly
+    // First fix unquoted Y/N values, then try to parse
     let cleanedJson = decodedResponse;
+    
+    // Fix unquoted Y and N values before any parsing attempts
+    cleanedJson = cleanedJson.replace(/:\s*Y\s*([,}])/g, ': "Y"$1');
+    cleanedJson = cleanedJson.replace(/:\s*N\s*([,}])/g, ': "N"$1');
+    
     let parsed: any;
     try {
       parsed = JSON.parse(cleanedJson);
-      console.log(`${source}: Response is valid JSON directly`);
+      console.log(`${source}: JSON parse succeeded after fixing unquoted Y/N values`);
     } catch (directParseError) {
       console.log(`${source}: Direct parse failed; attempting balanced array extraction: ${directParseError.message}`);
       const arr = extractJsonArray(decodedResponse);
@@ -1055,17 +1060,10 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         }
       }
       
+      // Try the JSON completion logic directly
       try {
-        parsed = JSON.parse(cleanedJson);
-        console.log(`${source}: JSON parse succeeded`);
-      } catch (e2) {
-        // If JSON parse fails, try JSON completion logic
-        console.warn(`${source}: JSON parse failed, attempting JSON completion: ${e2.message}`);
-        
-        // Try the JSON completion logic directly
-        try {
           // Final attempt: check if JSON is truncated and try to complete it
-          console.warn(`${source}: Checking for truncation after JSON parse failed: ${e2.message}`);
+          console.warn(`${source}: Checking for truncation after JSON parse failed: ${parseError.message}`);
           
           let completedJson = cleanedJson; // Use original version
           let needsCompletion = false;
@@ -1098,8 +1096,8 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
             } catch (e4) {
               console.error(`${source}: JSON completion failed: ${e4.message}`);
               // Show the error area for debugging
-              if (e2.message.includes('position')) {
-                const positionMatch = e2.message.match(/position (\d+)/);
+              if (parseError.message.includes('position')) {
+                const positionMatch = parseError.message.match(/position (\d+)/);
                 if (positionMatch) {
                   const position = parseInt(positionMatch[1]);
                   const start = Math.max(0, position - 100);
@@ -1108,15 +1106,15 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
                   console.error(`${source}: ...${cleanedJson.substring(start, end)}...`);
                 }
               }
-              throw new Error(`Invalid JSON in response: ${e2.message}`);
+              throw new Error(`Invalid JSON in response: ${parseError.message}`);
             }
           } else {
-            console.error(`${source}: JSON parse error:`, e2);
+            console.error(`${source}: JSON parse error:`, parseError);
             console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
             
             // If we have a position error, show the area around that position
-            if (e2.message.includes('position')) {
-              const positionMatch = e2.message.match(/position (\d+)/);
+            if (parseError.message.includes('position')) {
+              const positionMatch = parseError.message.match(/position (\d+)/);
               if (positionMatch) {
                 const position = parseInt(positionMatch[1]);
                 const start = Math.max(0, position - 100);
@@ -1126,11 +1124,11 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
               }
             }
             
-            throw new Error(`Invalid JSON in response: ${e2.message}`);
+            throw new Error(`Invalid JSON in response: ${parseError.message}`);
           }
         } catch (e3) {
           console.error(`${source}: JSON completion logic failed: ${e3.message}`);
-          throw new Error(`Invalid JSON in response: ${e2.message}`);
+          throw new Error(`Invalid JSON in response: ${parseError.message}`);
         }
       }
     }
