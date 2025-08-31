@@ -185,7 +185,20 @@ function normalizeBatchTextParsed(parsed: any): string[] {
   if (Array.isArray(parsed)) {
     const cleaned = parsed
       .filter((v) => v != null)
-      .map((v) => (typeof v === 'string' ? cleanSentinels(v.trim()) : cleanSentinels(JSON.stringify(v))))
+      .map((v) => {
+        if (typeof v === 'string') {
+          return cleanSentinels(v.trim());
+        } else if (typeof v === 'object' && v !== null) {
+          // Handle JSON objects with redacted/rephrased/text fields
+          if (v.redacted) return cleanSentinels(v.redacted);
+          if (v.rephrased) return cleanSentinels(v.rephrased);
+          if (v.text) return cleanSentinels(v.text);
+          // Fallback to stringifying the object
+          return cleanSentinels(JSON.stringify(v));
+        } else {
+          return cleanSentinels(String(v));
+        }
+      })
       .filter((s) => s.length > 0)
       .filter((s) => !/^here\s+(?:is|are)[\s\S]*?:\s*$/i.test(s));
 
