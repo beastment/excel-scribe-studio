@@ -342,7 +342,7 @@ serve(async (req) => {
       
       // Calculate the maximum input tokens we can use based on output limits
       const maxInputTokensByOutput = Math.floor(maxOutputTokens / ioRatio);
-      console.log(`[BATCH_CALC] ${phase}: Max input tokens by output: ${maxOutputTokens} ÷ ${ioRatio} = ${maxInputTokensByOutput}`);
+      console.log(`[BATCH_CALC] ${phase}: Max input tokens by output: ${maxOutputTokens} * ${ioRatio} = ${maxInputTokensByOutput}`);
       
       // Use the more restrictive limit
       const effectiveMaxInputTokens = Math.min(maxInputTokens, maxInputTokensByOutput);
