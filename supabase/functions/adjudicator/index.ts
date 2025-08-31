@@ -141,9 +141,9 @@ OUTPUT FORMAT:
 Return ONLY a JSON array with exactly ${commentCount} objects in this exact format:
 [
   {
-    "Item": 1,
-    "A": boolean,
-    "B": boolean
+    "i": 1,
+    "A": Y,
+    "B": N
   },
   ...
 ]
@@ -205,9 +205,9 @@ function parseAdjudicationResponse(response: string, expectedCount: number): Arr
     }
 
     return parsed.map((item, i) => ({
-      index: item.Item || item.index || i + 1,
-      A: Boolean(item.A), // concerning
-      B: Boolean(item.B)  // identifiable
+      index: item.i || item.Item || item.index || i + 1,
+      A: item.A === 'Y' ? 'Y' : 'N', // concerning
+      B: item.B === 'Y' ? 'Y' : 'N'  // identifiable
     }));
   } catch (error) {
     console.error('Failed to parse adjudication response:', error);
@@ -396,8 +396,8 @@ serve(async (req) => {
           if (adjudicated) {
             return {
               id: comment.id,
-              concerning: adjudicated.A,
-              identifiable: adjudicated.B,
+              concerning: adjudicated.A === 'Y',
+              identifiable: adjudicated.B === 'Y',
               model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
             };
           }

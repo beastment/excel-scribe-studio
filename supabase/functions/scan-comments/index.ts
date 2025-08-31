@@ -691,29 +691,29 @@ serve(async (req) => {
           needsAdjudication,
           adjudicationData: {
             scanAResult: { 
-              concerning: scanAResult.A, 
-              identifiable: scanAResult.B, 
+              concerning: scanAResult.A === 'Y', 
+              identifiable: scanAResult.B === 'Y', 
               model: `${scanA.provider}/${scanA.model}` 
             },
             scanBResult: { 
-              concerning: scanBResult.A, 
-              identifiable: scanBResult.B, 
+              concerning: scanBResult.A === 'Y', 
+              identifiable: scanBResult.B === 'Y', 
               model: `${scanB.provider}/${scanB.model}` 
             },
             agreements: {
-              concerning: !concerningDisagreement ? scanAResult.A : null,
-              identifiable: !identifiableDisagreement ? scanBResult.B : null
+              concerning: !concerningDisagreement ? (scanAResult.A === 'Y') : null,
+              identifiable: !identifiableDisagreement ? (scanBResult.B === 'Y') : null
             }
           },
           debugInfo: {
             scanAResult: { 
-              concerning: scanAResult.A, 
-              identifiable: scanAResult.B, 
+              concerning: scanAResult.A === 'Y', 
+              identifiable: scanAResult.B === 'Y', 
               model: `${scanA.provider}/${scanA.model}` 
             },
             scanBResult: { 
-              concerning: scanBResult.A, 
-              identifiable: scanBResult.B, 
+              concerning: scanBResult.A === 'Y', 
+              identifiable: scanBResult.B === 'Y', 
               model: `${scanB.provider}/${scanB.model}` 
             },
             needsAdjudication,
@@ -977,9 +977,9 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
             try {
               const obj = JSON.parse(objectMatches[i]);
               extractedObjects.push({
-                index: obj.Item || obj.index || (globalStartIndex + i),
-                A: Boolean(obj.A), // concerning
-                B: Boolean(obj.B)  // identifiable
+                index: obj.i || obj.Item || obj.index || (globalStartIndex + i),
+                A: obj.A === 'Y' ? 'Y' : 'N', // concerning
+                B: obj.B === 'Y' ? 'Y' : 'N'  // identifiable
               });
             } catch (objError) {
               console.warn(`${source}: Failed to parse object ${i}: ${objError.message}`);
@@ -991,8 +991,8 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
             return extractedObjects.length < expectedCount ? 
               [...extractedObjects, ...Array(expectedCount - extractedObjects.length).fill(null).map((_, i) => ({
                 index: globalStartIndex + extractedObjects.length + i,
-                A: false, // concerning
-                B: false  // identifiable
+                A: 'N', // concerning
+                B: 'N'  // identifiable
               }))] : extractedObjects;
           }
         }
@@ -1152,16 +1152,16 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         const existingResult = parsed[i];
         if (existingResult) {
           paddedResults.push({
-            index: existingResult.Item || existingResult.index || (globalStartIndex + i),
-            A: Boolean(existingResult.A), // concerning
-            B: Boolean(existingResult.B)  // identifiable
+            index: existingResult.i || existingResult.Item || existingResult.index || (globalStartIndex + i),
+            A: existingResult.A === 'Y' ? 'Y' : 'N', // concerning
+            B: existingResult.B === 'Y' ? 'Y' : 'N'  // identifiable
           });
                   } else {
             // Add default result for missing item
             paddedResults.push({
               index: globalStartIndex + i,
-              A: false, // concerning
-              B: false  // identifiable
+              A: 'N', // concerning
+              B: 'N'  // identifiable
             });
           }
       }

@@ -28,20 +28,20 @@ Return a JSON array with exactly one object per input item, using the EXACT item
 
 [
   {
-    "Item": 1,
-    "A": false,
-    "B": false
+    "i": 1,
+    "A": N,
+    "B": N
   },
   {
-    "Item": 2,
-    "A": true,
-    "B": false
+    "i": 2,
+    "A": Y,
+    "B": N
   }
 ]
 
 ## Analysis Criteria:
-- **A (concerning)**: true if the comment contains harmful, threatening, or extremely negative content
-- **B (identifiable)**: true if the comment contains personal information that could identify individuals
+- **A (concerning)**: Y if the comment contains harmful, threatening, or extremely negative content, N otherwise
+- **B (identifiable)**: Y if the comment contains personal information that could identify individuals, N otherwise
 
 ## IMPORTANT:
 - Use the EXACT index numbers from the sentinels (1, 2, 3, etc.)
