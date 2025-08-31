@@ -448,63 +448,42 @@ serve(async (req) => {
     console.log(`[BATCH_SIZING] Using optimized batch size calculation for ${inputComments.length} comments...`);
     const batchSizingStartTime = Date.now();
     
-    // For large datasets, use a more efficient approach
+    // Use precise AI batch size calculation for all datasets
     let scanABatchSize, scanBBatchSize;
     
-    if (inputComments.length > 1000) {
-      // For very large datasets, use larger batch sizes to reduce overhead
-      console.log(`[BATCH_SIZING] Very large dataset detected (${inputComments.length} comments), using larger batch sizes`);
-      
-      scanABatchSize = Math.min(50, Math.floor(scanATokenLimits.output_token_limit / 100)); // ~100 tokens per comment
-      scanBBatchSize = Math.min(50, Math.floor(scanBTokenLimits.output_token_limit / 100));
-      
-      // Ensure minimum batch size
-      scanABatchSize = Math.max(10, scanABatchSize);
-      scanBBatchSize = Math.max(10, scanBBatchSize);
-      
-      console.log(`[BATCH_SIZING] Large batch sizes: Scan A: ${scanABatchSize}, Scan B: ${scanBBatchSize}`);
-    } else if (inputComments.length > 100) {
-      // Use conservative estimates for medium datasets to avoid timeout
-      console.log(`[BATCH_SIZING] Medium dataset detected (${inputComments.length} comments), using conservative batch sizes`);
-      
-      // Use smaller batch sizes to ensure we don't timeout
-      scanABatchSize = Math.min(20, Math.floor(scanATokenLimits.output_token_limit / 200)); // ~200 tokens per comment
-      scanBBatchSize = Math.min(20, Math.floor(scanBTokenLimits.output_token_limit / 200));
-      
-      // Ensure minimum batch size
-      scanABatchSize = Math.max(5, scanABatchSize);
-      scanBBatchSize = Math.max(5, scanBBatchSize);
-      
-      console.log(`[BATCH_SIZING] Conservative batch sizes: Scan A: ${scanABatchSize}, Scan B: ${scanBBatchSize}`);
-    } else {
-      // Use precise calculation for smaller datasets
-      console.log(`[BATCH_SIZING] Small dataset, using precise token counting...`);
-      
-      scanABatchSize = await calculateOptimalBatchSize(
-        'scan_a',
-        inputComments,
-        scanA.analysis_prompt,
-        ioRatios.scan_a_io_ratio,
-        scanATokenLimits,
-        safetyMarginPercent,
-        scanA.provider,
-        scanA.model
-      );
-      
-      scanBBatchSize = await calculateOptimalBatchSize(
-        'scan_b',
-        inputComments,
-        scanB.analysis_prompt,
-        ioRatios.scan_b_io_ratio,
-        scanBTokenLimits,
-        safetyMarginPercent,
-        scanB.provider,
-        scanB.model
-      );
-    }
+    console.log(`[BATCH_SIZING] Using precise token counting for ${inputComments.length} comments...`);
+    
+    // Use precise calculation for all datasets to optimize performance
+    scanABatchSize = await calculateOptimalBatchSize(
+      'scan_a',
+      inputComments,
+      scanA.analysis_prompt,
+      ioRatios.scan_a_io_ratio,
+      scanATokenLimits,
+      safetyMarginPercent,
+      scanA.provider,
+      scanA.model
+    );
+    
+    scanBBatchSize = await calculateOptimalBatchSize(
+      'scan_b',
+      inputComments,
+      scanB.analysis_prompt,
+      ioRatios.scan_b_io_ratio,
+      scanBTokenLimits,
+      safetyMarginPercent,
+      scanB.provider,
+      scanB.model
+    );
     
     const batchSizingTime = Date.now() - batchSizingStartTime;
-    console.log(`[BATCH_SIZING] Batch size calculation completed in ${batchSizingTime}ms`);
+    console.log(`[BATCH_SIZING] Precise batch size calculation completed in ${batchSizingTime}ms`);
+    
+    // Log performance impact of precise calculation
+    if (inputComments.length > 100) {
+      console.log(`[PERFORMANCE] Precise calculation overhead: ${batchSizingTime}ms for ${inputComments.length} comments`);
+      console.log(`[PERFORMANCE] Expected performance gain from optimized batch sizes`);
+    }
     
     // Use the smaller batch size to ensure both scans can process the same batches
     const finalBatchSize = Math.min(scanABatchSize, scanBBatchSize);
@@ -520,7 +499,7 @@ serve(async (req) => {
       console.log(`[BATCH_SELECTION] Scan B batch size is the limiting factor`);
     }
     
-    console.log(`[BATCH SIZING] Dynamic calculation results:`);
+    console.log(`[BATCH SIZING] Precise calculation results:`);
     console.log(`  Scan A optimal: ${scanABatchSize} (I/O ratio: ${ioRatios.scan_a_io_ratio})`);
     console.log(`  Scan B optimal: ${scanBBatchSize} (I/O ratio: ${ioRatios.scan_b_io_ratio})`);
     console.log(`  Final batch size: ${finalBatchSize}`);
@@ -528,7 +507,7 @@ serve(async (req) => {
     console.log(`[BATCH SIZING] Estimated batches: ${Math.ceil(inputComments.length / finalBatchSize)}`);
     console.log(`[BATCH SIZING] Safety margin: ${safetyMarginPercent}%`);
     console.log(`[BATCH SIZING] Token limits - Scan A: ${scanATokenLimits.output_token_limit}, Scan B: ${scanBTokenLimits.output_token_limit}`);
-    console.log(`[BATCH SIZING] Conservative batch sizing enabled to prevent truncation`);
+    console.log(`[BATCH SIZING] Precise batch sizing enabled for optimal performance`);
     
     // Log I/O ratios for reference
     console.log(`[BATCH SIZING] I/O ratios - Scan A: ${ioRatios.scan_a_io_ratio}, Scan B: ${ioRatios.scan_b_io_ratio}`);
@@ -796,6 +775,7 @@ serve(async (req) => {
     console.log(`[PERFORMANCE] Average batch time: ${avgBatchTime.toFixed(0)}ms`);
     console.log(`[PERFORMANCE] Processing rate: ${commentsPerSecond} comments/second`);
     console.log(`[PERFORMANCE] Parallel AI calls enabled: Scan A and Scan B run concurrently`);
+    console.log(`[PERFORMANCE] Precise batch sizing: Optimized batch sizes using I/O ratios and token limits`);
     
     // Deduct credits after successful scan completion (only for Scan A, unless it's a demo scan)
     if (isDemoScan) {
