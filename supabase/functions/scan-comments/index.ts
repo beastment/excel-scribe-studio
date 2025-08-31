@@ -726,7 +726,6 @@ serve(async (req) => {
     console.log(`Successfully scanned ${allScannedComments.length}/${inputComments.length} comments across ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
     
     // Log detailed breakdown of what was processed
-    const isIncrementalRequest = Number.isFinite(batchStartValue) && batchStartValue > 0;
     
     if (isIncrementalRequest) {
       // For incremental requests, we only process a subset of the total comments
