@@ -182,107 +182,181 @@ const CommentEditorPage = () => {
       demographics: 'Engineering'
     }, {
       id: '12',
-      originalText: 'The annual performance review process needs improvement. My manager Rebecca Williams provides very little useful feedback.',
-      text: 'The annual performance review process needs improvement. My manager Rebecca Williams provides very little useful feedback.',
+      originalText: 'The salary structure is transparent and fair. I feel valued for my contributions.',
+      text: 'The salary structure is transparent and fair. I feel valued for my contributions.',
       author: 'Anonymous',
       originalRow: 12,
-      concerning: false,
-      identifiable: true,
-      demographics: 'Finance'
-    }, {
-      id: '13',
-      originalText: 'I love the company picnic every summer! It\'s a great way to connect with colleagues.',
-      text: 'I love the company picnic every summer! It\'s a great way to connect with colleagues.',
-      author: 'Anonymous',
-      originalRow: 13,
       concerning: false,
       identifiable: false,
       demographics: 'HR'
     }, {
-      id: '14',
-      originalText: 'There are serious safety violations in the manufacturing area. Equipment operator David Chen (SSN: 123-45-6789) doesn\'t follow proper procedures and someone is going to get hurt.',
-      text: 'There are serious safety violations in the manufacturing area. Equipment operator David Chen (SSN: 123-45-6789) doesn\'t follow proper procedures and someone is going to get hurt.',
+      id: '13',
+      originalText: 'My coworker David Martinez has been harassing me with inappropriate messages. I have screenshots of the conversations.',
+      text: 'My coworker David Martinez has been harassing me with inappropriate messages. I have screenshots of the conversations.',
       author: 'Anonymous',
-      originalRow: 14,
+      originalRow: 13,
       concerning: true,
       identifiable: true,
-      demographics: 'Manufacturing'
+      demographics: 'Sales'
     }, {
-      id: '15',
-      originalText: 'The work-life balance here is excellent. I appreciate the mental health days.',
-      text: 'The work-life balance here is excellent. I appreciate the mental health days.',
+      id: '14',
+      originalText: 'The office environment is clean and well-maintained. Great job facilities team!',
+      text: 'The office environment is clean and well-maintained. Great job facilities team!',
       author: 'Anonymous',
-      originalRow: 15,
+      originalRow: 14,
       concerning: false,
       identifiable: false,
-      demographics: 'Marketing'
+      demographics: 'Facilities'
+    }, {
+      id: '15',
+      originalText: 'I witnessed my manager Lisa Thompson (employee #456) accepting bribes from vendors. This is a serious ethical violation.',
+      text: 'I witnessed my manager Lisa Thompson (employee #456) accepting bribes from vendors. This is a serious ethical violation.',
+      author: 'Anonymous',
+      originalRow: 15,
+      concerning: true,
+      identifiable: true,
+      demographics: 'Procurement'
     }, {
       id: '16',
-      originalText: 'Please provide more opportunities for career advancement and promotion.',
-      text: 'Please provide more opportunities for career advancement and promotion.',
+      originalText: 'The company\'s commitment to sustainability is impressive. I appreciate the recycling initiatives.',
+      text: 'The company\'s commitment to sustainability is impressive. I appreciate the recycling initiatives.',
       author: 'Anonymous',
       originalRow: 16,
       concerning: false,
       identifiable: false,
-      demographics: 'Sales'
+      demographics: 'Marketing'
     }, {
       id: '17',
-      originalText: 'The IT department is very responsive when we have technical issues.',
-      text: 'The IT department is very responsive when we have technical issues.',
+      originalText: 'There\'s a toxic work environment in the IT department. My supervisor Robert Chen constantly belittles team members.',
+      text: 'There\'s a toxic work environment in the IT department. My supervisor Robert Chen constantly belittles team members.',
       author: 'Anonymous',
       originalRow: 17,
-      concerning: false,
-      identifiable: false,
-      demographics: 'Operations'
-    }, {
-      id: '18',
-      originalText: 'I\'ve witnessed discrimination against older employees. Manager Lisa Rodriguez (phone: 555-0123) made ageist comments saying "we need fresh blood, not these old dinosaurs".',
-      text: 'I\'ve witnessed discrimination against older employees. Manager Lisa Rodriguez (phone: 555-0123) made ageist comments saying "we need fresh blood, not these old dinosaurs".',
-      author: 'Anonymous',
-      originalRow: 18,
       concerning: true,
       identifiable: true,
-      demographics: 'Management'
+      demographics: 'IT'
     }, {
-      id: '19',
-      originalText: 'The company\'s commitment to sustainability is impressive and motivating.',
-      text: 'The company\'s commitment to sustainability is impressive and motivating.',
+      id: '18',
+      originalText: 'The new project management software has improved our workflow significantly.',
+      text: 'The new project management software has improved our workflow significantly.',
       author: 'Anonymous',
-      originalRow: 19,
+      originalRow: 18,
       concerning: false,
       identifiable: false,
       demographics: 'Engineering'
     }, {
+      id: '19',
+      originalText: 'I found evidence of financial fraud in the accounting department. Maria Rodriguez has been manipulating expense reports.',
+      text: 'I found evidence of financial fraud in the accounting department. Maria Rodriguez has been manipulating expense reports.',
+      author: 'Anonymous',
+      originalRow: 19,
+      concerning: true,
+      identifiable: true,
+      demographics: 'Finance'
+    }, {
       id: '20',
-      originalText: 'Can we please get better chairs? My back is killing me after long days at the computer.',
-      text: 'Can we please get better chairs? My back is killing me after long days at the computer.',
+      originalText: 'The employee recognition program is motivating and helps boost morale.',
+      text: 'The employee recognition program is motivating and helps boost morale.',
       author: 'Anonymous',
       originalRow: 20,
       concerning: false,
       identifiable: false,
-      demographics: 'Finance'
+      demographics: 'HR'
     }];
 
-    // Clear any cached AI results and reset to clean state
-    const cleanDemoComments = demoComments.map(comment => ({
-      ...comment,
-      concerning: false,
-      identifiable: false,
-      aiReasoning: undefined,
-      redactedText: undefined,
-      rephrasedText: undefined,
-      mode: undefined,
-      approved: false,
-      hideAiResponse: false
-    }));
-    setComments(cleanDemoComments); // Directly set comments for demo data
-    setHasScanRun(false); // Reset scan state for demo data
-    
+    setComments(demoComments);
+    setHasScanRun(false);
+    setIsLoadingNewData(false);
+    setIsDemoData(true);
     // Set flag to clear AI logs when demo data is loaded
-    isLoadingNewDataRef.current = true;
+    if (aiLogsViewerRef?.current) {
+      aiLogsViewerRef.current.clearLogs();
+    }
+    toast.success('Demo data loaded successfully! 20 employee survey comments imported.');
+  };
+
+  // Generate a larger test dataset for performance testing
+  const generateLargeTestData = (count: number = 1000) => {
+    setIsDemoData(true);
     setIsLoadingNewData(true);
     
-    toast.success('Demo data loaded successfully! 20 employee survey comments imported.');
+    const departments = ['Engineering', 'Marketing', 'Sales', 'HR', 'Finance', 'IT', 'Operations', 'Management', 'Security', 'Facilities'];
+    const positiveComments = [
+      'I love working here! The flexible schedule and remote work options have been life-changing.',
+      'Great company culture and benefits package. The health insurance coverage is excellent.',
+      'The training programs have been very helpful for my professional development.',
+      'I enjoy the collaborative work environment and my team members are supportive.',
+      'The salary structure is transparent and fair. I feel valued for my contributions.',
+      'The office environment is clean and well-maintained. Great job facilities team!',
+      'The company\'s commitment to sustainability is impressive. I appreciate the recycling initiatives.',
+      'The new project management software has improved our workflow significantly.',
+      'The employee recognition program is motivating and helps boost morale.',
+      'The work-life balance here is excellent. I appreciate the flexible hours.'
+    ];
+    
+    const neutralComments = [
+      'The office coffee machine is always broken. Can we please get it fixed?',
+      'The new parking policy is unfair to employees who don\'t live close to the office.',
+      'The new project management software has improved our workflow significantly.',
+      'The office environment is clean and well-maintained. Great job facilities team!',
+      'The company\'s commitment to sustainability is impressive. I appreciate the recycling initiatives.',
+      'The training programs have been very helpful for my professional development.',
+      'The salary structure is transparent and fair. I feel valued for my contributions.',
+      'The work-life balance here is excellent. I appreciate the flexible hours.',
+      'The employee recognition program is motivating and helps boost morale.',
+      'The new project management software has improved our workflow significantly.'
+    ];
+    
+    const concerningComments = [
+      'The management team really needs to improve their communication skills. John Smith in HR is particularly difficult to work with.',
+      'The new manager in accounting, Sarah Johnson (employee ID 12345), has been making inappropriate comments about female employees. This needs to be addressed immediately.',
+      'I feel unsafe coming to work due to threats from my supervisor Mike Wilson. He said he would "make my life hell" if I didn\'t work overtime without pay.',
+      'My direct report told me about drug use during work hours by employees in the warehouse. I witnessed Tom Anderson (badge #789) smoking what appeared to be marijuana during lunch break.',
+      'There have been multiple incidents of theft from employee lockers. Security cameras caught Jennifer Lee from customer service taking items from other people\'s belongings.',
+      'My coworker David Martinez has been harassing me with inappropriate messages. I have screenshots of the conversations.',
+      'I witnessed my manager Lisa Thompson (employee #456) accepting bribes from vendors. This is a serious ethical violation.',
+      'There\'s a toxic work environment in the IT department. My supervisor Robert Chen constantly belittles team members.',
+      'I found evidence of financial fraud in the accounting department. Maria Rodriguez has been manipulating expense reports.',
+      'The new manager in marketing, Alex Johnson (employee #789), has been making inappropriate comments about female employees. This needs to be addressed immediately.'
+    ];
+
+    const largeTestComments: CommentData[] = [];
+    
+    for (let i = 1; i <= count; i++) {
+      const commentType = Math.random();
+      let text: string;
+      
+      if (commentType < 0.1) {
+        // 10% concerning comments
+        text = concerningComments[Math.floor(Math.random() * concerningComments.length)];
+      } else if (commentType < 0.3) {
+        // 20% positive comments
+        text = positiveComments[Math.floor(Math.random() * positiveComments.length)];
+      } else {
+        // 70% neutral comments
+        text = neutralComments[Math.floor(Math.random() * neutralComments.length)];
+      }
+      
+      largeTestComments.push({
+        id: i.toString(),
+        originalText: text,
+        text: text,
+        author: 'Anonymous',
+        originalRow: i,
+        concerning: false,
+        identifiable: false,
+        demographics: departments[Math.floor(Math.random() * departments.length)]
+      });
+    }
+
+    setComments(largeTestComments);
+    setHasScanRun(false);
+    setIsLoadingNewData(false);
+    setIsDemoData(true);
+    // Set flag to clear AI logs when test data is loaded
+    if (aiLogsViewerRef?.current) {
+      aiLogsViewerRef.current.clearLogs();
+    }
+    toast.success(`Large test dataset loaded successfully! ${count} employee survey comments imported for performance testing.`);
   };
   return <div className="pt-20">
       {/* Header */}
@@ -321,10 +395,20 @@ const CommentEditorPage = () => {
                 Get Started
               </h2>
               <div className="flex flex-col items-center gap-4 mb-6">
-                <Button onClick={loadDemoData} variant="outline" className="gap-2">
-                  <FileText className="w-4 h-4" />
-                  Load Demo File
-                </Button>
+                <div className="flex flex-wrap justify-center gap-2 mb-4">
+                  <Button onClick={loadDemoData} variant="outline" className="gap-2">
+                    <FileText className="w-4 h-4" />
+                    Load Demo (20 comments)
+                  </Button>
+                  <Button onClick={() => generateLargeTestData(500)} variant="outline" className="gap-2">
+                    <FileText className="w-4 h-4" />
+                    Test 500 Comments
+                  </Button>
+                  <Button onClick={() => generateLargeTestData(1000)} variant="outline" className="gap-2">
+                    <FileText className="w-4 h-4" />
+                    Test 1000 Comments
+                  </Button>
+                </div>
                 <div className="text-sm text-muted-foreground">or</div>
               </div>
               <FileUpload onDataLoaded={handleDataLoaded} />
@@ -333,9 +417,16 @@ const CommentEditorPage = () => {
                 <h2 className="text-2xl font-bold">
                   {isDemoData ? 'Demo Data' : 'Comment Analysis'}
                 </h2>
-                <Button onClick={clearComments} variant="outline" size="sm">
-                  Clear & Start Over
-                </Button>
+                <div className="flex gap-2 items-center">
+                  {comments.length > 100 && (
+                    <div className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded">
+                      📊 {comments.length} comments loaded
+                    </div>
+                  )}
+                  <Button onClick={clearComments} variant="outline" size="sm">
+                    Clear & Start Over
+                  </Button>
+                </div>
               </div>
               <CommentEditor 
                 comments={comments} 

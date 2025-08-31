@@ -86,6 +86,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [sessionName, setSessionName] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Performance monitoring state
+  const [performanceMetrics, setPerformanceMetrics] = useState<{
+    totalComments: number;
+    totalTime: number;
+    avgBatchTime: number;
+    commentsPerSecond: number;
+    batchesProcessed: number;
+    parallelProcessing: boolean;
+  } | null>(null);
+
   // Set default session name to current date/time when dialog opens
   const getCurrentDateTimeString = () => {
     const now = new Date();
@@ -251,7 +261,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           }
         });
 
-        console.log(`Scan response (batch ${batchCount}):`, { data, error });
+              console.log(`Scan response (batch ${batchCount}):`, { data, error });
         console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
         console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
         console.log(`[DEBUG] Error keys:`, error ? Object.keys(error) : 'null');
@@ -350,7 +360,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         
         if (hasMore) {
           console.log(`[INCREMENTAL] More batches available. Next batch starts at ${batchStart}`);
-          toast.info(`Processed ${allScannedComments.length}/${comments.length} comments, continuing...`);
+          const remainingComments = comments.length - allScannedComments.length;
+          const estimatedTimeRemaining = Math.ceil(remainingComments / 100) * 2; // Rough estimate: 2 minutes per 100 comments
+          toast.info(`Processed ${allScannedComments.length}/${comments.length} comments (${remainingComments} remaining, ~${estimatedTimeRemaining}min left)`);
         } else {
           console.log(`[INCREMENTAL] All batches processed. Total comments: ${allScannedComments.length}`);
         }
@@ -371,6 +383,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         summary: finalAggregatedResponse.summary,
         totalRunTimeMs: finalAggregatedResponse.totalRunTimeMs,
         batchesProcessed: finalAggregatedResponse.batchesProcessed
+      });
+
+      // Update performance metrics
+      setPerformanceMetrics({
+        totalComments: finalAggregatedResponse.comments.length,
+        totalTime: finalAggregatedResponse.totalRunTimeMs,
+        avgBatchTime: finalAggregatedResponse.totalRunTimeMs / finalAggregatedResponse.batchesProcessed,
+        commentsPerSecond: (finalAggregatedResponse.comments.length / (finalAggregatedResponse.totalRunTimeMs / 1000)),
+        batchesProcessed: finalAggregatedResponse.batchesProcessed,
+        parallelProcessing: true
       });
 
       setScanProgress(30);

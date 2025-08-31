@@ -451,9 +451,21 @@ serve(async (req) => {
     // For large datasets, use a more efficient approach
     let scanABatchSize, scanBBatchSize;
     
-    if (inputComments.length > 100) {
-      // Use conservative estimates for large datasets to avoid timeout
-      console.log(`[BATCH_SIZING] Large dataset detected (${inputComments.length} comments), using conservative batch sizes`);
+    if (inputComments.length > 1000) {
+      // For very large datasets, use larger batch sizes to reduce overhead
+      console.log(`[BATCH_SIZING] Very large dataset detected (${inputComments.length} comments), using larger batch sizes`);
+      
+      scanABatchSize = Math.min(50, Math.floor(scanATokenLimits.output_token_limit / 100)); // ~100 tokens per comment
+      scanBBatchSize = Math.min(50, Math.floor(scanBTokenLimits.output_token_limit / 100));
+      
+      // Ensure minimum batch size
+      scanABatchSize = Math.max(10, scanABatchSize);
+      scanBBatchSize = Math.max(10, scanBBatchSize);
+      
+      console.log(`[BATCH_SIZING] Large batch sizes: Scan A: ${scanABatchSize}, Scan B: ${scanBBatchSize}`);
+    } else if (inputComments.length > 100) {
+      // Use conservative estimates for medium datasets to avoid timeout
+      console.log(`[BATCH_SIZING] Medium dataset detected (${inputComments.length} comments), using conservative batch sizes`);
       
       // Use smaller batch sizes to ensure we don't timeout
       scanABatchSize = Math.min(20, Math.floor(scanATokenLimits.output_token_limit / 200)); // ~200 tokens per comment
@@ -535,7 +547,9 @@ serve(async (req) => {
     }
     
     // Process comments in smaller chunks to avoid gateway timeout
-    const MAX_BATCHES_PER_REQUEST = 5; // Process max 5 batches per request (100 comments)
+    // For larger datasets, increase batch limits to reduce function call overhead
+    const MAX_BATCHES_PER_REQUEST = inputComments.length > 500 ? 10 : 5; // Process more batches for large datasets
+    const MAX_EXECUTION_TIME = inputComments.length > 500 ? 180 * 1000 : 120 * 1000; // Increase timeout for large datasets
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     
@@ -601,10 +615,13 @@ serve(async (req) => {
       console.log(`[TOKENS] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
 
             // Process batch with Scan A and Scan B in parallel
+      const batchStartTime = Date.now();
       const [scanAResults, scanBResults] = await Promise.all([
         callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch, currentBatchStart + 1), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
         callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch, currentBatchStart + 1), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
       ]);
+      const batchEndTime = Date.now();
+      console.log(`[PERFORMANCE] Batch ${currentBatchStart + 1}-${batchEnd} processed in ${batchEndTime - batchStartTime}ms (parallel AI calls)`);
 
       console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
       console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);
@@ -772,6 +789,13 @@ serve(async (req) => {
     console.log('Response summary:', response.summary);
     console.log(`[FINAL] Processed ${response.comments.length}/${inputComments.length} comments in ${Math.ceil(inputComments.length / finalBatchSize)} batches`);
     console.log(`[TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`);
+    
+    // Performance summary
+    const avgBatchTime = totalRunTimeMs / batchesProcessed;
+    const commentsPerSecond = (response.comments.length / (totalRunTimeMs / 1000)).toFixed(1);
+    console.log(`[PERFORMANCE] Average batch time: ${avgBatchTime.toFixed(0)}ms`);
+    console.log(`[PERFORMANCE] Processing rate: ${commentsPerSecond} comments/second`);
+    console.log(`[PERFORMANCE] Parallel AI calls enabled: Scan A and Scan B run concurrently`);
     
     // Deduct credits after successful scan completion (only for Scan A, unless it's a demo scan)
     if (isDemoScan) {
