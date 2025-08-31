@@ -66,9 +66,12 @@ serve(async (req) => {
     
     console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
 
-    // If a second initial analysis request arrives for the same scanRunId, ignore it.
+    // Allow incremental processing: only block duplicate initial requests (batchStart=0)
     const isCached = Boolean(requestBody.useCachedAnalysis);
-    if (!isCached) {
+    const isIncrementalRequest = Number.isFinite(requestBody.batchStart) && (requestBody.batchStart as number) > 0;
+    
+    if (!isCached && !isIncrementalRequest) {
+      // Only block duplicate initial requests (batchStart=0 or undefined)
       if (gAny.__analysisStarted.has(scanRunId)) {
         console.log(`[DUPLICATE ANALYSIS] scanRunId=${scanRunId} received a second initial analysis request. Ignoring.`);
         return new Response(JSON.stringify({
@@ -81,6 +84,8 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       gAny.__analysisStarted.add(scanRunId);
+    } else if (isIncrementalRequest) {
+      console.log(`[INCREMENTAL] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${requestBody.batchStart}`);
     }
 
     // If this run id has already completed, short-circuit to avoid duplicate model calls
@@ -96,9 +101,9 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // If a run is already in progress, ignore any subsequent batch slices to prevent multi-batch analysis
-    if (gAny.__runInProgress.has(scanRunId) && (Number.isFinite(requestBody.batchStart) && (requestBody.batchStart as number) > 0)) {
-      console.log(`[RUN IN PROGRESS] scanRunId=${scanRunId} received batchStart=${requestBody.batchStart}. Ignoring to prevent duplicate analysis calls.`);
+    // Allow incremental processing: only block if this is a duplicate initial request
+    if (gAny.__runInProgress.has(scanRunId) && !isIncrementalRequest) {
+      console.log(`[RUN IN PROGRESS] scanRunId=${scanRunId} received duplicate initial request. Ignoring to prevent duplicate analysis calls.`);
       return new Response(JSON.stringify({
         comments: [],
         batchStart: requestBody.batchStart || 0,
@@ -734,16 +739,20 @@ serve(async (req) => {
     
     const totalRunTimeMs = Date.now() - overallStartTime;
     
+    // Determine if there are more batches to process
+    const lastProcessedIndex = batchStart + (batchesProcessed * finalBatchSize);
+    const hasMoreBatches = lastProcessedIndex < inputComments.length;
+    
     const response = { 
       comments: allScannedComments,
       batchStart: batchStart, // Starting batch for this request
       batchSize: finalBatchSize, // Batch size used for processing
-      hasMore: false, // No more batches since we processed all
+      hasMore: hasMoreBatches, // True if there are more batches to process
       totalComments: inputComments.length,
       summary: totalSummary,
       totalRunTimeMs: totalRunTimeMs,
       batchesProcessed: batchesProcessed,
-      nextBatchStart: inputComments.length // All comments processed
+      nextBatchStart: hasMoreBatches ? lastProcessedIndex : inputComments.length // Next batch to process or all done
     };
     
     console.log('Returning response with comments count:', response.comments.length);
@@ -805,8 +814,11 @@ serve(async (req) => {
       }
     }
     
-    // Mark run as completed
-    gAny.__runCompleted.add(scanRunId);
+    // Only mark run as completed if we've processed all comments
+    if (!hasMoreBatches) {
+      console.log(`[COMPLETION] All comments processed for scanRunId=${scanRunId}, marking as completed`);
+      gAny.__runCompleted.add(scanRunId);
+    }
     gAny.__runInProgress.delete(scanRunId);
 
     // Restore console methods before returning
