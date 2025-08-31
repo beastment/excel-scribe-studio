@@ -525,7 +525,8 @@ serve(async (req) => {
       console.log(`  Scan B: ${scanBInputTokens} input → ${scanBOutputTokens} output`);
     }
     
-    // Process ALL comments in batches
+    // Process comments in smaller chunks to avoid gateway timeout
+    const MAX_BATCHES_PER_REQUEST = 3; // Process max 3 batches per request
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     
@@ -533,10 +534,33 @@ serve(async (req) => {
     const aiLogger = new AILogger();
     aiLogger.setFunctionStartTime(overallStartTime);
     
+    let batchesProcessed = 0;
     for (let currentBatchStart = 0; currentBatchStart < inputComments.length; currentBatchStart += finalBatchSize) {
       // Check for timeout before processing each batch
       const currentTime = Date.now();
       const elapsedTime = currentTime - overallStartTime;
+      
+      // Check if we've processed enough batches for this request
+      if (batchesProcessed >= MAX_BATCHES_PER_REQUEST) {
+        console.log(`[BATCH_LIMIT] Processed ${batchesProcessed} batches, returning partial results to avoid gateway timeout`);
+        
+        const partialResponse = {
+          comments: allScannedComments,
+          batchStart: currentBatchStart, // Next batch to process
+          batchSize: finalBatchSize,
+          hasMore: currentBatchStart < inputComments.length,
+          totalComments: inputComments.length,
+          summary: totalSummary,
+          totalRunTimeMs: elapsedTime,
+          batchesProcessed: batchesProcessed,
+          nextBatchStart: currentBatchStart
+        };
+        
+        console.log('Returning partial response due to batch limit:', `Processed ${allScannedComments.length}/${inputComments.length} comments in ${batchesProcessed} batches`);
+        return new Response(JSON.stringify(partialResponse), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        });
+      }
       
       if (elapsedTime > MAX_EXECUTION_TIME) {
         console.warn(`[TIMEOUT] Function execution time (${elapsedTime}ms) exceeded maximum (${MAX_EXECUTION_TIME}ms)`);
@@ -545,9 +569,9 @@ serve(async (req) => {
         // Return partial results with timeout warning
         const partialResponse = {
           comments: allScannedComments,
-          batchStart: 0,
+          batchStart: currentBatchStart,
           batchSize: finalBatchSize,
-          hasMore: true, // Indicate there are more comments to process
+          hasMore: currentBatchStart < inputComments.length,
           totalComments: inputComments.length,
           summary: totalSummary,
           totalRunTimeMs: elapsedTime,
@@ -684,6 +708,9 @@ serve(async (req) => {
       console.log(`[BATCH] Results: Scan A: ${scanAResultsArray.length}, Scan B: ${scanBResultsArray.length}, Batch: ${batch.length}`);
       console.log(`[BATCH] Comments processed: rows ${currentBatchStart + 1} to ${currentBatchStart + Math.min(maxResults, batch.length)}`);
       console.log(`[BATCH] Total comments processed so far: ${allScannedComments.length}/${inputComments.length}`);
+      
+      // Increment batch counter
+      batchesProcessed++;
     }
       
       totalSummary.total = allScannedComments.length;
@@ -714,7 +741,8 @@ serve(async (req) => {
       hasMore: false, // No more batches since we processed all
       totalComments: inputComments.length,
       summary: totalSummary,
-      totalRunTimeMs: totalRunTimeMs
+      totalRunTimeMs: totalRunTimeMs,
+      batchesProcessed: batchesProcessed
     };
     
     console.log('Returning response with comments count:', response.comments.length);
