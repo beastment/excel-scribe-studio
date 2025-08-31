@@ -690,16 +690,32 @@ serve(async (req) => {
           mode, // Add the mode field
           needsAdjudication,
           adjudicationData: {
-            scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
-            scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
+            scanAResult: { 
+              concerning: scanAResult.A, 
+              identifiable: scanAResult.B, 
+              model: `${scanA.provider}/${scanA.model}` 
+            },
+            scanBResult: { 
+              concerning: scanBResult.A, 
+              identifiable: scanBResult.B, 
+              model: `${scanB.provider}/${scanB.model}` 
+            },
             agreements: {
-              concerning: !concerningDisagreement ? scanAResult.concerning : null,
-              identifiable: !identifiableDisagreement ? scanBResult.identifiable : null
+              concerning: !concerningDisagreement ? scanAResult.A : null,
+              identifiable: !identifiableDisagreement ? scanBResult.B : null
             }
           },
           debugInfo: {
-            scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
-            scanBResult: { ...scanBResult, model: `${scanB.provider}/${scanB.model}` },
+            scanAResult: { 
+              concerning: scanAResult.A, 
+              identifiable: scanAResult.B, 
+              model: `${scanA.provider}/${scanA.model}` 
+            },
+            scanBResult: { 
+              concerning: scanBResult.A, 
+              identifiable: scanBResult.B, 
+              model: `${scanB.provider}/${scanB.model}` 
+            },
             needsAdjudication,
             scanRunId
           }
@@ -961,9 +977,9 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
             try {
               const obj = JSON.parse(objectMatches[i]);
               extractedObjects.push({
-                index: obj.index || (globalStartIndex + i),
-                concerning: Boolean(obj.concerning),
-                identifiable: Boolean(obj.identifiable)
+                index: obj.Item || obj.index || (globalStartIndex + i),
+                A: Boolean(obj.A), // concerning
+                B: Boolean(obj.B)  // identifiable
               });
             } catch (objError) {
               console.warn(`${source}: Failed to parse object ${i}: ${objError.message}`);
@@ -975,8 +991,8 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
             return extractedObjects.length < expectedCount ? 
               [...extractedObjects, ...Array(expectedCount - extractedObjects.length).fill(null).map((_, i) => ({
                 index: globalStartIndex + extractedObjects.length + i,
-                concerning: false,
-                identifiable: false
+                A: false, // concerning
+                B: false  // identifiable
               }))] : extractedObjects;
           }
         }
@@ -1136,16 +1152,16 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         const existingResult = parsed[i];
         if (existingResult) {
           paddedResults.push({
-            index: existingResult.index || (globalStartIndex + i),
-            concerning: Boolean(existingResult.concerning),
-            identifiable: Boolean(existingResult.identifiable)
+            index: existingResult.Item || existingResult.index || (globalStartIndex + i),
+            A: Boolean(existingResult.A), // concerning
+            B: Boolean(existingResult.B)  // identifiable
           });
                   } else {
             // Add default result for missing item
             paddedResults.push({
               index: globalStartIndex + i,
-              concerning: false,
-              identifiable: false
+              A: false, // concerning
+              B: false  // identifiable
             });
           }
       }
