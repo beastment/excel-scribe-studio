@@ -946,6 +946,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
     // Check if response is in the simple format
     if (decodedResponse.includes('i:') && decodedResponse.includes('A:') && decodedResponse.includes('B:')) {
       console.log(`${source}: Detected simple key-value format, parsing directly`);
+      console.log(`${source}: Simple format response preview: ${decodedResponse.substring(0, 200)}...`);
       
       try {
         const lines = decodedResponse.split('\n').filter(line => line.trim().length > 0);
@@ -978,8 +979,11 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         
         if (results.length > 0) {
           console.log(`${source}: Successfully parsed ${results.length} items from simple format`);
+          console.log(`${source}: Parsed results:`, results);
           parsed = results;
         } else {
+          console.warn(`${source}: No valid items found in simple format. Lines processed:`, lines.length);
+          console.warn(`${source}: Lines:`, lines);
           throw new Error('No valid items found in simple format');
         }
       } catch (simpleParseError) {
@@ -1271,9 +1275,15 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Check if response ends abruptly (common truncation pattern)
     const trimmedResponse = responseText.trim();
-    if (!trimmedResponse.endsWith(']') && !trimmedResponse.endsWith('}') && !trimmedResponse.endsWith(']')) {
+    
+    // Check if this is the simple format (i:1\nA:N\nB:Y)
+    const isSimpleFormat = trimmedResponse.includes('i:') && trimmedResponse.includes('A:') && trimmedResponse.includes('B:');
+    
+    if (!isSimpleFormat && !trimmedResponse.endsWith(']') && !trimmedResponse.endsWith('}')) {
       console.warn(`[AZURE] Response does not end with proper JSON closing character - may be truncated`);
       console.warn(`[AZURE] Response ends with: ...${trimmedResponse.substring(trimmedResponse.length - 50)}`);
+    } else if (isSimpleFormat) {
+      console.log(`[AZURE] Response appears to be in simple format, skipping JSON completion check`);
     }
     
     // Check if we hit the token limit (common cause of truncation)
@@ -1329,9 +1339,15 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Check if response ends abruptly (common truncation pattern)
     const trimmedResponse = responseText.trim();
-    if (!trimmedResponse.endsWith(']') && !trimmedResponse.endsWith('}')) {
+    
+    // Check if this is the simple format (i:1\nA:N\nB:Y)
+    const isSimpleFormat = trimmedResponse.includes('i:') && trimmedResponse.includes('A:') && trimmedResponse.includes('B:');
+    
+    if (!isSimpleFormat && !trimmedResponse.endsWith(']') && !trimmedResponse.endsWith('}')) {
       console.warn(`[OPENAI] Response does not end with proper JSON closing character - may be truncated`);
       console.warn(`[OPENAI] Response ends with: ...${trimmedResponse.substring(trimmedResponse.length - 50)}`);
+    } else if (isSimpleFormat) {
+      console.log(`[OPENAI] Response appears to be in simple format, skipping JSON completion check`);
     }
     
     // Check if we hit the token limit (common cause of truncation)
@@ -1446,9 +1462,15 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Check if response ends abruptly (common truncation pattern)
     const trimmedResponse = responseText.trim();
-    if (!trimmedResponse.endsWith(']') && !trimmedResponse.endsWith('}')) {
+    
+    // Check if this is the simple format (i:1\nA:N\nB:Y)
+    const isSimpleFormat = trimmedResponse.includes('i:') && trimmedResponse.includes('A:') && trimmedResponse.includes('B:');
+    
+    if (!isSimpleFormat && !trimmedResponse.endsWith(']') && !trimmedResponse.endsWith('}')) {
       console.warn(`[BEDROCK] Response does not end with proper JSON closing character - may be truncated`);
       console.warn(`[BEDROCK] Response ends with: ...${trimmedResponse.substring(trimmedResponse.length - 50)}`);
+    } else if (isSimpleFormat) {
+      console.log(`[BEDROCK] Response appears to be in simple format, skipping JSON completion check`);
     }
     
     // Check if we hit the token limit (common cause of truncation)
