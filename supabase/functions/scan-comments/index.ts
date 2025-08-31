@@ -980,7 +980,37 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         if (results.length > 0) {
           console.log(`${source}: Successfully parsed ${results.length} items from simple format`);
           console.log(`${source}: Parsed results:`, results);
-          parsed = results;
+          
+          // Handle cases where AI returns fewer results than expected
+          if (results.length < expectedCount) {
+            console.warn(`${source}: Expected ${expectedCount} items, got ${results.length}. Padding with default results.`);
+            
+            // Create default results for missing items
+            const paddedResults = [];
+            for (let i = 0; i < expectedCount; i++) {
+              const existingResult = results[i];
+              if (existingResult) {
+                paddedResults.push({
+                  index: existingResult.index || (globalStartIndex + i),
+                  concerning: Boolean(existingResult.concerning),
+                  identifiable: Boolean(existingResult.identifiable)
+                });
+              } else {
+                // Add default result for missing item
+                paddedResults.push({
+                  index: globalStartIndex + i,
+                  concerning: false,
+                  identifiable: false
+                });
+              }
+            }
+            
+            console.log(`${source}: Returning ${paddedResults.length} padded results (${results.length} original + ${paddedResults.length - results.length} defaults)`);
+            return paddedResults;
+          }
+          
+          console.log(`${source}: Returning ${results.length} parsed results (exactly as expected)`);
+          return results;
         } else {
           console.warn(`${source}: No valid items found in simple format. Lines processed:`, lines.length);
           console.warn(`${source}: Lines:`, lines);
