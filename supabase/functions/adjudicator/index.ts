@@ -16,13 +16,11 @@ interface AdjudicationRequest {
     scanAResult: {
       concerning: boolean;
       identifiable: boolean;
-      reasoning: string;
       model: string;
     };
     scanBResult: {
       concerning: boolean;
       identifiable: boolean;
-      reasoning: string;
       model: string;
     };
     agreements: {
@@ -45,7 +43,6 @@ interface AdjudicationResponse {
     id: string;
     concerning: boolean;
     identifiable: boolean;
-    reasoning: string;
     model: string;
   }>;
   summary: {
@@ -146,8 +143,7 @@ Return ONLY a JSON array with exactly ${commentCount} objects in this exact form
   {
     "index": 1,
     "concerning": boolean,
-    "identifiable": boolean,
-    "reasoning": "explanation of your decision"
+    "identifiable": boolean
   },
   ...
 ]
@@ -173,12 +169,10 @@ Original Text: ${comment.originalText}
 Scan A (${comment.scanAResult.model}):
 - Concerning: ${comment.scanAResult.concerning}
 - Identifiable: ${comment.scanAResult.identifiable}
-- Reasoning: ${comment.scanAResult.reasoning}
 
 Scan B (${comment.scanBResult.model}):
 - Concerning: ${comment.scanBResult.concerning}
 - Identifiable: ${comment.scanBResult.identifiable}
-- Reasoning: ${comment.scanBResult.reasoning}
 
 Agreements:
 - Concerning: ${concerningStatus}
@@ -193,7 +187,7 @@ ${items}`;
 }
 
 // Parse adjudication response
-function parseAdjudicationResponse(response: string, expectedCount: number): Array<{ index: number; concerning: boolean; identifiable: boolean; reasoning: string }> {
+function parseAdjudicationResponse(response: string, expectedCount: number): Array<{ index: number; concerning: boolean; identifiable: boolean }> {
   try {
     // Try to extract JSON from the response
     const jsonMatch = response.match(/\[[\s\S]*\]/);
@@ -213,8 +207,7 @@ function parseAdjudicationResponse(response: string, expectedCount: number): Arr
     return parsed.map((item, i) => ({
       index: item.index || i + 1,
       concerning: Boolean(item.concerning),
-      identifiable: Boolean(item.identifiable),
-      reasoning: String(item.reasoning || 'No reasoning provided')
+      identifiable: Boolean(item.identifiable)
     }));
   } catch (error) {
     console.error('Failed to parse adjudication response:', error);
@@ -296,7 +289,6 @@ serve(async (req) => {
             id: c.id,
             concerning: c.agreements.concerning !== null ? c.agreements.concerning : c.scanAResult.concerning,
             identifiable: c.agreements.identifiable !== null ? c.agreements.identifiable : c.scanAResult.identifiable,
-            reasoning: 'No adjudication needed - scanners agreed',
             model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
           })),
           summary: {
@@ -406,7 +398,6 @@ serve(async (req) => {
               id: comment.id,
               concerning: adjudicated.concerning,
               identifiable: adjudicated.identifiable,
-              reasoning: adjudicated.reasoning,
               model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
             };
           }
@@ -417,7 +408,6 @@ serve(async (req) => {
           id: comment.id,
           concerning: comment.agreements.concerning !== null ? comment.agreements.concerning : comment.scanAResult.concerning,
           identifiable: comment.agreements.identifiable !== null ? comment.agreements.identifiable : comment.scanAResult.identifiable,
-          reasoning: 'No adjudication needed - scanners agreed',
           model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
         };
       });

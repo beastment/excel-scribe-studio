@@ -30,21 +30,18 @@ Return a JSON array with exactly one object per input item, using the EXACT item
   {
     "index": 1,
     "concerning": false,
-    "identifiable": false,
-    "reasoning": "Analysis of the comment..."
+    "identifiable": false
   },
   {
     "index": 2,
     "concerning": true,
-    "identifiable": false,
-    "reasoning": "Analysis of the comment..."
+    "identifiable": false
   }
 ]
 
 ## Analysis Criteria:
 - **concerning**: true if the comment contains harmful, threatening, or extremely negative content
 - **identifiable**: true if the comment contains personal information that could identify individuals
-- **reasoning**: brief explanation of your analysis decision
 
 ## IMPORTANT:
 - Use the EXACT index numbers from the sentinels (1, 2, 3, etc.)

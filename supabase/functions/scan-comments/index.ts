@@ -341,7 +341,7 @@ serve(async (req) => {
       console.log(`[BATCH_CALC] ${phase}: Max output tokens: ${tokenLimits.output_token_limit} × ${safetyMultiplier} = ${maxOutputTokens}`);
       
       // Calculate the maximum input tokens we can use based on output limits
-      const maxInputTokensByOutput = Math.floor(maxOutputTokens / ioRatio);
+      const maxInputTokensByOutput = Math.floor(maxOutputTokens * ioRatio);
       console.log(`[BATCH_CALC] ${phase}: Max input tokens by output: ${maxOutputTokens} * ${ioRatio} = ${maxInputTokensByOutput}`);
       
       // Use the more restrictive limit
@@ -688,7 +688,6 @@ serve(async (req) => {
           concerning,
           identifiable,
           mode, // Add the mode field
-          aiReasoning: scanAResult.reasoning,
           needsAdjudication,
           adjudicationData: {
             scanAResult: { ...scanAResult, model: `${scanA.provider}/${scanA.model}` },
@@ -936,84 +935,9 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
       return null;
     };
 
-    // Light sanitizer: escape naked quotes inside reasoning values if present
-    const sanitizeReasoningQuotes = (jsonStr: string): string => {
-      console.log(`${source}: [SANITIZE] Starting sanitization of JSON`);
-      
-      // Try a simple approach: find all reasoning fields and fix any unescaped quotes
-      let result = jsonStr;
-      let changes = 0;
-      
-      // Look for reasoning fields and fix them one by one
-      const reasoningPattern = /"reasoning":\s*"([^"]*(?:"[^"]*)*?)(?="\s*[,}])/g;
-      let match;
-      while ((match = reasoningPattern.exec(jsonStr)) !== null) {
-        const fullMatch = match[0];
-        const content = match[1];
-        
-        // Check if there are any unescaped quotes in the content
-        if (content.includes('"') && !content.includes('\\"')) {
-          const escapedContent = content.replace(/"/g, '\\"');
-          const newMatch = `"reasoning": "${escapedContent}"`;
-          result = result.replace(fullMatch, newMatch);
-          changes++;
-          console.log(`${source}: [SANITIZE] Fixed reasoning field: "${content}" -> "${escapedContent}"`);
-        }
-      }
-      
-      console.log(`${source}: [SANITIZE] Made ${changes} changes to reasoning fields`);
-      return result;
-    };
 
-    // Additional robust JSON repair function for common escaping issues
-    const repairJsonEscaping = (jsonStr: string): string => {
-      console.log(`${source}: [JSON_REPAIR] Starting repair process`);
-      
-      // Don't attempt repair if the JSON is already valid
-      try {
-        JSON.parse(jsonStr);
-        console.log(`${source}: [JSON_REPAIR] JSON is already valid, no repair needed`);
-        return jsonStr;
-      } catch (e) {
-        console.log(`${source}: [JSON_REPAIR] JSON is invalid, attempting repair: ${e.message}`);
-      }
-      
-      // Only attempt very conservative repairs
-      let repaired = jsonStr;
-      
-      // Look for the specific pattern that causes issues: unescaped quotes in string values
-      // This is a very targeted fix for the exact issue we're seeing
-      const problematicPattern = /"reasoning":\s*"([^"]*(?:"[^"]*)*?)(?="\s*[,}])/g;
-      let match;
-      let changes = 0;
-      
-      while ((match = problematicPattern.exec(jsonStr)) !== null) {
-        const fullMatch = match[0];
-        const content = match[1];
-        
-        // Only fix if there are unescaped quotes that aren't already properly escaped
-        if (content.includes('"') && !content.includes('\\"')) {
-          const escapedContent = content.replace(/"/g, '\\"');
-          const newMatch = `"reasoning": "${escapedContent}"`;
-          repaired = repaired.replace(fullMatch, newMatch);
-          changes++;
-          console.log(`${source}: [JSON_REPAIR] Fixed reasoning field: "${content}" -> "${escapedContent}"`);
-        }
-      }
-      
-      console.log(`${source}: [JSON_REPAIR] Made ${changes} changes`);
-      
-      // Validate that the repair didn't break the JSON structure
-      try {
-        JSON.parse(repaired);
-        console.log(`${source}: [JSON_REPAIR] Validation passed - repaired JSON is valid`);
-        return repaired;
-      } catch (validationError) {
-        console.warn(`${source}: [JSON_REPAIR] Validation failed - repair corrupted JSON:`, validationError.message);
-        // Return original if repair made it worse
-        return jsonStr;
-      }
-    };
+
+
 
     // First try to parse the entire response as JSON directly
     let cleanedJson = decodedResponse;
@@ -1035,13 +959,11 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
           const extractedObjects: any[] = [];
           for (let i = 0; i < objectMatches.length && i < expectedCount; i++) {
             try {
-              const tryStr = sanitizeReasoningQuotes(objectMatches[i]);
-              const obj = JSON.parse(tryStr);
+              const obj = JSON.parse(objectMatches[i]);
               extractedObjects.push({
                 index: obj.index || (globalStartIndex + i),
                 concerning: Boolean(obj.concerning),
-                identifiable: Boolean(obj.identifiable),
-                reasoning: String(obj.reasoning || 'Extracted from partial response')
+                identifiable: Boolean(obj.identifiable)
               });
             } catch (objError) {
               console.warn(`${source}: Failed to parse object ${i}: ${objError.message}`);
@@ -1054,8 +976,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
               [...extractedObjects, ...Array(expectedCount - extractedObjects.length).fill(null).map((_, i) => ({
                 index: globalStartIndex + extractedObjects.length + i,
                 concerning: false,
-                identifiable: false,
-                reasoning: `Fallback result due to parsing issues`
+                identifiable: false
               }))] : extractedObjects;
           }
         }
@@ -1118,29 +1039,26 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         }
       }
       
-      const sanitized = sanitizeReasoningQuotes(cleanedJson);
-      console.log(`${source}: [DEBUG] Sanitized JSON length: ${sanitized.length}`);
       try {
-        parsed = JSON.parse(sanitized);
-        console.log(`${source}: Sanitization succeeded`);
+        parsed = JSON.parse(cleanedJson);
+        console.log(`${source}: JSON parse succeeded`);
       } catch (e2) {
-        // If sanitization fails, skip the repair function as it's causing more problems
-        console.warn(`${source}: Sanitization failed, skipping repair function to avoid corruption: ${e2.message}`);
-        console.warn(`${source}: Repair function disabled due to JSON corruption issues`);
+        // If JSON parse fails, try JSON completion logic
+        console.warn(`${source}: JSON parse failed, attempting JSON completion: ${e2.message}`);
         
         // Try the JSON completion logic directly
         try {
           // Final attempt: check if JSON is truncated and try to complete it
-          console.warn(`${source}: Checking for truncation after sanitization failed: ${e2.message}`);
+          console.warn(`${source}: Checking for truncation after JSON parse failed: ${e2.message}`);
           
-          let completedJson = sanitized; // Use sanitized version instead of original
+          let completedJson = cleanedJson; // Use original version
           let needsCompletion = false;
           
           // Count brackets and braces to see if they're balanced
-          const openBraces = (sanitized.match(/\{/g) || []).length;
-          const closeBraces = (sanitized.match(/\}/g) || []).length;
-          const openBrackets = (sanitized.match(/\[/g) || []).length;
-          const closeBrackets = (sanitized.match(/\]/g) || []).length;
+          const openBraces = (cleanedJson.match(/\{/g) || []).length;
+          const closeBraces = (cleanedJson.match(/\}/g) || []).length;
+          const openBrackets = (cleanedJson.match(/\[/g) || []).length;
+          const closeBrackets = (cleanedJson.match(/\]/g) || []).length;
           
           // If we have more opening than closing, try to complete the JSON
           if (openBraces > closeBraces || openBrackets > closeBrackets) {
@@ -1154,7 +1072,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
               completedJson += ']';
               closeBrackets++;
             }
-            console.log(`${source}: Attempting to complete truncated JSON by adding ${openBraces - (sanitized.match(/\{/g) || []).length} braces and ${openBrackets - (sanitized.match(/\[/g) || []).length} brackets`);
+            console.log(`${source}: Attempting to complete truncated JSON by adding ${openBraces - (cleanedJson.match(/\{/g) || []).length} braces and ${openBrackets - (cleanedJson.match(/\[/g) || []).length} brackets`);
           }
           
           if (needsCompletion) {
@@ -1169,16 +1087,16 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
                 if (positionMatch) {
                   const position = parseInt(positionMatch[1]);
                   const start = Math.max(0, position - 100);
-                  const end = Math.min(sanitized.length, position + 100);
+                  const end = Math.min(cleanedJson.length, position + 100);
                   console.error(`${source}: Error area around position ${position}:`);
-                  console.error(`${source}: ...${sanitized.substring(start, end)}...`);
+                  console.error(`${source}: ...${cleanedJson.substring(start, end)}...`);
                 }
               }
               throw new Error(`Invalid JSON in response: ${e2.message}`);
             }
           } else {
             console.error(`${source}: JSON parse error:`, e2);
-            console.error(`${source}: Attempted to parse: ${sanitized.substring(0, 500)}...`);
+            console.error(`${source}: Attempted to parse: ${cleanedJson.substring(0, 500)}...`);
             
             // If we have a position error, show the area around that position
             if (e2.message.includes('position')) {
@@ -1186,9 +1104,9 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
               if (positionMatch) {
                 const position = parseInt(positionMatch[1]);
                 const start = Math.max(0, position - 100);
-                const end = Math.min(sanitized.length, position + 100);
+                const end = Math.min(cleanedJson.length, position + 100);
                 console.error(`${source}: Error area around position ${position}:`);
-                console.error(`${source}: ...${sanitized.substring(start, end)}...`);
+                console.error(`${source}: ...${cleanedJson.substring(start, end)}...`);
               }
             }
             
@@ -1220,18 +1138,16 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
           paddedResults.push({
             index: existingResult.index || (globalStartIndex + i),
             concerning: Boolean(existingResult.concerning),
-            identifiable: Boolean(existingResult.identifiable),
-            reasoning: String(existingResult.reasoning || 'No reasoning provided')
+            identifiable: Boolean(existingResult.identifiable)
           });
-        } else {
-          // Add default result for missing item
-          paddedResults.push({
-            index: globalStartIndex + i,
-            concerning: false,
-            identifiable: false,
-            reasoning: `No analysis provided by ${source} for this comment`
-          });
-        }
+                  } else {
+            // Add default result for missing item
+            paddedResults.push({
+              index: globalStartIndex + i,
+              concerning: false,
+              identifiable: false
+            });
+          }
       }
       
       console.log(`${source}: Returning ${paddedResults.length} padded results (${parsed.length} original + ${paddedResults.length - parsed.length} defaults)`);
