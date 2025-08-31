@@ -130,29 +130,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
   }
 }
 
-// Build adjudication prompt
-function buildAdjudicationPrompt(commentCount: number): string {
-  return `You are an AI adjudicator resolving disagreements between two AI scanners analyzing workplace feedback comments.
 
-Your task is to determine the final classification for each comment based on the two scanner results and your own analysis.
-
-ANALYSIS RULES:
-1. Concerning content: harassment, threats, illegal activity, safety violations, discrimination
-2. Personally identifiable information: names, employee IDs, specific job levels (e.g., "Level 5"), tenure statements (e.g., "3 years experience"), contact details
-
-OUTPUT FORMAT:
-Return ONLY the results in this simple format (one per line):
-i:1
-A:Y
-B:N
-i:2
-A:N
-B:Y
-...
-
-CRITICAL: Return ONLY the results in this format, no prose, no code fences, no explanations before/after.
-IMPORTANT: Use Y or N (not quoted) for A and B values.`;
-}
 
 // Build adjudication input
 function buildAdjudicationInput(comments: AdjudicationRequest['comments']): string {
@@ -349,8 +327,8 @@ serve(async (req) => {
     console.log(`${logPrefix} [ADJUDICATOR] ${needsAdjudication.length} comments need adjudication`);
 
     try {
-      // Build prompt and input for adjudication
-      const prompt = buildAdjudicationPrompt(needsAdjudication.length);
+      // Use the prompt from the adjudicator configuration (same as Scan A and Scan B)
+      const prompt = adjudicatorConfig.prompt;
       const input = buildAdjudicationInput(needsAdjudication);
 
       console.log(`${logPrefix} [AI REQUEST] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
