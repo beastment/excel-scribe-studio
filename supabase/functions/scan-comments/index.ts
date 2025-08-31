@@ -6,6 +6,8 @@ import { AILogger } from './ai-logger.ts';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 };
 
 serve(async (req) => {
@@ -742,6 +744,7 @@ serve(async (req) => {
       console.warn('Failed to restore console methods:', e);
     }
 
+    console.log('Returning successful response with CORS headers:', corsHeaders);
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
@@ -761,6 +764,7 @@ serve(async (req) => {
       console.warn('Failed to restore console methods:', e);
     }
 
+    console.log('Returning error response with CORS headers:', corsHeaders);
     return new Response(JSON.stringify({ 
       error: `Error in scan-comments function: ${error.message}` 
     }), { 
