@@ -955,17 +955,12 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
 
 
 
-    // First fix unquoted Y/N values, then try to parse
+    // First try to parse the entire response as JSON directly
     let cleanedJson = decodedResponse;
-    
-    // Fix unquoted Y and N values before any parsing attempts
-    cleanedJson = cleanedJson.replace(/:\s*Y\s*([,}])/g, ': "Y"$1');
-    cleanedJson = cleanedJson.replace(/:\s*N\s*([,}])/g, ': "N"$1');
-    
     let parsed: any;
     try {
       parsed = JSON.parse(cleanedJson);
-      console.log(`${source}: JSON parse succeeded after fixing unquoted Y/N values`);
+      console.log(`${source}: Response is valid JSON directly`);
     } catch (directParseError) {
       console.log(`${source}: Direct parse failed; attempting balanced array extraction: ${directParseError.message}`);
       const arr = extractJsonArray(decodedResponse);
@@ -1034,9 +1029,21 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
     try {
       parsed = JSON.parse(cleanedJson);
     } catch (parseError) {
-      // Attempt sanitization for unescaped quotes in reasoning fields, then parse again
-      console.warn(`${source}: JSON parse error, attempting sanitization: ${parseError.message}`);
-      console.log(`${source}: [DEBUG] Original JSON length: ${cleanedJson.length}`);
+      // Try to fix unquoted Y/N values before other fallback attempts
+      console.warn(`${source}: JSON parse error, attempting to fix unquoted Y/N values: ${parseError.message}`);
+      
+      try {
+        // Fix unquoted Y and N values
+        let fixedJson = cleanedJson;
+        fixedJson = fixedJson.replace(/:\s*Y\s*([,}])/g, ': "Y"$1');
+        fixedJson = fixedJson.replace(/:\s*N\s*([,}])/g, ': "N"$1');
+        
+        console.log(`${source}: Attempting to parse fixed JSON`);
+        parsed = JSON.parse(fixedJson);
+        console.log(`${source}: Fixed JSON parse succeeded`);
+      } catch (fixError) {
+        console.warn(`${source}: JSON fix failed, attempting other fallback methods: ${fixError.message}`);
+        console.log(`${source}: [DEBUG] Original JSON length: ${cleanedJson.length}`);
       
       // Show the area around the error position for debugging
       if (parseError.message.includes('position')) {
