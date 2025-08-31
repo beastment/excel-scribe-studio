@@ -19,6 +19,7 @@ serve(async (req) => {
   }
 
   const overallStartTime = Date.now(); // Track overall process time
+  const MAX_EXECUTION_TIME = 50 * 1000; // 50 seconds max execution time
 
   try {
     const requestBody = await req.json();
@@ -434,34 +435,55 @@ serve(async (req) => {
     console.log(`[TOKEN LIMITS] Scan A:`, scanATokenLimits);
     console.log(`[TOKEN LIMITS] Scan B:`, scanBTokenLimits);
     
-    // Calculate optimal batch sizes for both scans with timing
-    console.log(`[BATCH_SIZING] Starting precise token counting for batch size calculation...`);
+    // Use faster batch size calculation for large datasets
+    console.log(`[BATCH_SIZING] Using optimized batch size calculation for ${inputComments.length} comments...`);
     const batchSizingStartTime = Date.now();
     
-    const scanABatchSize = await calculateOptimalBatchSize(
-      'scan_a',
-      inputComments,
-      scanA.analysis_prompt,
-      ioRatios.scan_a_io_ratio,
-      scanATokenLimits,
-      safetyMarginPercent,
-      scanA.provider,
-      scanA.model
-    );
+    // For large datasets, use a more efficient approach
+    let scanABatchSize, scanBBatchSize;
     
-    const scanBBatchSize = await calculateOptimalBatchSize(
-      'scan_b',
-      inputComments,
-      scanB.analysis_prompt,
-      ioRatios.scan_b_io_ratio,
-      scanBTokenLimits,
-      safetyMarginPercent,
-      scanB.provider,
-      scanB.model
-    );
+    if (inputComments.length > 100) {
+      // Use conservative estimates for large datasets to avoid timeout
+      console.log(`[BATCH_SIZING] Large dataset detected (${inputComments.length} comments), using conservative batch sizes`);
+      
+      // Use smaller batch sizes to ensure we don't timeout
+      scanABatchSize = Math.min(20, Math.floor(scanATokenLimits.output_token_limit / 200)); // ~200 tokens per comment
+      scanBBatchSize = Math.min(20, Math.floor(scanBTokenLimits.output_token_limit / 200));
+      
+      // Ensure minimum batch size
+      scanABatchSize = Math.max(5, scanABatchSize);
+      scanBBatchSize = Math.max(5, scanBBatchSize);
+      
+      console.log(`[BATCH_SIZING] Conservative batch sizes: Scan A: ${scanABatchSize}, Scan B: ${scanBBatchSize}`);
+    } else {
+      // Use precise calculation for smaller datasets
+      console.log(`[BATCH_SIZING] Small dataset, using precise token counting...`);
+      
+      scanABatchSize = await calculateOptimalBatchSize(
+        'scan_a',
+        inputComments,
+        scanA.analysis_prompt,
+        ioRatios.scan_a_io_ratio,
+        scanATokenLimits,
+        safetyMarginPercent,
+        scanA.provider,
+        scanA.model
+      );
+      
+      scanBBatchSize = await calculateOptimalBatchSize(
+        'scan_b',
+        inputComments,
+        scanB.analysis_prompt,
+        ioRatios.scan_b_io_ratio,
+        scanBTokenLimits,
+        safetyMarginPercent,
+        scanB.provider,
+        scanB.model
+      );
+    }
     
     const batchSizingTime = Date.now() - batchSizingStartTime;
-    console.log(`[BATCH_SIZING] Precise token counting completed in ${batchSizingTime}ms`);
+    console.log(`[BATCH_SIZING] Batch size calculation completed in ${batchSizingTime}ms`);
     
     // Use the smaller batch size to ensure both scans can process the same batches
     const finalBatchSize = Math.min(scanABatchSize, scanBBatchSize);
@@ -512,10 +534,36 @@ serve(async (req) => {
     aiLogger.setFunctionStartTime(overallStartTime);
     
     for (let currentBatchStart = 0; currentBatchStart < inputComments.length; currentBatchStart += finalBatchSize) {
+      // Check for timeout before processing each batch
+      const currentTime = Date.now();
+      const elapsedTime = currentTime - overallStartTime;
+      
+      if (elapsedTime > MAX_EXECUTION_TIME) {
+        console.warn(`[TIMEOUT] Function execution time (${elapsedTime}ms) exceeded maximum (${MAX_EXECUTION_TIME}ms)`);
+        console.warn(`[TIMEOUT] Stopping processing to prevent gateway timeout. Processed ${allScannedComments.length}/${inputComments.length} comments`);
+        
+        // Return partial results with timeout warning
+        const partialResponse = {
+          comments: allScannedComments,
+          batchStart: 0,
+          batchSize: finalBatchSize,
+          hasMore: true, // Indicate there are more comments to process
+          totalComments: inputComments.length,
+          summary: totalSummary,
+          totalRunTimeMs: elapsedTime,
+          timeoutWarning: `Processing stopped after ${elapsedTime}ms to prevent gateway timeout. Processed ${allScannedComments.length}/${inputComments.length} comments.`
+        };
+        
+        console.log('Returning partial response due to timeout:', partialResponse.timeoutWarning);
+        return new Response(JSON.stringify(partialResponse), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        });
+      }
+      
       const batch = inputComments.slice(currentBatchStart, currentBatchStart + finalBatchSize);
       const batchEnd = Math.min(currentBatchStart + finalBatchSize, inputComments.length);
       
-      console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize})`);
+      console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize}) - Elapsed: ${elapsedTime}ms`);
       console.log(`[TOKENS] Scan A max_tokens: ${scanATokenLimits.output_token_limit}, Scan B max_tokens: ${scanBTokenLimits.output_token_limit}`);
       console.log(`[TOKENS] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
 
