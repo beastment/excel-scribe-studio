@@ -142,13 +142,14 @@ Return ONLY a JSON array with exactly ${commentCount} objects in this exact form
 [
   {
     "i": 1,
-    "A": Y,
-    "B": N
+    "A": "Y",
+    "B": "N"
   },
   ...
 ]
 
-CRITICAL: Return ONLY the JSON array, no prose, no code fences, no explanations before/after.`;
+CRITICAL: Return ONLY the JSON array, no prose, no code fences, no explanations before/after.
+IMPORTANT: The values "Y" and "N" MUST be quoted strings in the JSON output!`;
 }
 
 // Build adjudication input

@@ -29,19 +29,21 @@ Return a JSON array with exactly one object per input item, using the EXACT item
 [
   {
     "i": 1,
-    "A": N,
-    "B": N
+    "A": "N",
+    "B": "N"
   },
   {
     "i": 2,
-    "A": Y,
-    "B": N
+    "A": "Y",
+    "B": "N"
   }
 ]
 
 ## Analysis Criteria:
-- **A (concerning)**: Y if the comment contains harmful, threatening, or extremely negative content, N otherwise
-- **B (identifiable)**: Y if the comment contains personal information that could identify individuals, N otherwise
+- **A (concerning)**: "Y" if the comment contains harmful, threatening, or extremely negative content, "N" otherwise
+- **B (identifiable)**: "Y" if the comment contains personal information that could identify individuals, "N" otherwise
+
+## CRITICAL: The values "Y" and "N" MUST be quoted strings in the JSON output!
 
 ## IMPORTANT:
 - Use the EXACT index numbers from the sentinels (1, 2, 3, etc.)
