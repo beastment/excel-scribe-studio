@@ -941,6 +941,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
 
     // First try to parse the simple key-value format (i:1\nA:N\nB:Y)
     let parsed: any;
+    let cleanedJson = decodedResponse; // Define cleanedJson at the top level
     
     // Check if response is in the simple format
     if (decodedResponse.includes('i:') && decodedResponse.includes('A:') && decodedResponse.includes('B:')) {
@@ -989,7 +990,6 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
     
     // If simple format parsing failed or wasn't detected, try JSON parsing
     if (!parsed) {
-      let cleanedJson = decodedResponse;
       try {
         parsed = JSON.parse(cleanedJson);
         console.log(`${source}: Response is valid JSON directly`);
