@@ -19,7 +19,7 @@ serve(async (req) => {
   }
 
   const overallStartTime = Date.now(); // Track overall process time
-  const MAX_EXECUTION_TIME = 50 * 1000; // 50 seconds max execution time
+      const MAX_EXECUTION_TIME = 120 * 1000; // 120 seconds max execution time (2 minutes)
 
   try {
     const requestBody = await req.json();
@@ -526,7 +526,7 @@ serve(async (req) => {
     }
     
     // Process comments in smaller chunks to avoid gateway timeout
-    const MAX_BATCHES_PER_REQUEST = 3; // Process max 3 batches per request
+    const MAX_BATCHES_PER_REQUEST = 5; // Process max 5 batches per request (100 comments)
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     
