@@ -857,35 +857,52 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
 
     // Additional robust JSON repair function for common escaping issues
     const repairJsonEscaping = (jsonStr: string): string => {
-      // More careful approach: only escape quotes that are clearly inside string values
-      // Look for patterns like "reasoning": "text with "quotes" inside"
+      console.log(`${source}: [JSON_REPAIR] Starting repair process`);
+      
+      // Don't attempt repair if the JSON is already valid
+      try {
+        JSON.parse(jsonStr);
+        console.log(`${source}: [JSON_REPAIR] JSON is already valid, no repair needed`);
+        return jsonStr;
+      } catch (e) {
+        console.log(`${source}: [JSON_REPAIR] JSON is invalid, attempting repair: ${e.message}`);
+      }
+      
+      // Only attempt very conservative repairs
       let repaired = jsonStr;
       
-      // Find and fix unescaped quotes in reasoning fields specifically
-      repaired = repaired.replace(/"reasoning":\s*"([^"]*(?:"[^"]*)*?)(?="\s*[,}])/g, (match, content) => {
-        const escapedContent = content.replace(/"/g, '\\"');
-        return `"reasoning": "${escapedContent}"`;
-      });
+      // Look for the specific pattern that causes issues: unescaped quotes in string values
+      // This is a very targeted fix for the exact issue we're seeing
+      const problematicPattern = /"reasoning":\s*"([^"]*(?:"[^"]*)*?)(?="\s*[,}])/g;
+      let match;
+      let changes = 0;
       
-      // Find and fix unescaped quotes in other string fields
-      repaired = repaired.replace(/"([^"]+)"\s*:\s*"([^"]*(?:"[^"]*)*?)(?="\s*[,}])/g, (match, key, content) => {
-        const escapedContent = content.replace(/"/g, '\\"');
-        return `"${key}": "${escapedContent}"`;
-      });
+      while ((match = problematicPattern.exec(jsonStr)) !== null) {
+        const fullMatch = match[0];
+        const content = match[1];
+        
+        // Only fix if there are unescaped quotes that aren't already properly escaped
+        if (content.includes('"') && !content.includes('\\"')) {
+          const escapedContent = content.replace(/"/g, '\\"');
+          const newMatch = `"reasoning": "${escapedContent}"`;
+          repaired = repaired.replace(fullMatch, newMatch);
+          changes++;
+          console.log(`${source}: [JSON_REPAIR] Fixed reasoning field: "${content}" -> "${escapedContent}"`);
+        }
+      }
       
-      console.log(`${source}: [JSON_REPAIR] Applied targeted JSON escaping repair`);
+      console.log(`${source}: [JSON_REPAIR] Made ${changes} changes`);
       
       // Validate that the repair didn't break the JSON structure
       try {
         JSON.parse(repaired);
         console.log(`${source}: [JSON_REPAIR] Validation passed - repaired JSON is valid`);
+        return repaired;
       } catch (validationError) {
-        console.warn(`${source}: [JSON_REPAIR] Validation failed - repair may have corrupted JSON:`, validationError.message);
+        console.warn(`${source}: [JSON_REPAIR] Validation failed - repair corrupted JSON:`, validationError.message);
         // Return original if repair made it worse
         return jsonStr;
       }
-      
-      return repaired;
     };
 
     // First try to parse the entire response as JSON directly
@@ -974,10 +991,15 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
         const positionMatch = parseError.message.match(/position (\d+)/);
         if (positionMatch) {
           const position = parseInt(positionMatch[1]);
-          const start = Math.max(0, position - 50);
-          const end = Math.min(cleanedJson.length, position + 50);
+          const start = Math.max(0, position - 100);
+          const end = Math.min(cleanedJson.length, position + 100);
           console.log(`${source}: [DEBUG] Error area around position ${position}:`);
           console.log(`${source}: [DEBUG] ...${cleanedJson.substring(start, end)}...`);
+          
+          // Check if this looks like a truncation issue
+          if (position > cleanedJson.length * 0.9) {
+            console.warn(`${source}: [DEBUG] Error is near the end of the JSON (position ${position} of ${cleanedJson.length}) - possible truncation`);
+          }
         }
       }
       
