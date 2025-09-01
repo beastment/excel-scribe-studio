@@ -655,6 +655,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     if (comment.mode === 'edit' || comment.text !== comment.originalText && comment.text !== comment.redactedText && comment.text !== comment.rephrasedText) {
       return 'Edited';
     }
+
+    // If comment has processed text available (redacted or rephrased), show as "AI: Flagged"
+    if (comment.redactedText || comment.rephrasedText) {
+      return 'AI: Flagged';
+    }
+
     // Comments that are only concerning (but not identifiable) should show as "Revert" since they don't need processing
     if (comment.concerning && comment.identifiable) return 'AI: Flagged';
     if (comment.concerning && !comment.identifiable) return 'Revert';
