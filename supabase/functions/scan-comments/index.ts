@@ -348,6 +348,13 @@ serve(async (req) => {
       // The output limit gives us the theoretical maximum, but input tokens are the real constraint
       console.log(`[BATCH_CALC] ${phase}: Using input token limit as primary constraint (output allows up to ${maxCommentsByOutput} comments)`);
       
+      // Log the theoretical output tokens for the full dataset
+      const theoreticalOutputTokens = comments.length * tokensPerComment;
+      console.log(`[BATCH_CALC] ${phase}: Theoretical output tokens for all ${comments.length} comments: ${theoreticalOutputTokens}`);
+      if (theoreticalOutputTokens > maxOutputTokens) {
+        console.log(`[BATCH_CALC] ${phase}: WARNING: Full dataset would exceed output limit by ${theoreticalOutputTokens - maxOutputTokens} tokens`);
+      }
+      
       // Estimate tokens for prompt
       const promptStartTime = Date.now();
       const promptTokens = await getPreciseTokens(prompt, provider, model);
@@ -403,6 +410,14 @@ serve(async (req) => {
         console.log(`[BATCH_CALC] ${phase}: Reduced batch size to ${batchSize} to fit output limits`);
       } else {
         console.log(`[BATCH_CALC] ${phase}: Output tokens within limit: ${estimatedOutputTokens} <= ${maxOutputTokens}`);
+      }
+      
+      // Add additional safety margin to prevent truncation
+      // Use 80% of the theoretical maximum to ensure we don't hit token limits
+      const safetyBatchSize = Math.floor(batchSize * 0.8);
+      if (safetyBatchSize < batchSize) {
+        console.log(`[BATCH_CALC] ${phase}: Applying additional safety margin: ${batchSize} → ${safetyBatchSize} (80% of max)`);
+        batchSize = safetyBatchSize;
       }
       
       console.log(`[BATCH_CALC] ${phase}: Token counting timing - Prompt: ${promptTime}ms, Comments: ${totalCommentTime}ms, Total: ${promptTime + totalCommentTime}ms`);
@@ -988,13 +1003,24 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
           results.push(currentItem);
         }
         
+        // Check if the response appears to be truncated
+        if (results.length > 0) {
+          const lastResult = results[results.length - 1];
+          const expectedLastIndex = globalStartIndex + expectedCount - 1;
+          if (lastResult.index < expectedLastIndex) {
+            console.warn(`${source}: Response appears truncated. Last result index: ${lastResult.index}, expected last index: ${expectedLastIndex}`);
+          }
+        }
+        
         if (results.length > 0) {
           console.log(`${source}: Successfully parsed ${results.length} items from simple format`);
           console.log(`${source}: Parsed results:`, results);
           
           // Handle cases where AI returns fewer results than expected
           if (results.length < expectedCount) {
-            console.warn(`${source}: Expected ${expectedCount} items, got ${results.length}. Padding with default results.`);
+            const missingCount = expectedCount - results.length;
+            const missingPercentage = Math.round((missingCount / expectedCount) * 100);
+            console.warn(`${source}: Expected ${expectedCount} items, got ${results.length}. Missing ${missingCount} items (${missingPercentage}%). This may indicate the AI response was truncated due to output token limits. Padding with default results.`);
             
             // Create default results for missing items
             const paddedResults = [];
