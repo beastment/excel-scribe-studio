@@ -412,15 +412,22 @@ serve(async (req) => {
         console.log(`[BATCH_CALC] ${phase}: Output tokens within limit: ${estimatedOutputTokens} <= ${maxOutputTokens}`);
       }
       
-      // Add significant safety margin to prevent truncation
-      // AI responses often include headers, explanations, and formatting that add tokens
-      // Use 60% of the theoretical maximum for Claude Haiku to prevent truncation
+      // Claude Haiku has a practical output limit around 1400 tokens despite 4096 max_tokens
+      // Cap batches aggressively to prevent truncation
       const isClaudeHaiku = model.includes('claude-3-haiku');
-      const safetyMargin = isClaudeHaiku ? 0.6 : 0.8; // More conservative for Claude Haiku
-      const safetyBatchSize = Math.floor(batchSize * safetyMargin);
-      if (safetyBatchSize < batchSize) {
-        console.log(`[BATCH_CALC] ${phase}: Applying safety margin for ${model}: ${batchSize} → ${safetyBatchSize} (${Math.round(safetyMargin * 100)}% of max)`);
-        batchSize = safetyBatchSize;
+      if (isClaudeHaiku) {
+        const haikuMaxBatch = 300; // Conservative limit for Haiku to stay under ~1200 output tokens
+        if (batchSize > haikuMaxBatch) {
+          console.log(`[BATCH_CALC] ${phase}: Limiting Claude Haiku batch: ${batchSize} → ${haikuMaxBatch} (Haiku output limit)`);
+          batchSize = haikuMaxBatch;
+        }
+      } else {
+        // Add safety margin for other models
+        const safetyBatchSize = Math.floor(batchSize * 0.8);
+        if (safetyBatchSize < batchSize) {
+          console.log(`[BATCH_CALC] ${phase}: Applying safety margin: ${batchSize} → ${safetyBatchSize} (80% of max)`);
+          batchSize = safetyBatchSize;
+        }
       }
       
       console.log(`[BATCH_CALC] ${phase}: Token counting timing - Prompt: ${promptTime}ms, Comments: ${totalCommentTime}ms, Total: ${promptTime + totalCommentTime}ms`);
@@ -776,6 +783,47 @@ serve(async (req) => {
     }
     
     const totalRunTimeMs = Date.now() - overallStartTime;
+    
+    // Check for missing tail comments and retry if needed
+    const expectedTotal = inputComments.length;
+    const actualTotal = allScannedComments.length;
+    
+    if (!hasMoreBatches && actualTotal < expectedTotal) {
+      const missingCount = expectedTotal - actualTotal;
+      console.log(`[TAIL_RETRY] Missing ${missingCount} comments (${actualTotal}/${expectedTotal}), attempting tail retry...`);
+      
+      // Find the highest processed index
+      const processedIndices = allScannedComments.map(c => c.originalRow || 0);
+      const lastProcessedIndex = processedIndices.length > 0 ? Math.max(...processedIndices) : -1;
+      
+      // Calculate what comments are missing
+      const tailStartIndex = lastProcessedIndex;
+      const tailComments = inputComments.slice(tailStartIndex);
+      
+      if (tailComments.length > 0 && tailComments.length <= 100) { // Only retry for reasonable sizes
+        console.log(`[TAIL_RETRY] Processing ${tailComments.length} tail comments starting from index ${tailStartIndex}`);
+        
+        try {
+          // Use a very small batch size for tail retry
+          const tailBatchSize = Math.min(50, tailComments.length);
+          const tailResponse = await processBatch(tailComments, 0, tailBatchSize, scanRunId, "scan_b");
+          
+          if (tailResponse && tailResponse.length > 0) {
+            // Adjust the originalRow indices for tail comments
+            const adjustedTailComments = tailResponse.map(comment => ({
+              ...comment,
+              originalRow: (comment.originalRow || 0) + tailStartIndex
+            }));
+            
+            allScannedComments.push(...adjustedTailComments);
+            console.log(`[TAIL_RETRY] Successfully processed ${tailResponse.length} tail comments`);
+          }
+        } catch (tailError) {
+          console.error(`[TAIL_RETRY] Failed to process tail comments:`, tailError);
+          // Continue without failing the entire request
+        }
+      }
+    }
     
     // Determine if there are more batches to process
     const lastProcessedIndex = batchStart + (batchesProcessed * finalBatchSize);
