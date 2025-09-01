@@ -1198,35 +1198,48 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   
                    {/* Mode Controls */}
                    <div className="flex items-center gap-1 flex-wrap h-8">
-                       {getCommentStatus(comment) !== 'Scan Needed' && <>
-                            {getCommentStatus(comment) === 'AI: No Changes' ? <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
-                               Revert
-                             </Button> : getCommentStatus(comment) === 'Revert' ? <Button variant="default" size="sm" disabled className="h-6 text-xs px-2">
-                               Already Reverted
-                             </Button> : <>
-                               {/* Debug info */}
-                               {console.log('Button debug:', {
-                                 status: getCommentStatus(comment),
-                                 identifiable: comment.identifiable,
-                                 redactedText: !!comment.redactedText,
-                                 rephrasedText: !!comment.rephrasedText,
-                                 mode: comment.mode,
-                                 condition: (comment.identifiable || comment.redactedText || comment.rephrasedText)
-                               })}
-                               {/* Show Redact/Rephrase buttons for comments that are identifiable or have processed text available */}
-                               {(comment.identifiable || comment.redactedText || comment.rephrasedText) && <>
-                                 <Button variant={comment.mode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'redact')} className="h-6 text-xs px-2">
-                                   Redact
-                                 </Button>
-                                 <Button variant={comment.mode === 'rephrase' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'rephrase')} className="h-6 text-xs px-2">
-                                   Rephrase
-                                 </Button>
-                               </>}
-                               <Button variant={comment.mode === 'revert' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
-                                 Revert
-                               </Button>
-                             </>}
-                         </>}
+                       {(() => {
+                         const status = getCommentStatus(comment);
+                         const showButtons = comment.identifiable || comment.redactedText || comment.rephrasedText;
+                         
+                         console.log('Button debug:', {
+                           status,
+                           identifiable: comment.identifiable,
+                           redactedText: !!comment.redactedText,
+                           rephrasedText: !!comment.rephrasedText,
+                           mode: comment.mode,
+                           showButtons
+                         });
+                         
+                         if (status === 'Scan Needed') return null;
+                         
+                         if (status === 'AI: No Changes') {
+                           return <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
+                             Revert
+                           </Button>;
+                         }
+                         
+                         if (status === 'Revert') {
+                           return <Button variant="default" size="sm" disabled className="h-6 text-xs px-2">
+                             Already Reverted
+                           </Button>;
+                         }
+                         
+                         return <>
+                           {/* Show Redact/Rephrase buttons for comments that are identifiable or have processed text available */}
+                           {showButtons && <>
+                             <Button variant={comment.mode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'redact')} className="h-6 text-xs px-2">
+                               Redact
+                             </Button>
+                             <Button variant={comment.mode === 'rephrase' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'rephrase')} className="h-6 text-xs px-2">
+                               Rephrase
+                             </Button>
+                           </>}
+                           <Button variant={comment.mode === 'revert' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
+                             Revert
+                           </Button>
+                         </>;
+                       })()}
                      </div>
                    
                    {/* Content Area */}
