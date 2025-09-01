@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { AILogger } from './ai-logger.ts';
+import { enforceRateLimits, calculateOptimalBatchSize } from './tpm-tracker.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -312,7 +313,7 @@ serve(async (req) => {
       phase: 'scan_a' | 'scan_b',
       comments: any[],
       prompt: string,
-      tokenLimits: { input_token_limit: number; output_token_limit: number },
+      tokenLimits: { input_token_limit: number; output_token_limit: number; tpm_limit?: number; rpm_limit?: number },
       safetyMarginPercent: number = 15,
       provider: string,
       model: string,
@@ -420,6 +421,27 @@ serve(async (req) => {
         batchSize = safetyBatchSize;
       }
       
+      // Consider TPM and RPM limits when determining final batch size
+      if (tokenLimits.tpm_limit || tokenLimits.rpm_limit) {
+        const estimatedTokensPerComment = Math.ceil(totalTokens / batchSize) + tokensPerComment; // Average input + output per comment
+        const optimalBatchSize = calculateOptimalBatchSize(
+          provider,
+          model,
+          estimatedTokensPerComment,
+          batchSize,
+          tokenLimits.tpm_limit,
+          tokenLimits.rpm_limit,
+          `[BATCH_CALC] ${phase}`
+        );
+        
+        if (optimalBatchSize < batchSize) {
+          console.log(`[BATCH_CALC] ${phase}: Reducing batch size from ${batchSize} to ${optimalBatchSize} due to rate limits`);
+          batchSize = optimalBatchSize;
+        }
+      } else {
+        console.log(`[BATCH_CALC] ${phase}: No rate limits configured`);
+      }
+
       console.log(`[BATCH_CALC] ${phase}: Token counting timing - Prompt: ${promptTime}ms, Comments: ${totalCommentTime}ms, Total: ${promptTime + totalCommentTime}ms`);
       console.log(`[BATCH_CALC] ${phase}: Calculation complete`);
       
@@ -461,12 +483,16 @@ serve(async (req) => {
     
     const scanATokenLimits = {
       input_token_limit: scanAModelConfig?.input_token_limit || 128000,
-      output_token_limit: scanAModelConfig.output_token_limit
+      output_token_limit: scanAModelConfig.output_token_limit,
+      tpm_limit: scanAModelConfig?.tpm_limit,
+      rpm_limit: scanAModelConfig?.rpm_limit
     };
     
     const scanBTokenLimits = {
       input_token_limit: scanBModelConfig?.input_token_limit || 128000,
-      output_token_limit: scanBModelConfig.output_token_limit
+      output_token_limit: scanBModelConfig.output_token_limit,
+      tpm_limit: scanBModelConfig?.tpm_limit,
+      rpm_limit: scanBModelConfig?.rpm_limit
     };
     
     console.log(`[TOKEN LIMITS] Scan A:`, scanATokenLimits);
@@ -621,12 +647,45 @@ serve(async (req) => {
       console.log(`[TOKENS] Scan A max_tokens: ${scanATokenLimits.output_token_limit}, Scan B max_tokens: ${scanBTokenLimits.output_token_limit}`);
       console.log(`[TOKENS] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
 
-            // Process batch with Scan A and Scan B in parallel
+            // Process batch with Scan A and Scan B, enforcing TPM limits
       const batchStartTime = Date.now();
       
+      // Calculate estimated tokens for this batch
+      const batchInput = buildBatchInput(batch, currentBatchStart + 1);
+      const estimatedInputTokens = Math.ceil(batchInput.length / 4);
+      const estimatedOutputTokens = batch.length * Math.max(scanA.tokens_per_comment || 13, scanB.tokens_per_comment || 13);
+      const totalEstimatedTokens = estimatedInputTokens + estimatedOutputTokens;
+      
+      console.log(`[BATCH ${currentBatchStart + 1}-${batchEnd}] Estimated tokens: ${totalEstimatedTokens} (${estimatedInputTokens} input + ${estimatedOutputTokens} output)`);
+      
+      // Enforce rate limits for both models before making parallel calls
+      if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
+        await enforceRateLimits(
+          scanA.provider,
+          scanA.model,
+          totalEstimatedTokens,
+          1, // 1 request per batch
+          scanATokenLimits.tpm_limit,
+          scanATokenLimits.rpm_limit,
+          `[BATCH ${currentBatchStart + 1}-${batchEnd}] [SCAN_A]`
+        );
+      }
+      
+      if (scanBTokenLimits.tpm_limit || scanBTokenLimits.rpm_limit) {
+        await enforceRateLimits(
+          scanB.provider,
+          scanB.model,
+          totalEstimatedTokens,
+          1, // 1 request per batch
+          scanBTokenLimits.tpm_limit,
+          scanBTokenLimits.rpm_limit,
+          `[BATCH ${currentBatchStart + 1}-${batchEnd}] [SCAN_B]`
+        );
+      }
+      
       const [scanAResults, scanBResults] = await Promise.all([
-        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch, currentBatchStart + 1), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
-        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch, currentBatchStart + 1), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
       ]);
       const batchEndTime = Date.now();
       console.log(`[PERFORMANCE] Batch ${currentBatchStart + 1}-${batchEnd} processed in ${batchEndTime - batchStartTime}ms (parallel AI calls)`);

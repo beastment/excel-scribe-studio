@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { AILogger } from './ai-logger.ts';
+import { enforceRateLimits, calculateOptimalBatchSize } from './tpm-tracker.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -356,51 +357,125 @@ serve(async (req) => {
       const tokensPerComment = aiCfg?.tokens_per_comment || 13;
       console.log(`${logPrefix} [ADJUDICATOR] Using tokens_per_comment: ${tokensPerComment}`);
 
-      // Log token estimates for adjudication
+      // Calculate token estimates for adjudication
+      const estimatedInputTokens = Math.ceil(input.length / 4); // Rough estimation: 4 chars per token
       const estimatedOutputTokens = needsAdjudication.length * tokensPerComment;
+      const totalEstimatedTokens = estimatedInputTokens + estimatedOutputTokens;
+
       console.log(`${logPrefix} [TOKEN ESTIMATES] Adjudication (${needsAdjudication.length} comments):`);
-      console.log(`  Input: ~${Math.ceil(input.length / 4)} tokens (estimated)`);
+      console.log(`  Input: ~${estimatedInputTokens} tokens (estimated)`);
       console.log(`  Output: ${estimatedOutputTokens} tokens (${tokensPerComment} tokens per comment)`);
+      console.log(`  Total: ${totalEstimatedTokens} tokens`);
       console.log(`  Max tokens: ${actualMaxTokens}`);
+
+      // Check rate limits and potentially split into batches
+      const tpmLimit = modelCfg?.tpm_limit;
+      const rpmLimit = modelCfg?.rpm_limit;
+      console.log(`${logPrefix} [RATE_LIMITS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
+
+      // Check if we need to split into smaller batches due to rate limits
+      let batchedComments: typeof needsAdjudication[] = [];
+      
+      if ((tpmLimit || rpmLimit) && needsAdjudication.length > 1) {
+        // Calculate optimal batch size considering both TPM and RPM limits
+        const estimatedTokensPerComment = tokensPerComment + Math.ceil(estimatedInputTokens / needsAdjudication.length);
+        const optimalBatchSize = calculateOptimalBatchSize(
+          adjudicatorConfig.provider,
+          adjudicatorConfig.model,
+          estimatedTokensPerComment,
+          needsAdjudication.length,
+          tpmLimit,
+          rpmLimit,
+          `${logPrefix} [RATE_BATCH]`
+        );
+
+        if (optimalBatchSize < needsAdjudication.length) {
+          console.log(`${logPrefix} [RATE_BATCH] Splitting ${needsAdjudication.length} comments into batches of ${optimalBatchSize} due to rate limits`);
+          
+          // Split into batches
+          for (let i = 0; i < needsAdjudication.length; i += optimalBatchSize) {
+            batchedComments.push(needsAdjudication.slice(i, i + optimalBatchSize));
+          }
+        } else {
+          batchedComments = [needsAdjudication]; // Single batch
+        }
+      } else {
+        batchedComments = [needsAdjudication]; // Single batch (no rate limits or only one comment)
+      }
 
       // Initialize AI logger
       const aiLogger = new AILogger();
       aiLogger.setFunctionStartTime(overallStartTime);
       
-      // Log the AI request
-      await aiLogger.logRequest({
-        userId: user.id,
-        scanRunId: runId.toString(),
-        functionName: 'adjudicator',
-        provider: adjudicatorConfig.provider,
-        model: adjudicatorConfig.model,
-        requestType: 'adjudication',
-        phase: 'adjudication',
-        requestPrompt: prompt,
-        requestInput: input,
-        requestTemperature: effectiveTemperature,
-        requestMaxTokens: actualMaxTokens
-      });
+      // Process batches with TPM enforcement
+      let allAdjudicatedResults: any[] = [];
       
-      // Call AI for adjudication
-      const rawResponse = await callAI(
-        adjudicatorConfig.provider,
-        adjudicatorConfig.model,
-        prompt,
-        input,
-        actualMaxTokens,
-        user.id,
-        runId.toString(),
-        aiLogger,
-        effectiveTemperature
-      );
+      for (let batchIndex = 0; batchIndex < batchedComments.length; batchIndex++) {
+        const batch = batchedComments[batchIndex];
+        const batchInput = buildAdjudicationInput(batch);
+        const batchEstimatedInputTokens = Math.ceil(batchInput.length / 4);
+        const batchEstimatedOutputTokens = batch.length * tokensPerComment;
+        const batchTotalTokens = batchEstimatedInputTokens + batchEstimatedOutputTokens;
+        
+        console.log(`${logPrefix} [BATCH ${batchIndex + 1}/${batchedComments.length}] Processing ${batch.length} comments`);
+        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Estimated tokens: ${batchTotalTokens} (${batchEstimatedInputTokens} input + ${batchEstimatedOutputTokens} output)`);
+        
+        // Enforce rate limits - wait if necessary before making the request
+        if (tpmLimit || rpmLimit) {
+          await enforceRateLimits(
+            adjudicatorConfig.provider,
+            adjudicatorConfig.model,
+            batchTotalTokens,
+            1, // 1 request per batch
+            tpmLimit,
+            rpmLimit,
+            `${logPrefix} [BATCH ${batchIndex + 1}]`
+          );
+        }
+        
+        // Log the AI request for this batch
+        await aiLogger.logRequest({
+          userId: user.id,
+          scanRunId: runId.toString(),
+          functionName: 'adjudicator',
+          provider: adjudicatorConfig.provider,
+          model: adjudicatorConfig.model,
+          requestType: 'adjudication',
+          phase: `adjudication_batch_${batchIndex + 1}`,
+          requestPrompt: prompt,
+          requestInput: batchInput,
+          requestTemperature: effectiveTemperature,
+          requestMaxTokens: actualMaxTokens
+        });
+        
+        // Call AI for this batch
+        const rawResponse = await callAI(
+          adjudicatorConfig.provider,
+          adjudicatorConfig.model,
+          prompt,
+          batchInput,
+          actualMaxTokens,
+          user.id,
+          runId.toString(),
+          aiLogger,
+          effectiveTemperature
+        );
 
-      console.log(`${logPrefix} [AI RESPONSE] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
-      console.log(`${logPrefix} [AI RESPONSE] rawResponse=${JSON.stringify(rawResponse).substring(0, 500)}...`);
+        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] AI RESPONSE ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
+        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] rawResponse=${JSON.stringify(rawResponse).substring(0, 500)}...`);
+        
+        // Parse the batch response
+        const batchResults = parseAdjudicationResponse(rawResponse, batch.length);
+        allAdjudicatedResults.push(...batchResults);
+        
+        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Parsed ${batchResults.length} results`);
+      }
 
-      // Parse the adjudication response
-      const adjudicatedResults = parseAdjudicationResponse(rawResponse, needsAdjudication.length);
-      console.log(`${logPrefix} [ADJUDICATOR] Parsed ${adjudicatedResults.length} adjudication results`);
+      console.log(`${logPrefix} [ADJUDICATOR] Completed all batches. Total results: ${allAdjudicatedResults.length}`);
+
+      // Use the combined results from all batches
+      const adjudicatedResults = allAdjudicatedResults;
+      console.log(`${logPrefix} [ADJUDICATOR] Combined ${adjudicatedResults.length} adjudication results from ${batchedComments.length} batches`);
 
       // Create a map of adjudicated results by index
       const adjudicatedMap = new Map(adjudicatedResults.map((result, i) => [i, result]));

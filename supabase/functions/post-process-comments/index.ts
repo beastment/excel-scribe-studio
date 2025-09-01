@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { AILogger } from './ai-logger.ts';
+import { enforceRateLimits, calculateOptimalBatchSize } from './tpm-tracker.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -389,11 +390,18 @@ serve(async (req) => {
     const tokensPerComment = aiCfg?.tokens_per_comment || 13;
     console.log(`${logPrefix} [POSTPROCESS] Using tokens_per_comment: ${tokensPerComment} (for reference, post-processing uses I/O ratios)`);
 
+    // Get rate limits
+    const tpmLimit = modelCfg?.tpm_limit;
+    const rpmLimit = modelCfg?.rpm_limit;
+    console.log(`${logPrefix} [POSTPROCESS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${scanConfig.provider}/${scanConfig.model}`);
+
     // Use the actual max_tokens from model_configurations
     const effectiveConfig = {
       ...scanConfig,
       max_tokens: actualMaxTokens,
-      temperature: effectiveTemperature
+      temperature: effectiveTemperature,
+      tpm_limit: tpmLimit,
+      rpm_limit: rpmLimit
     };
 
     console.log(`${logPrefix} [POSTPROCESS] Effective config: max_tokens=${effectiveConfig.max_tokens}, temperature=${effectiveConfig.temperature}`);
@@ -430,10 +438,31 @@ serve(async (req) => {
     let originalCount = 0
 
     try {
-      // Use batch processing for efficiency
-      const chunks = chunkArray(flaggedComments, POST_PROCESS_BATCH_SIZE);
+      // Calculate optimal batch size considering rate limits
+      let optimalBatchSize = POST_PROCESS_BATCH_SIZE;
       
-      console.log(`${logPrefix} [POSTPROCESS] Processing ${flaggedComments.length} comments in ${chunks.length} chunks of size ${POST_PROCESS_BATCH_SIZE}`);
+      if (tpmLimit || rpmLimit) {
+        // Estimate tokens per comment for post-processing (typically higher due to full text processing)
+        const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
+        const estimatedTokensPerComment = Math.ceil(avgCommentLength / 4) * 3; // Input + output estimate (output is typically 1-2x input for post-processing)
+        
+        optimalBatchSize = calculateOptimalBatchSize(
+          effectiveConfig.provider,
+          effectiveConfig.model,
+          estimatedTokensPerComment,
+          POST_PROCESS_BATCH_SIZE,
+          tpmLimit,
+          rpmLimit,
+          `${logPrefix} [RATE_BATCH]`
+        );
+        
+        console.log(`${logPrefix} [RATE_BATCH] Adjusted batch size from ${POST_PROCESS_BATCH_SIZE} to ${optimalBatchSize} due to rate limits`);
+      }
+      
+      // Use batch processing for efficiency
+      const chunks = chunkArray(flaggedComments, optimalBatchSize);
+      
+      console.log(`${logPrefix} [POSTPROCESS] Processing ${flaggedComments.length} comments in ${chunks.length} chunks of size ${optimalBatchSize}`);
       
       for (const chunk of chunks) {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
@@ -456,6 +485,38 @@ serve(async (req) => {
                  // Initialize AI logger
          const aiLogger = new AILogger();
          aiLogger.setFunctionStartTime(overallStartTime);
+        
+        // Estimate tokens for this chunk
+        const chunkEstimatedInputTokens = Math.ceil(sentinelInput.length / 4);
+        const chunkEstimatedOutputTokens = Math.ceil(sentinelInput.length / 4) * 2; // Post-processing typically generates similar or more text
+        const chunkTotalTokens = chunkEstimatedInputTokens + chunkEstimatedOutputTokens;
+        
+        console.log(`${logPrefix} [CHUNK] Estimated tokens: ${chunkTotalTokens} (${chunkEstimatedInputTokens} input + ${chunkEstimatedOutputTokens} output)`);
+        
+        // Enforce rate limits before parallel AI calls
+        if (tpmLimit || rpmLimit) {
+          // For redaction call
+          await enforceRateLimits(
+            effectiveConfig.provider,
+            effectiveConfig.model,
+            chunkTotalTokens,
+            1, // 1 request for redaction
+            tpmLimit,
+            rpmLimit,
+            `${logPrefix} [CHUNK] [REDACTION]`
+          );
+          
+          // For rephrasing call (same tokens, different prompt)
+          await enforceRateLimits(
+            effectiveConfig.provider,
+            effectiveConfig.model,
+            chunkTotalTokens,
+            1, // 1 request for rephrasing
+            tpmLimit,
+            rpmLimit,
+            `${logPrefix} [CHUNK] [REPHRASE]`
+          );
+        }
         
         const [rawRedacted, rawRephrased] = await Promise.all([
           callAI(
