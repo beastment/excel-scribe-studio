@@ -675,13 +675,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       return 'Scan Needed';
     }
 
-    // If the comment was never processed by AI (no aiReasoning), keep it as "AI: No Changes"
-    if (!comment.aiReasoning) {
-      return 'AI: No Changes';
-    }
-
     // Check if comment has been manually edited and differs from both original AND AI suggestions
-    if (comment.mode === 'edit' || comment.text !== comment.originalText && comment.text !== comment.redactedText && comment.text !== comment.rephrasedText) {
+    if (comment.mode === 'edit' || (comment.text !== comment.originalText && comment.text !== comment.redactedText && comment.text !== comment.rephrasedText)) {
       return 'Edited';
     }
 
@@ -690,12 +685,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       return 'AI: Flagged';
     }
 
-    // Comments that are only concerning (but not identifiable) should show as "Revert" since they don't need processing
-    if (comment.concerning && comment.identifiable) return 'AI: Flagged';
-    if (comment.concerning && !comment.identifiable) return 'Revert';
-    if (comment.identifiable && !comment.concerning) return 'AI: Flagged';
-    if (!comment.redactedText && !comment.rephrasedText && !comment.aiReasoning) return 'Scan Needed';
-    return 'AI: No Changes';
+    // Comments that are identifiable or concerning should show as "AI: Flagged"
+    if (comment.identifiable || comment.concerning) {
+      return 'AI: Flagged';
+    }
+
+    // If the comment was processed by AI but no changes were needed
+    if (comment.aiReasoning) {
+      return 'AI: No Changes';
+    }
+
+    // Default to scan needed if no AI processing has occurred
+    return 'Scan Needed';
   };
 
   // Get the initial mode for comments with "AI: No Changes" status
@@ -1240,19 +1241,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                            showButtons
                          });
                          
-                         if (status === 'Scan Needed') return null;
-                         
-                         if (status === 'AI: No Changes') {
-                           return <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
-                             Revert
-                           </Button>;
-                         }
-                         
-                         if (status === 'Revert') {
-                           return <Button variant="default" size="sm" disabled className="h-6 text-xs px-2">
-                             Already Reverted
-                           </Button>;
-                         }
+                          if (status === 'Scan Needed') return null;
+                          
+                          if (status === 'AI: No Changes') {
+                            return <Button variant="default" size="sm" onClick={() => toggleCommentMode(comment.id, 'revert')} className="h-6 text-xs px-2">
+                              Revert
+                            </Button>;
+                          }
                          
                          return <>
                            {/* Show Redact/Rephrase buttons for comments that are identifiable or have processed text available */}
