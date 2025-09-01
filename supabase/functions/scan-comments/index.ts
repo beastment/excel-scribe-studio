@@ -412,11 +412,14 @@ serve(async (req) => {
         console.log(`[BATCH_CALC] ${phase}: Output tokens within limit: ${estimatedOutputTokens} <= ${maxOutputTokens}`);
       }
       
-      // Add additional safety margin to prevent truncation
-      // Use 80% of the theoretical maximum to ensure we don't hit token limits
-      const safetyBatchSize = Math.floor(batchSize * 0.8);
+      // Add significant safety margin to prevent truncation
+      // AI responses often include headers, explanations, and formatting that add tokens
+      // Use 60% of the theoretical maximum for Claude Haiku to prevent truncation
+      const isClaudeHaiku = model.includes('claude-3-haiku');
+      const safetyMargin = isClaudeHaiku ? 0.6 : 0.8; // More conservative for Claude Haiku
+      const safetyBatchSize = Math.floor(batchSize * safetyMargin);
       if (safetyBatchSize < batchSize) {
-        console.log(`[BATCH_CALC] ${phase}: Applying additional safety margin: ${batchSize} → ${safetyBatchSize} (80% of max)`);
+        console.log(`[BATCH_CALC] ${phase}: Applying safety margin for ${model}: ${batchSize} → ${safetyBatchSize} (${Math.round(safetyMargin * 100)}% of max)`);
         batchSize = safetyBatchSize;
       }
       
