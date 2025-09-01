@@ -66,9 +66,6 @@ export const AIConfigurationManagement = () => {
     temperature?: number;
   }>>({});
   const [batchSizingConfig, setBatchSizingConfig] = useState<{
-    scan_a_io_ratio?: number;
-    scan_b_io_ratio?: number;
-    adjudicator_io_ratio?: number;
     redaction_io_ratio?: number;
     rephrase_io_ratio?: number;
     safety_margin_percent?: number;
@@ -614,54 +611,18 @@ export const AIConfigurationManagement = () => {
             <h4 className="font-medium mb-2">Batch Sizing Configuration</h4>
             <p className="text-sm text-muted-foreground mb-4">
               These settings control how the system calculates optimal batch sizes for AI processing.
-              I/O ratios estimate the relationship between input and output tokens for each phase.
+              I/O ratios estimate the relationship between input and output tokens for post-processing phases.
+              Scan and adjudication phases use a simple 4 tokens per comment estimation.
               Safety margin provides a buffer to prevent hitting token limits.
             </p>
             
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="scan-a-io-ratio">Scan A I/O Ratio</Label>
-                <Input
-                  id="scan-a-io-ratio"
-                  type="number"
-                  step="0.01"
-                  value={batchSizingConfig.scan_a_io_ratio || ''}
-                  onChange={(e) => updateBatchSizingConfig({ scan_a_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
-                  placeholder="1.00"
-                  min="0.1"
-                  max="10.0"
-                />
-                <p className="text-xs text-muted-foreground">Expected ratio for Scan A phase</p>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="scan-b-io-ratio">Scan B I/O Ratio</Label>
-                <Input
-                  id="scan-b-io-ratio"
-                  type="number"
-                  step="0.01"
-                  value={batchSizingConfig.scan_b_io_ratio || ''}
-                  onChange={(e) => updateBatchSizingConfig({ scan_b_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
-                  placeholder="0.90"
-                  min="0.1"
-                  max="10.0"
-                />
-                <p className="text-xs text-muted-foreground">Expected ratio for Scan B phase</p>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="adjudicator-io-ratio">Adjudicator I/O Ratio</Label>
-                <Input
-                  id="adjudicator-io-ratio"
-                  type="number"
-                  step="0.01"
-                  value={batchSizingConfig.adjudicator_io_ratio || ''}
-                  onChange={(e) => updateBatchSizingConfig({ adjudicator_io_ratio: e.target.value ? parseFloat(e.target.value) : undefined })}
-                  placeholder="6.20"
-                  min="0.1"
-                  max="10.0"
-                />
-                <p className="text-xs text-muted-foreground">Expected ratio for Adjudicator phase</p>
+                <Label htmlFor="scan-token-estimation">Scan & Adjudication Token Estimation</Label>
+                <div className="text-sm text-muted-foreground p-2 bg-muted rounded">
+                  4 tokens per comment (fixed)
+                </div>
+                <p className="text-xs text-muted-foreground">Simple estimation for scan and adjudication phases</p>
               </div>
               
               <div className="space-y-2">

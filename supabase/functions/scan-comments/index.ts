@@ -271,19 +271,17 @@ serve(async (req) => {
       console.warn('[BATCH] No batch sizing configuration found, using defaults');
     }
     
-    // Get I/O ratios and safety margin from configuration
+    // Get I/O ratios for post-processing and safety margin from configuration
     const ioRatios = {
-      scan_a_io_ratio: batchSizingData?.scan_a_io_ratio || 1.0,
-      scan_b_io_ratio: batchSizingData?.scan_b_io_ratio || 0.9,
-      adjudicator_io_ratio: batchSizingData?.adjudicator_io_ratio || 6.2,
       redaction_io_ratio: batchSizingData?.redaction_io_ratio || 1.7,
       rephrase_io_ratio: batchSizingData?.rephrase_io_ratio || 2.3
     };
     
     const safetyMarginPercent = batchSizingData?.safety_margin_percent || 15;
     
-    console.log(`[BATCH] I/O Ratios:`, ioRatios);
+    console.log(`[BATCH] Post-processing I/O Ratios:`, ioRatios);
     console.log(`[BATCH] Safety Margin: ${safetyMarginPercent}%`);
+    console.log(`[BATCH] Scan and Adjudication: Using 4 tokens per comment estimation`);
     
     // Calculate dynamic batch sizes based on I/O ratios and token limits
     // Use precise token counting for more accurate batch sizing
@@ -313,7 +311,6 @@ serve(async (req) => {
       phase: 'scan_a' | 'scan_b',
       comments: any[],
       prompt: string,
-      ioRatio: number,
       tokenLimits: { input_token_limit: number; output_token_limit: number },
       safetyMarginPercent: number = 15,
       provider: string,
@@ -323,7 +320,6 @@ serve(async (req) => {
       console.log(`[BATCH_CALC] ${phase}: Input parameters:`, {
         commentsCount: comments.length,
         promptLength: prompt.length,
-        ioRatio,
         inputTokenLimit: tokenLimits.input_token_limit,
         outputTokenLimit: tokenLimits.output_token_limit,
         safetyMarginPercent
@@ -340,9 +336,13 @@ serve(async (req) => {
       const maxOutputTokens = Math.floor(tokenLimits.output_token_limit * safetyMultiplier);
       console.log(`[BATCH_CALC] ${phase}: Max output tokens: ${tokenLimits.output_token_limit} × ${safetyMultiplier} = ${maxOutputTokens}`);
       
+      // For scan phases, use simple 4 tokens per comment estimation for output
+      const tokensPerComment = 4;
+      console.log(`[BATCH_CALC] ${phase}: Using ${tokensPerComment} tokens per comment estimation for output`);
+      
       // Calculate the maximum input tokens we can use based on output limits
-      const maxInputTokensByOutput = Math.floor(maxOutputTokens * ioRatio);
-      console.log(`[BATCH_CALC] ${phase}: Max input tokens by output: ${maxOutputTokens} * ${ioRatio} = ${maxInputTokensByOutput}`);
+      const maxInputTokensByOutput = Math.floor(maxOutputTokens / tokensPerComment);
+      console.log(`[BATCH_CALC] ${phase}: Max input tokens by output: ${maxOutputTokens} / ${tokensPerComment} = ${maxInputTokensByOutput}`);
       
       // Use the more restrictive limit
       const effectiveMaxInputTokens = Math.min(maxInputTokens, maxInputTokensByOutput);
@@ -458,7 +458,6 @@ serve(async (req) => {
       'scan_a',
       inputComments,
       scanA.analysis_prompt,
-      ioRatios.scan_a_io_ratio,
       scanATokenLimits,
       safetyMarginPercent,
       scanA.provider,
@@ -469,7 +468,6 @@ serve(async (req) => {
       'scan_b',
       inputComments,
       scanB.analysis_prompt,
-      ioRatios.scan_b_io_ratio,
       scanBTokenLimits,
       safetyMarginPercent,
       scanB.provider,
@@ -500,8 +498,8 @@ serve(async (req) => {
     }
     
     console.log(`[BATCH SIZING] Precise calculation results:`);
-    console.log(`  Scan A optimal: ${scanABatchSize} (I/O ratio: ${ioRatios.scan_a_io_ratio})`);
-    console.log(`  Scan B optimal: ${scanBBatchSize} (I/O ratio: ${ioRatios.scan_b_io_ratio})`);
+    console.log(`  Scan A optimal: ${scanABatchSize} (4 tokens per comment)`);
+    console.log(`  Scan B optimal: ${scanBBatchSize} (4 tokens per comment)`);
     console.log(`  Final batch size: ${finalBatchSize}`);
     console.log(`[BATCH SIZING] Dataset size: ${inputComments.length} comments`);
     console.log(`[BATCH SIZING] Estimated batches: ${Math.ceil(inputComments.length / finalBatchSize)}`);
@@ -509,20 +507,20 @@ serve(async (req) => {
     console.log(`[BATCH SIZING] Token limits - Scan A: ${scanATokenLimits.output_token_limit}, Scan B: ${scanBTokenLimits.output_token_limit}`);
     console.log(`[BATCH SIZING] Precise batch sizing enabled for optimal performance`);
     
-    // Log I/O ratios for reference
-    console.log(`[BATCH SIZING] I/O ratios - Scan A: ${ioRatios.scan_a_io_ratio}, Scan B: ${ioRatios.scan_b_io_ratio}`);
+    // Log token estimation method for reference
+    console.log(`[BATCH SIZING] Token estimation - Scan A & B: 4 tokens per comment`);
     
     // Log token estimates for the first batch
     if (inputComments.length > 0) {
       const firstBatch = inputComments.slice(0, finalBatchSize);
       const scanAInputTokens = await estimateBatchInputTokens(firstBatch, scanA.analysis_prompt, scanA.provider, scanA.model);
       const scanBInputTokens = await estimateBatchInputTokens(firstBatch, scanB.analysis_prompt, scanB.provider, scanB.model);
-      const scanAOutputTokens = Math.ceil(scanAInputTokens * ioRatios.scan_a_io_ratio);
-      const scanBOutputTokens = Math.ceil(scanBInputTokens * ioRatios.scan_b_io_ratio);
+      const scanAOutputTokens = finalBatchSize * 4; // 4 tokens per comment
+      const scanBOutputTokens = finalBatchSize * 4; // 4 tokens per comment
       
       console.log(`[TOKEN ESTIMATES] First batch (${finalBatchSize} comments):`);
-      console.log(`  Scan A: ${scanAInputTokens} input → ${scanAOutputTokens} output`);
-      console.log(`  Scan B: ${scanBInputTokens} input → ${scanBOutputTokens} output`);
+      console.log(`  Scan A: ${scanAInputTokens} input → ${scanAOutputTokens} output (4 tokens per comment)`);
+      console.log(`  Scan B: ${scanBInputTokens} input → ${scanBOutputTokens} output (4 tokens per comment)`);
     }
     
     // Process comments in smaller chunks to avoid gateway timeout

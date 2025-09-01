@@ -62,9 +62,6 @@ export type Database = {
       batch_sizing_config: {
         Row: {
           id: string
-          scan_a_io_ratio: number | null
-          scan_b_io_ratio: number | null
-          adjudicator_io_ratio: number | null
           redaction_io_ratio: number | null
           rephrase_io_ratio: number | null
           safety_margin_percent: number | null
@@ -73,9 +70,6 @@ export type Database = {
         }
         Insert: {
           id?: string
-          scan_a_io_ratio?: number | null
-          scan_b_io_ratio?: number | null
-          adjudicator_io_ratio?: number | null
           redaction_io_ratio?: number | null
           rephrase_io_ratio?: number | null
           safety_margin_percent?: number | null
@@ -84,9 +78,6 @@ export type Database = {
         }
         Update: {
           id?: string
-          scan_a_io_ratio?: number | null
-          scan_b_io_ratio?: number | null
-          adjudicator_io_ratio?: number | null
           redaction_io_ratio?: number | null
           rephrase_io_ratio?: number | null
           safety_margin_percent?: number | null
