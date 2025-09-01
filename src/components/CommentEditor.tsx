@@ -1198,8 +1198,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                              </Button> : getCommentStatus(comment) === 'Revert' ? <Button variant="default" size="sm" disabled className="h-6 text-xs px-2">
                                Already Reverted
                              </Button> : <>
-                               {/* Show Redact/Rephrase buttons for comments that are identifiable (with or without concerning) */}
-                               {comment.identifiable && <>
+                               {/* Show Redact/Rephrase buttons for comments that are identifiable or have processed text available */}
+                               {(comment.identifiable || comment.redactedText || comment.rephrasedText) && <>
                                  <Button variant={comment.mode === 'redact' ? 'default' : 'ghost'} size="sm" onClick={() => toggleCommentMode(comment.id, 'redact')} className="h-6 text-xs px-2">
                                    Redact
                                  </Button>
