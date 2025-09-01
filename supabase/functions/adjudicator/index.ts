@@ -138,29 +138,14 @@ function buildAdjudicationInput(comments: AdjudicationRequest['comments']): stri
     // Use the same ID system as scan-comments: originalRow if available, otherwise scannedIndex, fallback to i+1
     const itemId = comment.originalRow || comment.scannedIndex || (i + 1);
     
-    const concerningStatus = comment.agreements.concerning === null ? 'No agreement' : 
-      comment.agreements.concerning ? 'Both agree true' : 'Both agree false';
-    const identifiableStatus = comment.agreements.identifiable === null ? 'No agreement' : 
-      comment.agreements.identifiable ? 'Both agree true' : 
-      comment.agreements.identifiable === false ? 'Both agree false' : 'Disagree';
-    
     return `<<<ITEM ${itemId}>>>
-Original Text: ${comment.originalText}
-
-Scan A (${comment.scanAResult.model}):
-- Concerning: ${comment.scanAResult.concerning}
-- Identifiable: ${comment.scanAResult.identifiable}
-- Reasoning: ${comment.scanAResult.reasoning}
-
-Scan B (${comment.scanBResult.model}):
-- Concerning: ${comment.scanBResult.concerning}
-- Identifiable: ${comment.scanBResult.identifiable}
-- Reasoning: ${comment.scanBResult.reasoning}
-
-Agreements:
-- Concerning: ${concerningStatus}
-- Identifiable: ${identifiableStatus}
-
+Text: ${comment.originalText}
+AI1:
+Concerning: ${comment.scanAResult.concerning ? 'Y' : 'N'}
+Identifiable: ${comment.scanAResult.identifiable ? 'Y' : 'N'}
+AI2:
+Concerning: ${comment.scanBResult.concerning ? 'Y' : 'N'}
+Identifiable: ${comment.scanBResult.identifiable ? 'Y' : 'N'}
 <<<END ${itemId}>>>`;
   }).join('\n\n');
 
