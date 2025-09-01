@@ -413,22 +413,11 @@ serve(async (req) => {
         console.log(`[BATCH_CALC] ${phase}: Output tokens within limit: ${estimatedOutputTokens} <= ${maxOutputTokens}`);
       }
       
-      // Claude Haiku has a practical output limit around 1400 tokens despite 4096 max_tokens
-      // Cap batches aggressively to prevent truncation
-      const isClaudeHaiku = model.includes('claude-3-haiku');
-      if (isClaudeHaiku) {
-        const haikuMaxBatch = 300; // Conservative limit for Haiku to stay under ~1200 output tokens
-        if (batchSize > haikuMaxBatch) {
-          console.log(`[BATCH_CALC] ${phase}: Limiting Claude Haiku batch: ${batchSize} → ${haikuMaxBatch} (Haiku output limit)`);
-          batchSize = haikuMaxBatch;
-        }
-      } else {
-        // Add safety margin for other models
-        const safetyBatchSize = Math.floor(batchSize * 0.8);
-        if (safetyBatchSize < batchSize) {
-          console.log(`[BATCH_CALC] ${phase}: Applying safety margin: ${batchSize} → ${safetyBatchSize} (80% of max)`);
-          batchSize = safetyBatchSize;
-        }
+      // Apply safety margin to all models to prevent hitting token limits
+      const safetyBatchSize = Math.floor(batchSize * 0.8);
+      if (safetyBatchSize < batchSize) {
+        console.log(`[BATCH_CALC] ${phase}: Applying safety margin: ${batchSize} → ${safetyBatchSize} (80% of max)`);
+        batchSize = safetyBatchSize;
       }
       
       console.log(`[BATCH_CALC] ${phase}: Token counting timing - Prompt: ${promptTime}ms, Comments: ${totalCommentTime}ms, Total: ${promptTime + totalCommentTime}ms`);
