@@ -621,6 +621,7 @@ serve(async (req) => {
 
             // Process batch with Scan A and Scan B in parallel
       const batchStartTime = Date.now();
+      
       const [scanAResults, scanBResults] = await Promise.all([
         callAI(scanA.provider, scanA.model, scanA.analysis_prompt, buildBatchInput(batch, currentBatchStart + 1), 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
         callAI(scanB.provider, scanB.model, scanB.analysis_prompt, buildBatchInput(batch, currentBatchStart + 1), 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
