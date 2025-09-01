@@ -340,22 +340,22 @@ serve(async (req) => {
       const tokensPerComment = 4;
       console.log(`[BATCH_CALC] ${phase}: Using ${tokensPerComment} tokens per comment estimation for output`);
       
-      // Calculate the maximum input tokens we can use based on output limits
-      const maxInputTokensByOutput = Math.floor(maxOutputTokens / tokensPerComment);
-      console.log(`[BATCH_CALC] ${phase}: Max input tokens by output: ${maxOutputTokens} / ${tokensPerComment} = ${maxInputTokensByOutput}`);
+      // Calculate the maximum number of comments we can process based on output limits
+      const maxCommentsByOutput = Math.floor(maxOutputTokens / tokensPerComment);
+      console.log(`[BATCH_CALC] ${phase}: Max comments by output: ${maxOutputTokens} / ${tokensPerComment} = ${maxCommentsByOutput}`);
       
-      // Use the more restrictive limit
-      const effectiveMaxInputTokens = Math.min(maxInputTokens, maxInputTokensByOutput);
-      console.log(`[BATCH_CALC] ${phase}: Effective max input tokens: min(${maxInputTokens}, ${maxInputTokensByOutput}) = ${effectiveMaxInputTokens}`);
+      // We'll use the input token limit to determine how many comments we can actually fit
+      // The output limit gives us the theoretical maximum, but input tokens are the real constraint
+      console.log(`[BATCH_CALC] ${phase}: Using input token limit as primary constraint (output allows up to ${maxCommentsByOutput} comments)`);
       
       // Estimate tokens for prompt
       const promptStartTime = Date.now();
       const promptTokens = await getPreciseTokens(prompt, provider, model);
       const promptTime = Date.now() - promptStartTime;
       console.log(`[BATCH_CALC] ${phase}: Prompt tokens: ${prompt.length} chars, precise count: ${promptTokens} (${promptTime}ms)`);
-      //
-      const availableTokensForComments = effectiveMaxInputTokens - promptTokens;
-      console.log(`[BATCH_CALC] ${phase}: Available tokens for comments: ${effectiveMaxInputTokens} - ${promptTokens} = ${availableTokensForComments}`);
+      
+      const availableTokensForComments = maxInputTokens - promptTokens;
+      console.log(`[BATCH_CALC] ${phase}: Available tokens for comments: ${maxInputTokens} - ${promptTokens} = ${availableTokensForComments}`);
       
       if (availableTokensForComments <= 0) {
         console.log(`[BATCH_CALC] ${phase}: No tokens available for comments, returning batch size 1`);
@@ -392,6 +392,19 @@ serve(async (req) => {
       // commentTokenDetails.forEach(detail => console.log(`[BATCH_CALC] ${phase}:   ${detail}`));
       console.log(`[BATCH_CALC] ${phase}: Total comment tokens: ${totalTokens}`);
       console.log(`[BATCH_CALC] ${phase}: Calculated batch size: ${batchSize}`);
+      
+      // Check if we would exceed output token limits
+      const estimatedOutputTokens = batchSize * tokensPerComment;
+      if (estimatedOutputTokens > maxOutputTokens) {
+        console.log(`[BATCH_CALC] ${phase}: Output token limit exceeded: ${estimatedOutputTokens} > ${maxOutputTokens}`);
+        // Reduce batch size to fit within output limits
+        const maxCommentsByOutput = Math.floor(maxOutputTokens / tokensPerComment);
+        batchSize = Math.min(batchSize, maxCommentsByOutput);
+        console.log(`[BATCH_CALC] ${phase}: Reduced batch size to ${batchSize} to fit output limits`);
+      } else {
+        console.log(`[BATCH_CALC] ${phase}: Output tokens within limit: ${estimatedOutputTokens} <= ${maxOutputTokens}`);
+      }
+      
       console.log(`[BATCH_CALC] ${phase}: Token counting timing - Prompt: ${promptTime}ms, Comments: ${totalCommentTime}ms, Total: ${promptTime + totalCommentTime}ms`);
       console.log(`[BATCH_CALC] ${phase}: Calculation complete`);
       
