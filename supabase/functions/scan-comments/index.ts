@@ -788,6 +788,10 @@ serve(async (req) => {
     const expectedTotal = inputComments.length;
     const actualTotal = allScannedComments.length;
     
+    // Determine if there are more batches to process (must be defined before first use)
+    const lastProcessedIndex = batchStart + (batchesProcessed * finalBatchSize);
+    const hasMoreBatches = lastProcessedIndex < inputComments.length;
+    
     if (!hasMoreBatches && actualTotal < expectedTotal) {
       const missingCount = expectedTotal - actualTotal;
       console.log(`[TAIL_RETRY] Missing ${missingCount} comments (${actualTotal}/${expectedTotal}), attempting tail retry...`);
@@ -824,10 +828,6 @@ serve(async (req) => {
         }
       }
     }
-    
-    // Determine if there are more batches to process
-    const lastProcessedIndex = batchStart + (batchesProcessed * finalBatchSize);
-    const hasMoreBatches = lastProcessedIndex < inputComments.length;
     
     const response = { 
       comments: allScannedComments,
