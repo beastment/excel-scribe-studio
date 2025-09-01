@@ -23,6 +23,7 @@ interface AIConfiguration {
   input_token_limit?: number;
   output_token_limit?: number;
   temperature?: number;
+  tokens_per_comment?: number;
 }
 
 const PROVIDERS = [
@@ -138,7 +139,8 @@ export const AIConfigurationManagement = () => {
           tpm_limit: config.tpm_limit || undefined,
           input_token_limit: undefined,
           output_token_limit: undefined,
-          temperature: undefined
+          temperature: undefined,
+          tokens_per_comment: config.tokens_per_comment || 13
         };
       });
 
@@ -238,6 +240,7 @@ export const AIConfigurationManagement = () => {
           analysis_prompt: config.analysis_prompt,
           redact_prompt: config.redact_prompt,
           rephrase_prompt: config.rephrase_prompt,
+          tokens_per_comment: config.tokens_per_comment,
           updated_at: new Date().toISOString(),
         });
 
@@ -531,6 +534,20 @@ export const AIConfigurationManagement = () => {
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor={`tokens-per-comment-${scannerConfig.type}`}>Tokens per Comment</Label>
+          <Input
+            id={`tokens-per-comment-${scannerConfig.type}`}
+            type="number"
+            value={config.tokens_per_comment || ''}
+            onChange={(e) => updateConfig(scannerConfig.type, { tokens_per_comment: e.target.value ? parseInt(e.target.value) : undefined })}
+            placeholder="13"
+            min="1"
+            max="100"
+          />
+          <p className="text-xs text-muted-foreground">Estimated tokens per comment for output token calculations in batch sizing (default: 13)</p>
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor={`analysis_prompt-${scannerConfig.type}`}>Analysis Prompt</Label>
           <Textarea
             id={`analysis_prompt-${scannerConfig.type}`}
@@ -612,7 +629,7 @@ export const AIConfigurationManagement = () => {
             <p className="text-sm text-muted-foreground mb-4">
               These settings control how the system calculates optimal batch sizes for AI processing.
               I/O ratios estimate the relationship between input and output tokens for post-processing phases.
-              Scan and adjudication phases use a simple 4 tokens per comment estimation.
+              Scan and adjudication phases use configurable tokens per comment estimation (set in individual scanner configurations).
               Safety margin provides a buffer to prevent hitting token limits.
             </p>
             
@@ -620,9 +637,9 @@ export const AIConfigurationManagement = () => {
               <div className="space-y-2">
                 <Label htmlFor="scan-token-estimation">Scan & Adjudication Token Estimation</Label>
                 <div className="text-sm text-muted-foreground p-2 bg-muted rounded">
-                  4 tokens per comment (fixed)
+                  Configurable per scanner (default: 13)
                 </div>
-                <p className="text-xs text-muted-foreground">Simple estimation for scan and adjudication phases</p>
+                <p className="text-xs text-muted-foreground">Set in individual scanner configurations below</p>
               </div>
               
               <div className="space-y-2">

@@ -368,7 +368,7 @@ serve(async (req) => {
 
     const { data: aiCfg, error: aiCfgError } = await supabase
       .from('ai_configurations')
-      .select('temperature')
+      .select('temperature, tokens_per_comment')
       .eq('provider', scanConfig.provider)
       .eq('model', scanConfig.model)
       .limit(1)
@@ -385,6 +385,9 @@ serve(async (req) => {
     const effectiveTemperature = (aiCfg && aiCfg.temperature !== null && aiCfg.temperature !== undefined)
       ? aiCfg.temperature
       : (modelCfg?.temperature ?? scanConfig.temperature ?? 0);
+
+    const tokensPerComment = aiCfg?.tokens_per_comment || 13;
+    console.log(`${logPrefix} [POSTPROCESS] Using tokens_per_comment: ${tokensPerComment} (for reference, post-processing uses I/O ratios)`);
 
     // Use the actual max_tokens from model_configurations
     const effectiveConfig = {

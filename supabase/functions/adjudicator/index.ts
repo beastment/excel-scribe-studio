@@ -350,7 +350,7 @@ serve(async (req) => {
 
       const { data: aiCfg, error: aiCfgError } = await supabase
         .from('ai_configurations')
-        .select('temperature')
+        .select('temperature, tokens_per_comment')
         .eq('scanner_type', 'adjudicator')
         .eq('provider', adjudicatorConfig.provider)
         .eq('model', adjudicatorConfig.model)
@@ -367,6 +367,16 @@ serve(async (req) => {
       const effectiveTemperature = (aiCfg && aiCfg.temperature !== null && aiCfg.temperature !== undefined)
         ? aiCfg.temperature
         : (modelCfg?.temperature ?? 0);
+
+      const tokensPerComment = aiCfg?.tokens_per_comment || 13;
+      console.log(`${logPrefix} [ADJUDICATOR] Using tokens_per_comment: ${tokensPerComment}`);
+
+      // Log token estimates for adjudication
+      const estimatedOutputTokens = needsAdjudication.length * tokensPerComment;
+      console.log(`${logPrefix} [TOKEN ESTIMATES] Adjudication (${needsAdjudication.length} comments):`);
+      console.log(`  Input: ~${Math.ceil(input.length / 4)} tokens (estimated)`);
+      console.log(`  Output: ${estimatedOutputTokens} tokens (${tokensPerComment} tokens per comment)`);
+      console.log(`  Max tokens: ${actualMaxTokens}`);
 
       // Initialize AI logger
       const aiLogger = new AILogger();

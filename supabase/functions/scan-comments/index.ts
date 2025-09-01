@@ -176,6 +176,7 @@ serve(async (req) => {
     }
 
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
+    console.log(`[CONFIG] Scan A tokens_per_comment: ${scanA.tokens_per_comment || 13}, Scan B tokens_per_comment: ${scanB.tokens_per_comment || 13}`);
 
     // Fetch model configurations for token limits
     const { data: modelConfigs, error: modelError } = await supabase
@@ -281,7 +282,7 @@ serve(async (req) => {
     
     console.log(`[BATCH] Post-processing I/O Ratios:`, ioRatios);
     console.log(`[BATCH] Safety Margin: ${safetyMarginPercent}%`);
-    console.log(`[BATCH] Scan and Adjudication: Using 4 tokens per comment estimation`);
+    console.log(`[BATCH] Scan and Adjudication: Using configurable tokens per comment estimation`);
     
     // Calculate dynamic batch sizes based on I/O ratios and token limits
     // Use precise token counting for more accurate batch sizing
@@ -314,7 +315,8 @@ serve(async (req) => {
       tokenLimits: { input_token_limit: number; output_token_limit: number },
       safetyMarginPercent: number = 15,
       provider: string,
-      model: string
+      model: string,
+      tokensPerComment: number = 13
     ) => {
       console.log(`[BATCH_CALC] ${phase}: Starting batch size calculation`);
       console.log(`[BATCH_CALC] ${phase}: Input parameters:`, {
@@ -336,8 +338,7 @@ serve(async (req) => {
       const maxOutputTokens = Math.floor(tokenLimits.output_token_limit * safetyMultiplier);
       console.log(`[BATCH_CALC] ${phase}: Max output tokens: ${tokenLimits.output_token_limit} × ${safetyMultiplier} = ${maxOutputTokens}`);
       
-      // For scan phases, use simple 4 tokens per comment estimation for output
-      const tokensPerComment = 4;
+      // For scan phases, use configurable tokens per comment estimation for output
       console.log(`[BATCH_CALC] ${phase}: Using ${tokensPerComment} tokens per comment estimation for output`);
       
       // Calculate the maximum number of comments we can process based on output limits
@@ -499,7 +500,8 @@ serve(async (req) => {
       scanATokenLimits,
       safetyMarginPercent,
       scanA.provider,
-      scanA.model
+      scanA.model,
+      scanA.tokens_per_comment || 13
     );
     
     scanBBatchSize = await calculateOptimalBatchSize(
@@ -509,7 +511,8 @@ serve(async (req) => {
       scanBTokenLimits,
       safetyMarginPercent,
       scanB.provider,
-      scanB.model
+      scanB.model,
+      scanB.tokens_per_comment || 13
     );
     
     const batchSizingTime = Date.now() - batchSizingStartTime;
@@ -536,8 +539,8 @@ serve(async (req) => {
     }
     
     console.log(`[BATCH SIZING] Precise calculation results:`);
-    console.log(`  Scan A optimal: ${scanABatchSize} (4 tokens per comment)`);
-    console.log(`  Scan B optimal: ${scanBBatchSize} (4 tokens per comment)`);
+    console.log(`  Scan A optimal: ${scanABatchSize} (${scanA.tokens_per_comment || 13} tokens per comment)`);
+    console.log(`  Scan B optimal: ${scanBBatchSize} (${scanB.tokens_per_comment || 13} tokens per comment)`);
     console.log(`  Final batch size: ${finalBatchSize}`);
     console.log(`[BATCH SIZING] Dataset size: ${inputComments.length} comments`);
     console.log(`[BATCH SIZING] Estimated batches: ${Math.ceil(inputComments.length / finalBatchSize)}`);
@@ -546,19 +549,19 @@ serve(async (req) => {
     console.log(`[BATCH SIZING] Precise batch sizing enabled for optimal performance`);
     
     // Log token estimation method for reference
-    console.log(`[BATCH SIZING] Token estimation - Scan A & B: 4 tokens per comment`);
+    console.log(`[BATCH SIZING] Token estimation - Scan A: ${scanA.tokens_per_comment || 13} tokens per comment, Scan B: ${scanB.tokens_per_comment || 13} tokens per comment`);
     
     // Log token estimates for the first batch
     if (inputComments.length > 0) {
       const firstBatch = inputComments.slice(0, finalBatchSize);
       const scanAInputTokens = await estimateBatchInputTokens(firstBatch, scanA.analysis_prompt, scanA.provider, scanA.model);
       const scanBInputTokens = await estimateBatchInputTokens(firstBatch, scanB.analysis_prompt, scanB.provider, scanB.model);
-      const scanAOutputTokens = finalBatchSize * 4; // 4 tokens per comment
-      const scanBOutputTokens = finalBatchSize * 4; // 4 tokens per comment
+      const scanAOutputTokens = finalBatchSize * (scanA.tokens_per_comment || 13); // configurable tokens per comment
+      const scanBOutputTokens = finalBatchSize * (scanB.tokens_per_comment || 13); // configurable tokens per comment
       
       console.log(`[TOKEN ESTIMATES] First batch (${finalBatchSize} comments):`);
-      console.log(`  Scan A: ${scanAInputTokens} input → ${scanAOutputTokens} output (4 tokens per comment)`);
-      console.log(`  Scan B: ${scanBInputTokens} input → ${scanBOutputTokens} output (4 tokens per comment)`);
+      console.log(`  Scan A: ${scanAInputTokens} input → ${scanAOutputTokens} output (${scanA.tokens_per_comment || 13} tokens per comment)`);
+      console.log(`  Scan B: ${scanBInputTokens} input → ${scanBOutputTokens} output (${scanB.tokens_per_comment || 13} tokens per comment)`);
     }
     
     // Process comments in smaller chunks to avoid gateway timeout
