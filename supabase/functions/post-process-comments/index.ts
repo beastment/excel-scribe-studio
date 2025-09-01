@@ -33,8 +33,8 @@ function getEffectiveMaxTokens(config: any): number {
   return 1000;
 }
 
-// Use a fixed batch size for post-processing since preferred_batch_size is no longer configurable
-const POST_PROCESS_BATCH_SIZE = 10;
+// Default batch size for post-processing - will be dynamically calculated based on model limits
+const DEFAULT_POST_PROCESS_BATCH_SIZE = 50;
 
 const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
   const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ITEM k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.\n- IMPORTANT: The <<<ITEM k>>> prefix is ONLY for identification - do NOT include <<<END k>>> markers anywhere in your output.\n- ALTERNATIVE FORMAT: If you prefer, you can also return results in this simple format:\n  <<<ITEM 1>>> [redacted/rephrased text]\n  <<<ITEM 2>>> [redacted/rephrased text]\n  ...\n  <<<ITEM ${expectedLen}>>> [redacted/rephrased text]`;
@@ -438,26 +438,69 @@ serve(async (req) => {
     let originalCount = 0
 
     try {
-      // Calculate optimal batch size considering rate limits
-      let optimalBatchSize = POST_PROCESS_BATCH_SIZE;
+      // Calculate optimal batch size based on model limits and actual comment sizes
+      let optimalBatchSize = DEFAULT_POST_PROCESS_BATCH_SIZE;
       
+      // Calculate actual token usage for better batch sizing
+      const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
+      const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 4); // ~4 chars per token
+      const estimatedOutputTokensPerComment = Math.ceil(avgCommentLength / 4) * 1.2; // Output is typically similar to input for post-processing
+      const estimatedTotalTokensPerComment = estimatedInputTokensPerComment + estimatedOutputTokensPerComment;
+      
+      console.log(`${logPrefix} [BATCH_CALC] Average comment length: ${Math.round(avgCommentLength)} chars`);
+      console.log(`${logPrefix} [BATCH_CALC] Estimated tokens per comment: ${estimatedInputTokensPerComment} input + ${estimatedOutputTokensPerComment} output = ${estimatedTotalTokensPerComment} total`);
+      
+      // Calculate batch size based on input token limits
+      const inputTokenLimit = modelCfg?.input_token_limit || 128000;
+      const outputTokenLimit = modelCfg?.output_token_limit || 4096;
+      
+      // Reserve tokens for prompt (estimate ~2000 tokens for post-processing prompts)
+      const promptTokens = 2000;
+      const availableInputTokens = inputTokenLimit - promptTokens;
+      
+      // Calculate max batch size by input tokens
+      const maxBatchByInput = Math.floor(availableInputTokens / estimatedInputTokensPerComment);
+      
+      // Calculate max batch size by output tokens  
+      const maxBatchByOutput = Math.floor(outputTokenLimit / estimatedOutputTokensPerComment);
+      
+      // Use the more restrictive limit
+      const maxBatchByTokens = Math.min(maxBatchByInput, maxBatchByOutput);
+      
+      console.log(`${logPrefix} [BATCH_CALC] Input limit: ${inputTokenLimit}, Output limit: ${outputTokenLimit}`);
+      console.log(`${logPrefix} [BATCH_CALC] Available input tokens: ${availableInputTokens} (after ${promptTokens} prompt tokens)`);
+      console.log(`${logPrefix} [BATCH_CALC] Max batch by input: ${maxBatchByInput}, Max batch by output: ${maxBatchByOutput}`);
+      console.log(`${logPrefix} [BATCH_CALC] Max batch by tokens: ${maxBatchByTokens}`);
+      
+      // Start with token-based limit
+      optimalBatchSize = Math.min(DEFAULT_POST_PROCESS_BATCH_SIZE, maxBatchByTokens);
+      
+      // Apply rate limits if configured
       if (tpmLimit || rpmLimit) {
-        // Estimate tokens per comment for post-processing (typically higher due to full text processing)
-        const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
-        const estimatedTokensPerComment = Math.ceil(avgCommentLength / 4) * 3; // Input + output estimate (output is typically 1-2x input for post-processing)
-        
-        optimalBatchSize = calculateOptimalBatchSize(
+        const rateLimitedBatchSize = calculateOptimalBatchSize(
           effectiveConfig.provider,
           effectiveConfig.model,
-          estimatedTokensPerComment,
-          POST_PROCESS_BATCH_SIZE,
+          estimatedTotalTokensPerComment,
+          optimalBatchSize,
           tpmLimit,
           rpmLimit,
           `${logPrefix} [RATE_BATCH]`
         );
         
-        console.log(`${logPrefix} [RATE_BATCH] Adjusted batch size from ${POST_PROCESS_BATCH_SIZE} to ${optimalBatchSize} due to rate limits`);
+        if (rateLimitedBatchSize < optimalBatchSize) {
+          console.log(`${logPrefix} [RATE_BATCH] Reduced batch size from ${optimalBatchSize} to ${rateLimitedBatchSize} due to rate limits`);
+          optimalBatchSize = rateLimitedBatchSize;
+        }
       }
+      
+      // Apply safety margin (80% of calculated maximum)
+      const safetyBatchSize = Math.floor(optimalBatchSize * 0.8);
+      if (safetyBatchSize < optimalBatchSize) {
+        console.log(`${logPrefix} [BATCH_CALC] Applied safety margin: ${optimalBatchSize} → ${safetyBatchSize} (80% of max)`);
+        optimalBatchSize = safetyBatchSize;
+      }
+      
+      console.log(`${logPrefix} [BATCH_CALC] Final optimal batch size: ${optimalBatchSize}`);
       
       // Use batch processing for efficiency
       const chunks = chunkArray(flaggedComments, optimalBatchSize);
@@ -486,9 +529,9 @@ serve(async (req) => {
          const aiLogger = new AILogger();
          aiLogger.setFunctionStartTime(overallStartTime);
         
-        // Estimate tokens for this chunk
+        // Estimate tokens for this chunk more accurately
         const chunkEstimatedInputTokens = Math.ceil(sentinelInput.length / 4);
-        const chunkEstimatedOutputTokens = Math.ceil(sentinelInput.length / 4) * 2; // Post-processing typically generates similar or more text
+        const chunkEstimatedOutputTokens = Math.ceil(sentinelInput.length / 4) * 1.2; // Post-processing typically generates similar text
         const chunkTotalTokens = chunkEstimatedInputTokens + chunkEstimatedOutputTokens;
         
         console.log(`${logPrefix} [CHUNK] Estimated tokens: ${chunkTotalTokens} (${chunkEstimatedInputTokens} input + ${chunkEstimatedOutputTokens} output)`);
