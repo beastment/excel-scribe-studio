@@ -239,6 +239,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
       console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
       console.log(`[DEBUG] Error keys:`, error ? Object.keys(error) : 'null');
+      
+      // Debug scan results
+      if (data?.comments) {
+        console.log(`[DEBUG] Scan results - ${data.comments.length} comments:`);
+        data.comments.forEach((comment: any, index: number) => {
+          console.log(`[DEBUG] Comment ${index + 1}:`, {
+            id: comment.id,
+            concerning: comment.concerning,
+            identifiable: comment.identifiable,
+            needsAdjudication: comment.needsAdjudication,
+            mode: comment.mode
+          });
+        });
+      }
 
       // Check for insufficient credits in the response data
       if (data && (data.error || data.insufficientCredits || data.success === false)) {
@@ -539,6 +553,21 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       // Final update with all processed comments
       setScanProgress(100);
       setHasScanRun(true);
+      
+      // Debug final comments before update
+      console.log(`[DEBUG] Final comments before update - ${data.comments.length} comments:`);
+      data.comments.forEach((comment: any, index: number) => {
+        console.log(`[DEBUG] Final Comment ${index + 1}:`, {
+          id: comment.id,
+          concerning: comment.concerning,
+          identifiable: comment.identifiable,
+          mode: comment.mode,
+          redactedText: !!comment.redactedText,
+          rephrasedText: !!comment.rephrasedText,
+          hasScanRun: true
+        });
+      });
+      
       onCommentsUpdate(data.comments);
       toast.success(`Scan complete: ${data.comments.length} comments processed`);
       
