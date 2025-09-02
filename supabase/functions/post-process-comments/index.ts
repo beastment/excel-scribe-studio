@@ -452,8 +452,8 @@ serve(async (req) => {
       
       // Calculate actual token usage for better batch sizing
       const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
-      const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 3.5); // ~3.5 chars per token (less conservative)
-      const estimatedOutputTokensPerComment = Math.ceil(avgCommentLength / 3.5) * 1.1; // Output is typically similar to input for post-processing
+      const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 4); // ~4 chars per token (more realistic)
+      const estimatedOutputTokensPerComment = Math.ceil(avgCommentLength / 4) * 1.2; // Output is typically similar to input for post-processing
       const estimatedTotalTokensPerComment = estimatedInputTokensPerComment + estimatedOutputTokensPerComment;
       
       console.log(`${logPrefix} [BATCH_CALC] Average comment length: ${Math.round(avgCommentLength)} chars`);
@@ -512,6 +512,7 @@ serve(async (req) => {
       }
       
       console.log(`${logPrefix} [BATCH_CALC] Final optimal batch size: ${optimalBatchSize}`);
+      console.log(`${logPrefix} [BATCH_CALC] Calculation breakdown: DEFAULT_POST_PROCESS_BATCH_SIZE=${DEFAULT_POST_PROCESS_BATCH_SIZE}, maxBatchByTokens=${maxBatchByTokens}, safetyMarginPercent=${safetyMarginPercent}%`);
       
       // Use batch processing for efficiency
       const chunks = chunkArray(flaggedComments, optimalBatchSize);
@@ -541,8 +542,8 @@ serve(async (req) => {
          aiLogger.setFunctionStartTime(overallStartTime);
         
         // Estimate tokens for this chunk more accurately
-        const chunkEstimatedInputTokens = Math.ceil(sentinelInput.length / 3.5);
-        const chunkEstimatedOutputTokens = Math.ceil(sentinelInput.length / 3.5) * 1.1; // Post-processing typically generates similar text
+        const chunkEstimatedInputTokens = Math.ceil(sentinelInput.length / 4);
+        const chunkEstimatedOutputTokens = Math.ceil(sentinelInput.length / 4) * 1.2; // Post-processing typically generates similar text
         const chunkTotalTokens = chunkEstimatedInputTokens + chunkEstimatedOutputTokens;
         
         console.log(`${logPrefix} [CHUNK] Estimated tokens: ${chunkTotalTokens} (${chunkEstimatedInputTokens} input + ${chunkEstimatedOutputTokens} output)`);
