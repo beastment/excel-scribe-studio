@@ -58,7 +58,7 @@ interface AdjudicationResponse {
 }
 
 // AI calling function
-async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, scanRunId?: string, aiLogger?: AILogger, temperature?: number) {
+async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, scanRunId?: string, aiLogger?: AILogger, phase?: string, temperature?: number) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
@@ -82,7 +82,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
       if (aiLogger && userId && scanRunId) {
-        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage, undefined);
+        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', phase || 'adjudication', '', errorMessage, undefined);
       }
       throw new Error(errorMessage);
     }
@@ -92,7 +92,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response
     if (aiLogger && userId && scanRunId) {
-      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
+      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', phase || 'adjudication', responseText, undefined, undefined);
     }
     
     return responseText;
@@ -109,7 +109,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
       if (aiLogger && userId && scanRunId) {
-        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage);
+        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', phase || 'adjudication', '', errorMessage);
       }
       throw new Error(errorMessage);
     }
@@ -119,7 +119,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response
     if (aiLogger && userId && scanRunId) {
-      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
+      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', phase || 'adjudication', responseText, undefined, undefined);
     }
     
     return responseText;
@@ -465,6 +465,7 @@ serve(async (req) => {
           user.id,
           runId.toString(),
           aiLogger,
+          `adjudication_batch_${batchIndex + 1}`,
           effectiveTemperature
         );
 

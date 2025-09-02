@@ -97,7 +97,7 @@ export class AILogger {
       const calculatedTotalRunTimeMs = totalRunTimeMs || (Date.now() - this.functionStartTime);
       
       // Update the existing log entry - find the most recent pending log for this user/function/phase
-      const { error: updateError } = await this.supabase
+      const baseQuery = this.supabase
         .from('ai_logs')
         .update({
           response_text: responseText,
@@ -109,12 +109,15 @@ export class AILogger {
           total_run_time_ms: calculatedTotalRunTimeMs
         })
         .eq('user_id', userId)
-        .eq('scan_run_id', scanRunId || '')
         .eq('function_name', functionName)
         .eq('phase', phase)
-        .eq('response_status', 'pending')
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .eq('response_status', 'pending');
+
+      const finalQuery = scanRunId
+        ? baseQuery.eq('scan_run_id', scanRunId)
+        : baseQuery.is('scan_run_id', null);
+
+      const { error: updateError } = await finalQuery;
         
       if (updateError) {
         console.error('[AI LOGGER] Error updating response log:', updateError);
