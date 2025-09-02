@@ -900,6 +900,33 @@ serve(async (req) => {
       }
     }
     
+    // Call adjudicator if there are comments that need adjudication and no more batches
+    if (!hasMoreBatches && totalSummary.needsAdjudication > 0) {
+      console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
+      
+      try {
+        const adjudicationResponse = await supabase.functions.invoke('adjudicator', {
+          body: {
+            comments: allScannedComments,
+            scanRunId: scanRunId
+          }
+        });
+
+        if (adjudicationResponse.error) {
+          console.error('[ADJUDICATION] Error calling adjudicator:', adjudicationResponse.error);
+        } else {
+          console.log('[ADJUDICATION] Adjudication completed successfully');
+          // Update the comments with adjudicated results if available
+          if (adjudicationResponse.data?.comments) {
+            allScannedComments = adjudicationResponse.data.comments;
+          }
+        }
+      } catch (adjudicationError) {
+        console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
+        // Continue without failing the entire scan
+      }
+    }
+
     const response = { 
       comments: allScannedComments,
       batchStart: batchStart, // Starting batch for this request
