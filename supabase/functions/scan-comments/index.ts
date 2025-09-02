@@ -909,6 +909,9 @@ serve(async (req) => {
           body: {
             comments: allScannedComments,
             scanRunId: scanRunId
+          },
+          headers: {
+            authorization: authHeader || ''
           }
         });
 
