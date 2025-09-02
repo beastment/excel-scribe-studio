@@ -6,7 +6,9 @@ import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, ca
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
 }
+
 
 // Constants and utility functions copied from the main scan function
 const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace job level/grade indicators (e.g., "Level 5", "L5", "Band 3") with "XXXX".\n- Replace tenure/time-in-role statements (e.g., "3 years in role", "tenure") with "XXXX".`;
