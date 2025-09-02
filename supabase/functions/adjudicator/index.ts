@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { AILogger } from './ai-logger.ts';
-import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize } from './tpm-tracker.ts';
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -60,7 +60,7 @@ interface AdjudicationResponse {
 }
 
 // AI calling function
-async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, scanRunId?: string, aiLogger?: AILogger, phase?: string, temperature?: number) {
+async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, scanRunId?: string, aiLogger?: AILogger, temperature?: number) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
@@ -83,9 +83,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
     if (!response.ok) {
       const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
-      if (aiLogger && userId && scanRunId) {
-        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', phase || 'adjudication', '', errorMessage, undefined);
-      }
+              if (aiLogger && userId && scanRunId) {
+          await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage, undefined);
+        }
       throw new Error(errorMessage);
     }
 
@@ -94,7 +94,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response
     if (aiLogger && userId && scanRunId) {
-      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', phase || 'adjudication', responseText, undefined, undefined);
+      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
     }
     
     return responseText;
@@ -111,7 +111,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
       if (aiLogger && userId && scanRunId) {
-        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', phase || 'adjudication', '', errorMessage);
+        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage);
       }
       throw new Error(errorMessage);
     }
@@ -121,7 +121,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response
     if (aiLogger && userId && scanRunId) {
-      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', phase || 'adjudication', responseText, undefined, undefined);
+      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
     }
     
     return responseText;
@@ -375,39 +375,8 @@ serve(async (req) => {
       const rpmLimit = modelCfg?.rpm_limit;
       console.log(`${logPrefix} [RATE_LIMITS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
 
-      // Check if we need to split into smaller batches due to rate limits
-      let batchedComments: typeof needsAdjudication[] = [];
-      
-      if ((tpmLimit || rpmLimit) && needsAdjudication.length > 1) {
-        // Calculate optimal batch size considering both TPM and RPM limits
-        // Use the total estimated tokens divided by number of comments to get per-comment estimate
-        const estimatedTokensPerComment = Math.ceil(totalEstimatedTokens / needsAdjudication.length);
-        const optimalBatchSize = calculateOptimalBatchSize(
-          adjudicatorConfig.provider,
-          adjudicatorConfig.model,
-          estimatedTokensPerComment,
-          needsAdjudication.length,
-          tpmLimit,
-          rpmLimit,
-          `${logPrefix} [RATE_BATCH]`,
-          1 // Adjudicator makes 1 request per batch
-        );
-
-        console.log(`${logPrefix} [RATE_BATCH] Total estimated tokens: ${totalEstimatedTokens}, Comments: ${needsAdjudication.length}, Tokens per comment: ${estimatedTokensPerComment}, Optimal batch size: ${optimalBatchSize}`);
-
-        if (optimalBatchSize < needsAdjudication.length) {
-          console.log(`${logPrefix} [RATE_BATCH] Splitting ${needsAdjudication.length} comments into batches of ${optimalBatchSize} due to rate limits`);
-          
-          // Split into batches
-          for (let i = 0; i < needsAdjudication.length; i += optimalBatchSize) {
-            batchedComments.push(needsAdjudication.slice(i, i + optimalBatchSize));
-          }
-        } else {
-          batchedComments = [needsAdjudication]; // Single batch
-        }
-      } else {
-        batchedComments = [needsAdjudication]; // Single batch (no rate limits or only one comment)
-      }
+      // Process all comments in a single batch (rate limiting removed)
+      let batchedComments: typeof needsAdjudication[] = [needsAdjudication];
 
       // Initialize AI logger
       const aiLogger = new AILogger();
@@ -426,21 +395,7 @@ serve(async (req) => {
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}/${batchedComments.length}] Processing ${batch.length} comments`);
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Estimated tokens: ${batchTotalTokens} (${batchEstimatedInputTokens} input + ${batchEstimatedOutputTokens} output)`);
         
-        // Check rate limits and wait if necessary before making the request
-        if (tpmLimit || rpmLimit) {
-          const tpmWaitTime = calculateWaitTime(adjudicatorConfig.provider, adjudicatorConfig.model, batchTotalTokens, tpmLimit);
-          const rpmWaitTime = calculateRPMWaitTime(adjudicatorConfig.provider, adjudicatorConfig.model, 1, rpmLimit);
-          const maxWaitTime = Math.max(tpmWaitTime, rpmWaitTime);
-          
-          if (maxWaitTime > 0) {
-            const reason = [];
-            if (tpmWaitTime > 0) reason.push(`TPM (${tpmWaitTime}ms)`);
-            if (rpmWaitTime > 0) reason.push(`RPM (${rpmWaitTime}ms)`);
-            
-            console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Waiting ${maxWaitTime}ms to comply with ${reason.join(' and ')} limits`);
-            await new Promise(resolve => setTimeout(resolve, maxWaitTime));
-          }
-        }
+
         
         // Log the AI request for this batch
         await aiLogger.logRequest({
@@ -467,19 +422,13 @@ serve(async (req) => {
           user.id,
           runId.toString(),
           aiLogger,
-          `adjudication_batch_${batchIndex + 1}`,
           effectiveTemperature
         );
 
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] AI RESPONSE ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] rawResponse=${JSON.stringify(rawResponse).substring(0, 500)}...`);
         
-        // Record usage AFTER the AI call completes
-        if (tpmLimit || rpmLimit) {
-          recordUsage(adjudicatorConfig.provider, adjudicatorConfig.model, batchTotalTokens);
-          recordRequest(adjudicatorConfig.provider, adjudicatorConfig.model, 1);
-          console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Recorded usage: ${batchTotalTokens} tokens, 1 request`);
-        }
+
         
         // Parse the batch response
         const batchResults = parseAdjudicationResponse(rawResponse, batch.length);
