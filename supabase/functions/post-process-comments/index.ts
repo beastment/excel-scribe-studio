@@ -110,21 +110,39 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       }
 
   if (provider === 'azure') {
-    const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
-      method: 'POST',
-      headers: {
-        'api-key': Deno.env.get('AZURE_OPENAI_API_KEY') || '',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    
+    try {
+      const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
+        method: 'POST',
+        headers: {
+          'api-key': Deno.env.get('AZURE_OPENAI_API_KEY') || '',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
-      if (aiLogger && userId && scanRunId && phase) {
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+      if (!response.ok) {
+        const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
+        if (aiLogger && userId && scanRunId && phase) {
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+        }
+        throw new Error(errorMessage);
       }
-      throw new Error(errorMessage);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        const timeoutMessage = 'Azure OpenAI API timeout after 5 minutes';
+        if (aiLogger && userId && scanRunId && phase) {
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
+        }
+        throw new Error(timeoutMessage);
+      }
+      throw error;
     }
 
     const result = await response.json();
@@ -137,24 +155,42 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     return responseText;
   } else if (provider === 'openai') {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY') || ''}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model,
-        ...payload
-      })
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY') || ''}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model,
+          ...payload
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
-      if (aiLogger && userId && scanRunId && phase) {
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+      if (!response.ok) {
+        const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
+        if (aiLogger && userId && scanRunId && phase) {
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+        }
+        throw new Error(errorMessage);
       }
-      throw new Error(errorMessage);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        const timeoutMessage = 'OpenAI API timeout after 5 minutes';
+        if (aiLogger && userId && scanRunId && phase) {
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
+        }
+        throw new Error(timeoutMessage);
+      }
+      throw error;
     }
 
     const result = await response.json();
