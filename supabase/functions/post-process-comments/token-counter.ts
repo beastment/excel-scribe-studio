@@ -6,8 +6,7 @@ export interface TokenCounts {
   outputTokens: number;
   totalTokens: number;
 }
-
-// Approximate token counting for different providers
+//
 export async function countTokens(
   provider: string, 
   model: string, 

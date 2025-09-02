@@ -136,7 +136,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 // Build adjudication input
 function buildAdjudicationInput(comments: AdjudicationRequest['comments']): string {
   const items = comments.map((comment, i) => {
-    // Use the same ID system as scan-comments: originalRow if available, otherwise scannedIndex, fallback to i+1
+    // Use the same ID system as scan-comments: originalRow if available, otherwise scannedIndex, fallback to i+1//
     const itemId = comment.originalRow || comment.scannedIndex || (i + 1);
     
     return `<<<ITEM ${itemId}>>>

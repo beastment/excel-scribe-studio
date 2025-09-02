@@ -371,7 +371,7 @@ serve(async (req) => {
         return 1; // Can only process one comment if prompt is too long
       }
       
-      // Calculate how many comments we can fit
+      // Calculate how many comments we can fit//
       let batchSize = 0;
       let totalTokens = 0;
       let commentTokenDetails: string[] = [];

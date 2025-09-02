@@ -27,7 +27,7 @@ export async function countTokens(
       inputTokens = Math.ceil(input.length / 4);
       if (output) outputTokens = Math.ceil(output.length / 4);
     } else {
-      inputTokens = Math.ceil(input.length / 4); // Default to GPT approximation
+      inputTokens = Math.ceil(input.length / 4); // Default to GPT approximation//
       if (output) outputTokens = Math.ceil(output.length / 4);
     }
   } else if (provider === 'azure') {
