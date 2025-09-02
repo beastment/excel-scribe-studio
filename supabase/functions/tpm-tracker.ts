@@ -323,7 +323,8 @@ function calculateOptimalBatchSize(
   maxItems: number,
   tpmLimit: number | null,
   rpmLimit: number | null,
-  logPrefix: string = '[BATCH_CALC]'
+  logPrefix: string = '[BATCH_CALC]',
+  requestsPerBatch: number = 1
 ): number {
   let optimalBatchSize = maxItems;
   
@@ -343,10 +344,11 @@ function calculateOptimalBatchSize(
   if (rpmLimit) {
     const currentRequests = getCurrentRequestCount(provider, model);
     const availableRequests = Math.max(0, rpmLimit - currentRequests);
-    const maxItemsByRPM = availableRequests; // Each item typically requires 1 request
+    // Calculate max items based on available requests and requests per batch
+    const maxItemsByRPM = Math.floor(availableRequests / requestsPerBatch);
     optimalBatchSize = Math.min(optimalBatchSize, maxItemsByRPM);
     
-    console.log(`${logPrefix} [RPM] ${provider}/${model}: Current requests: ${currentRequests}/${rpmLimit}, Available: ${availableRequests}, Max items by RPM: ${maxItemsByRPM}`);
+    console.log(`${logPrefix} [RPM] ${provider}/${model}: Current requests: ${currentRequests}/${rpmLimit}, Available: ${availableRequests}, Requests per batch: ${requestsPerBatch}, Max items by RPM: ${maxItemsByRPM}`);
   } else {
     console.log(`${logPrefix} [RPM] No RPM limit configured for ${provider}/${model}`);
   }
@@ -368,7 +370,7 @@ function calculateTPMOptimalBatchSize(
   tpmLimit: number | null,
   logPrefix: string = '[TPM_BATCH]'
 ): number {
-  return calculateOptimalBatchSize(provider, model, estimatedTokensPerItem, maxItems, tpmLimit, null, logPrefix);
+  return calculateOptimalBatchSize(provider, model, estimatedTokensPerItem, maxItems, tpmLimit, null, logPrefix, 1);
 }
 
 export {

@@ -387,7 +387,8 @@ serve(async (req) => {
           needsAdjudication.length,
           tpmLimit,
           rpmLimit,
-          `${logPrefix} [RATE_BATCH]`
+          `${logPrefix} [RATE_BATCH]`,
+          1 // Adjudicator makes 1 request per batch
         );
 
         console.log(`${logPrefix} [RATE_BATCH] Total estimated tokens: ${totalEstimatedTokens}, Comments: ${needsAdjudication.length}, Tokens per comment: ${estimatedTokensPerComment}, Optimal batch size: ${optimalBatchSize}`);

@@ -431,7 +431,8 @@ serve(async (req) => {
           batchSize,
           tokenLimits.tpm_limit,
           tokenLimits.rpm_limit,
-          `[BATCH_CALC] ${phase}`
+          `[BATCH_CALC] ${phase}`,
+          2 // Scan-comments makes 2 parallel requests per batch (Scan A + Scan B)
         );
         
         if (optimalBatchSize < batchSize) {
