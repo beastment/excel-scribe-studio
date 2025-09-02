@@ -414,10 +414,11 @@ serve(async (req) => {
         console.log(`[BATCH_CALC] ${phase}: Output tokens within limit: ${estimatedOutputTokens} <= ${maxOutputTokens}`);
       }
       
-      // Apply safety margin to all models to prevent hitting token limits
-      const safetyBatchSize = Math.floor(batchSize * 0.8);
+      // Apply configurable safety margin to prevent hitting token limits
+      const safetyMultiplier = 1 - (safetyMarginPercent / 100);
+      const safetyBatchSize = Math.floor(batchSize * safetyMultiplier);
       if (safetyBatchSize < batchSize) {
-        console.log(`[BATCH_CALC] ${phase}: Applying safety margin: ${batchSize} → ${safetyBatchSize} (80% of max)`);
+        console.log(`[BATCH_CALC] ${phase}: Applying safety margin: ${batchSize} → ${safetyBatchSize} (${safetyMarginPercent}% of max)`);
         batchSize = safetyBatchSize;
       }
       

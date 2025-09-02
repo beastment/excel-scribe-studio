@@ -375,6 +375,15 @@ serve(async (req) => {
       .limit(1)
       .single();
 
+    // Get batch sizing configuration for safety margin
+    const { data: batchSizingData } = await supabase
+      .from('batch_sizing_config')
+      .select('*')
+      .single();
+    
+    const safetyMarginPercent = batchSizingData?.safety_margin_percent || 15;
+    console.log(`${logPrefix} [POSTPROCESS] Safety margin: ${safetyMarginPercent}%`);
+
     let actualMaxTokens = getEffectiveMaxTokens(scanConfig);
     if (modelCfgError) {
       console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations, using defaults:`, modelCfgError.message);
@@ -494,10 +503,11 @@ serve(async (req) => {
         }
       }
       
-      // Apply safety margin (90% of calculated maximum)
-      const safetyBatchSize = Math.floor(optimalBatchSize * 0.9);
+      // Apply configurable safety margin
+      const safetyMultiplier = 1 - (safetyMarginPercent / 100);
+      const safetyBatchSize = Math.floor(optimalBatchSize * safetyMultiplier);
       if (safetyBatchSize < optimalBatchSize) {
-        console.log(`${logPrefix} [BATCH_CALC] Applied safety margin: ${optimalBatchSize} → ${safetyBatchSize} (90% of max)`);
+        console.log(`${logPrefix} [BATCH_CALC] Applied safety margin: ${optimalBatchSize} → ${safetyBatchSize} (${safetyMarginPercent}% of max)`);
         optimalBatchSize = safetyBatchSize;
       }
       
