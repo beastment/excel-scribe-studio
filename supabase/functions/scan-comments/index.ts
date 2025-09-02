@@ -415,7 +415,6 @@ serve(async (req) => {
       }
       
       // Apply configurable safety margin to prevent hitting token limits
-      const safetyMultiplier = 1 - (safetyMarginPercent / 100);
       const safetyBatchSize = Math.floor(batchSize * safetyMultiplier);
       if (safetyBatchSize < batchSize) {
         console.log(`[BATCH_CALC] ${phase}: Applying safety margin: ${batchSize} → ${safetyBatchSize} (${safetyMarginPercent}% of max)`);
