@@ -235,6 +235,38 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
       });
 
+      // Aggregate multi-batch responses until complete
+      if (data?.hasMore) {
+        let accumulated = Array.isArray(data.comments) ? [...data.comments] : [];
+        let nextBatchStart = (data.nextBatchStart ?? data.batchStart ?? accumulated.length) as number;
+        let loops = 0;
+        while (data.hasMore && loops < 10) {
+          const { data: nextData, error: nextError } = await supabase.functions.invoke('scan-comments', {
+            body: {
+              comments,
+              defaultMode,
+              scanRunId,
+              isDemoScan: isDemoData,
+              batchStart: nextBatchStart,
+              useCachedAnalysis: true
+            }
+          });
+
+          if (nextError) {
+            console.error('Scan follow-up error:', nextError);
+            break;
+          }
+          if (!nextData?.comments) break;
+
+          accumulated = accumulated.concat(nextData.comments);
+          nextBatchStart = (nextData.nextBatchStart ?? (nextBatchStart + (nextData.batchSize || 0))) as number;
+          data.hasMore = Boolean(nextData.hasMore);
+          loops += 1;
+        }
+        // Replace original comments with the full set for downstream steps
+        (data as any).comments = accumulated;
+      }
+
       console.log(`Scan response:`, { data, error });
       console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
       console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
