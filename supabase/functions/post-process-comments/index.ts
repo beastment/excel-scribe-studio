@@ -34,7 +34,7 @@ function getEffectiveMaxTokens(config: any): number {
 }
 
 // Default batch size for post-processing - will be dynamically calculated based on model limits
-const DEFAULT_POST_PROCESS_BATCH_SIZE = 50;
+const DEFAULT_POST_PROCESS_BATCH_SIZE = 100;
 
 const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
   const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ITEM k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.\n- IMPORTANT: The <<<ITEM k>>> prefix is ONLY for identification - do NOT include <<<END k>>> markers anywhere in your output.\n- ALTERNATIVE FORMAT: If you prefer, you can also return results in this simple format:\n  <<<ITEM 1>>> [redacted/rephrased text]\n  <<<ITEM 2>>> [redacted/rephrased text]\n  ...\n  <<<ITEM ${expectedLen}>>> [redacted/rephrased text]`;
@@ -452,8 +452,8 @@ serve(async (req) => {
       
       // Calculate actual token usage for better batch sizing
       const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
-      const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 4); // ~4 chars per token (more realistic)
-      const estimatedOutputTokensPerComment = Math.ceil(avgCommentLength / 4) * 1.2; // Output is typically similar to input for post-processing
+      const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 5); // ~5 chars per token (more realistic for post-processing)
+      const estimatedOutputTokensPerComment = Math.ceil(avgCommentLength / 5) * 1.1; // Output is typically similar to input for post-processing
       const estimatedTotalTokensPerComment = estimatedInputTokensPerComment + estimatedOutputTokensPerComment;
       
       console.log(`${logPrefix} [BATCH_CALC] Average comment length: ${Math.round(avgCommentLength)} chars`);
@@ -513,6 +513,7 @@ serve(async (req) => {
       
       console.log(`${logPrefix} [BATCH_CALC] Final optimal batch size: ${optimalBatchSize}`);
       console.log(`${logPrefix} [BATCH_CALC] Calculation breakdown: DEFAULT_POST_PROCESS_BATCH_SIZE=${DEFAULT_POST_PROCESS_BATCH_SIZE}, maxBatchByTokens=${maxBatchByTokens}, safetyMarginPercent=${safetyMarginPercent}%`);
+      console.log(`${logPrefix} [BATCH_CALC] Token estimation: avgCommentLength=${Math.round(avgCommentLength)}, inputTokensPerComment=${estimatedInputTokensPerComment}, outputTokensPerComment=${estimatedOutputTokensPerComment}`);
       
       // Use batch processing for efficiency
       const chunks = chunkArray(flaggedComments, optimalBatchSize);
@@ -542,8 +543,8 @@ serve(async (req) => {
          aiLogger.setFunctionStartTime(overallStartTime);
         
         // Estimate tokens for this chunk more accurately
-        const chunkEstimatedInputTokens = Math.ceil(sentinelInput.length / 4);
-        const chunkEstimatedOutputTokens = Math.ceil(sentinelInput.length / 4) * 1.2; // Post-processing typically generates similar text
+        const chunkEstimatedInputTokens = Math.ceil(sentinelInput.length / 5);
+        const chunkEstimatedOutputTokens = Math.ceil(sentinelInput.length / 5) * 1.1; // Post-processing typically generates similar text
         const chunkTotalTokens = chunkEstimatedInputTokens + chunkEstimatedOutputTokens;
         
         console.log(`${logPrefix} [CHUNK] Estimated tokens: ${chunkTotalTokens} (${chunkEstimatedInputTokens} input + ${chunkEstimatedOutputTokens} output)`);
