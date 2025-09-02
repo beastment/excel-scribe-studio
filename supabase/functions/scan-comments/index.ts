@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { AILogger } from './ai-logger.ts';
-import { enforceRateLimits, calculateOptimalBatchSize } from './tpm-tracker.ts';
+import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize } from './tpm-tracker.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -658,29 +658,35 @@ serve(async (req) => {
       
       console.log(`[BATCH ${currentBatchStart + 1}-${batchEnd}] Estimated tokens: ${totalEstimatedTokens} (${estimatedInputTokens} input + ${estimatedOutputTokens} output)`);
       
-      // Enforce rate limits for both models before making parallel calls
+      // Check rate limits and wait if necessary before making parallel calls
       if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
-        await enforceRateLimits(
-          scanA.provider,
-          scanA.model,
-          totalEstimatedTokens,
-          1, // 1 request per batch
-          scanATokenLimits.tpm_limit,
-          scanATokenLimits.rpm_limit,
-          `[BATCH ${currentBatchStart + 1}-${batchEnd}] [SCAN_A]`
-        );
+        const tpmWaitTimeA = calculateWaitTime(scanA.provider, scanA.model, totalEstimatedTokens, scanATokenLimits.tpm_limit);
+        const rpmWaitTimeA = calculateRPMWaitTime(scanA.provider, scanA.model, 1, scanATokenLimits.rpm_limit);
+        const maxWaitTimeA = Math.max(tpmWaitTimeA, rpmWaitTimeA);
+        
+        if (maxWaitTimeA > 0) {
+          const reason = [];
+          if (tpmWaitTimeA > 0) reason.push(`TPM (${tpmWaitTimeA}ms)`);
+          if (rpmWaitTimeA > 0) reason.push(`RPM (${rpmWaitTimeA}ms)`);
+          
+          console.log(`[BATCH ${currentBatchStart + 1}-${batchEnd}] [SCAN_A] Waiting ${maxWaitTimeA}ms to comply with ${reason.join(' and ')} limits`);
+          await new Promise(resolve => setTimeout(resolve, maxWaitTimeA));
+        }
       }
       
       if (scanBTokenLimits.tpm_limit || scanBTokenLimits.rpm_limit) {
-        await enforceRateLimits(
-          scanB.provider,
-          scanB.model,
-          totalEstimatedTokens,
-          1, // 1 request per batch
-          scanBTokenLimits.tpm_limit,
-          scanBTokenLimits.rpm_limit,
-          `[BATCH ${currentBatchStart + 1}-${batchEnd}] [SCAN_B]`
-        );
+        const tpmWaitTimeB = calculateWaitTime(scanB.provider, scanB.model, totalEstimatedTokens, scanBTokenLimits.tpm_limit);
+        const rpmWaitTimeB = calculateRPMWaitTime(scanB.provider, scanB.model, 1, scanBTokenLimits.rpm_limit);
+        const maxWaitTimeB = Math.max(tpmWaitTimeB, rpmWaitTimeB);
+        
+        if (maxWaitTimeB > 0) {
+          const reason = [];
+          if (tpmWaitTimeB > 0) reason.push(`TPM (${tpmWaitTimeB}ms)`);
+          if (rpmWaitTimeB > 0) reason.push(`RPM (${rpmWaitTimeB}ms)`);
+          
+          console.log(`[BATCH ${currentBatchStart + 1}-${batchEnd}] [SCAN_B] Waiting ${maxWaitTimeB}ms to comply with ${reason.join(' and ')} limits`);
+          await new Promise(resolve => setTimeout(resolve, maxWaitTimeB));
+        }
       }
       
       const [scanAResults, scanBResults] = await Promise.all([
@@ -689,6 +695,19 @@ serve(async (req) => {
       ]);
       const batchEndTime = Date.now();
       console.log(`[PERFORMANCE] Batch ${currentBatchStart + 1}-${batchEnd} processed in ${batchEndTime - batchStartTime}ms (parallel AI calls)`);
+      
+      // Record usage AFTER the AI calls complete
+      if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
+        recordUsage(scanA.provider, scanA.model, totalEstimatedTokens);
+        recordRequest(scanA.provider, scanA.model, 1);
+        console.log(`[BATCH ${currentBatchStart + 1}-${batchEnd}] [SCAN_A] Recorded usage: ${totalEstimatedTokens} tokens, 1 request`);
+      }
+      
+      if (scanBTokenLimits.tpm_limit || scanBTokenLimits.rpm_limit) {
+        recordUsage(scanB.provider, scanB.model, totalEstimatedTokens);
+        recordRequest(scanB.provider, scanB.model, 1);
+        console.log(`[BATCH ${currentBatchStart + 1}-${batchEnd}] [SCAN_B] Recorded usage: ${totalEstimatedTokens} tokens, 1 request`);
+      }
 
       console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResults} len=${Array.isArray(scanAResults) ? scanAResults.length : 'n/a'}`);
       console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResults} len=${Array.isArray(scanBResults) ? scanBResults.length : 'n/a'}`);

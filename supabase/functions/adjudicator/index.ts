@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { AILogger } from './ai-logger.ts';
-import { enforceRateLimits, calculateOptimalBatchSize } from './tpm-tracker.ts';
+import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize } from './tpm-tracker.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -378,7 +378,8 @@ serve(async (req) => {
       
       if ((tpmLimit || rpmLimit) && needsAdjudication.length > 1) {
         // Calculate optimal batch size considering both TPM and RPM limits
-        const estimatedTokensPerComment = tokensPerComment + Math.ceil(estimatedInputTokens / needsAdjudication.length);
+        // Use the total estimated tokens divided by number of comments to get per-comment estimate
+        const estimatedTokensPerComment = Math.ceil(totalEstimatedTokens / needsAdjudication.length);
         const optimalBatchSize = calculateOptimalBatchSize(
           adjudicatorConfig.provider,
           adjudicatorConfig.model,
@@ -388,6 +389,8 @@ serve(async (req) => {
           rpmLimit,
           `${logPrefix} [RATE_BATCH]`
         );
+
+        console.log(`${logPrefix} [RATE_BATCH] Total estimated tokens: ${totalEstimatedTokens}, Comments: ${needsAdjudication.length}, Tokens per comment: ${estimatedTokensPerComment}, Optimal batch size: ${optimalBatchSize}`);
 
         if (optimalBatchSize < needsAdjudication.length) {
           console.log(`${logPrefix} [RATE_BATCH] Splitting ${needsAdjudication.length} comments into batches of ${optimalBatchSize} due to rate limits`);
@@ -420,17 +423,20 @@ serve(async (req) => {
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}/${batchedComments.length}] Processing ${batch.length} comments`);
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Estimated tokens: ${batchTotalTokens} (${batchEstimatedInputTokens} input + ${batchEstimatedOutputTokens} output)`);
         
-        // Enforce rate limits - wait if necessary before making the request
+        // Check rate limits and wait if necessary before making the request
         if (tpmLimit || rpmLimit) {
-          await enforceRateLimits(
-            adjudicatorConfig.provider,
-            adjudicatorConfig.model,
-            batchTotalTokens,
-            1, // 1 request per batch
-            tpmLimit,
-            rpmLimit,
-            `${logPrefix} [BATCH ${batchIndex + 1}]`
-          );
+          const tpmWaitTime = calculateWaitTime(adjudicatorConfig.provider, adjudicatorConfig.model, batchTotalTokens, tpmLimit);
+          const rpmWaitTime = calculateRPMWaitTime(adjudicatorConfig.provider, adjudicatorConfig.model, 1, rpmLimit);
+          const maxWaitTime = Math.max(tpmWaitTime, rpmWaitTime);
+          
+          if (maxWaitTime > 0) {
+            const reason = [];
+            if (tpmWaitTime > 0) reason.push(`TPM (${tpmWaitTime}ms)`);
+            if (rpmWaitTime > 0) reason.push(`RPM (${rpmWaitTime}ms)`);
+            
+            console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Waiting ${maxWaitTime}ms to comply with ${reason.join(' and ')} limits`);
+            await new Promise(resolve => setTimeout(resolve, maxWaitTime));
+          }
         }
         
         // Log the AI request for this batch
@@ -463,6 +469,13 @@ serve(async (req) => {
 
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] AI RESPONSE ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] rawResponse=${JSON.stringify(rawResponse).substring(0, 500)}...`);
+        
+        // Record usage AFTER the AI call completes
+        if (tpmLimit || rpmLimit) {
+          recordUsage(adjudicatorConfig.provider, adjudicatorConfig.model, batchTotalTokens);
+          recordRequest(adjudicatorConfig.provider, adjudicatorConfig.model, 1);
+          console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Recorded usage: ${batchTotalTokens} tokens, 1 request`);
+        }
         
         // Parse the batch response
         const batchResults = parseAdjudicationResponse(rawResponse, batch.length);

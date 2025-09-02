@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { AILogger } from './ai-logger.ts';
-import { enforceRateLimits, calculateOptimalBatchSize } from './tpm-tracker.ts';
+import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize } from './tpm-tracker.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -536,29 +536,20 @@ serve(async (req) => {
         
         console.log(`${logPrefix} [CHUNK] Estimated tokens: ${chunkTotalTokens} (${chunkEstimatedInputTokens} input + ${chunkEstimatedOutputTokens} output)`);
         
-        // Enforce rate limits before parallel AI calls
+        // Check rate limits and wait if necessary before making parallel calls
         if (tpmLimit || rpmLimit) {
-          // For redaction call
-          await enforceRateLimits(
-            effectiveConfig.provider,
-            effectiveConfig.model,
-            chunkTotalTokens,
-            1, // 1 request for redaction
-            tpmLimit,
-            rpmLimit,
-            `${logPrefix} [CHUNK] [REDACTION]`
-          );
+          const tpmWaitTime = calculateWaitTime(effectiveConfig.provider, effectiveConfig.model, chunkTotalTokens, tpmLimit);
+          const rpmWaitTime = calculateRPMWaitTime(effectiveConfig.provider, effectiveConfig.model, 1, rpmLimit);
+          const maxWaitTime = Math.max(tpmWaitTime, rpmWaitTime);
           
-          // For rephrasing call (same tokens, different prompt)
-          await enforceRateLimits(
-            effectiveConfig.provider,
-            effectiveConfig.model,
-            chunkTotalTokens,
-            1, // 1 request for rephrasing
-            tpmLimit,
-            rpmLimit,
-            `${logPrefix} [CHUNK] [REPHRASE]`
-          );
+          if (maxWaitTime > 0) {
+            const reason = [];
+            if (tpmWaitTime > 0) reason.push(`TPM (${tpmWaitTime}ms)`);
+            if (rpmWaitTime > 0) reason.push(`RPM (${rpmWaitTime}ms)`);
+            
+            console.log(`${logPrefix} [CHUNK] Waiting ${maxWaitTime}ms to comply with ${reason.join(' and ')} limits`);
+            await new Promise(resolve => setTimeout(resolve, maxWaitTime));
+          }
         }
         
         const [rawRedacted, rawRephrased] = await Promise.all([
@@ -594,6 +585,13 @@ serve(async (req) => {
         console.log(`${logPrefix} [AI RESPONSE] rawRedacted=${JSON.stringify(rawRedacted).substring(0, 500)}...`);
         console.log(`${logPrefix} [AI RESPONSE] ${scanConfig.provider}/${scanConfig.model} type=batch_text phase=rephrase`);
         console.log(`${logPrefix} [AI RESPONSE] rawRephrased=${JSON.stringify(rawRephrased).substring(0, 500)}...`);
+        
+        // Record usage AFTER the AI calls complete (2 requests: redaction + rephrasing)
+        if (tpmLimit || rpmLimit) {
+          recordUsage(effectiveConfig.provider, effectiveConfig.model, chunkTotalTokens * 2); // Both calls use same token count
+          recordRequest(effectiveConfig.provider, effectiveConfig.model, 2); // 2 requests: redaction + rephrasing
+          console.log(`${logPrefix} [CHUNK] Recorded usage: ${chunkTotalTokens * 2} tokens, 2 requests`);
+        }
 
         // Parse and normalize the responses
         console.log(`${logPrefix} [POSTPROCESS] Parsing AI responses...`);
