@@ -140,7 +140,7 @@ export const AIConfigurationManagement = () => {
           input_token_limit: undefined,
           output_token_limit: undefined,
           temperature: undefined,
-          tokens_per_comment: config.tokens_per_comment || 13
+          tokens_per_comment: 13 // Default value since this field may not exist in all configs
         };
       });
 

@@ -459,9 +459,9 @@ serve(async (req) => {
       console.log(`${logPrefix} [BATCH_CALC] Average comment length: ${Math.round(avgCommentLength)} chars`);
       console.log(`${logPrefix} [BATCH_CALC] Estimated tokens per comment: ${estimatedInputTokensPerComment} input + ${estimatedOutputTokensPerComment} output = ${estimatedTotalTokensPerComment} total`);
       
-      // Calculate batch size based on input token limits
+      // Calculate batch size based on input token limits - use proper defaults for modern models
       const inputTokenLimit = modelCfg?.input_token_limit || 128000;
-      const outputTokenLimit = modelCfg?.output_token_limit || 4096;
+      const outputTokenLimit = modelCfg?.output_token_limit || 16384; // Default to 16k for modern models
       
       // Reserve tokens for prompt (estimate ~2000 tokens for post-processing prompts)
       const promptTokens = 2000;
