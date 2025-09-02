@@ -581,9 +581,9 @@ serve(async (req) => {
     }
     
     // Process comments in smaller chunks to avoid gateway timeout
-    // For larger datasets, increase batch limits to reduce function call overhead
-    const MAX_BATCHES_PER_REQUEST = inputComments.length > 500 ? 10 : 5; // Process more batches for large datasets
-    const MAX_EXECUTION_TIME = inputComments.length > 500 ? 180 * 1000 : 120 * 1000; // Increase timeout for large datasets
+    // Reduce batch limits to prevent edge function timeout
+    const MAX_BATCHES_PER_REQUEST = inputComments.length > 500 ? 3 : 2; // Much smaller batches to prevent timeout
+    const MAX_EXECUTION_TIME = 120 * 1000; // Fixed 120 second limit for safety
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     
