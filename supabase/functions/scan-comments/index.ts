@@ -1137,77 +1137,89 @@ serve(async (req) => {
     console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}`);
     
     if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
-      console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
-      
-      try {
-        // Filter comments that need adjudication
-        const commentsNeedingAdjudication = allScannedComments.filter(comment => {
-          const scanAResult = comment.adjudicationData?.scanAResult;
-          const scanBResult = comment.adjudicationData?.scanBResult;
-          
-          if (!scanAResult || !scanBResult) return false;
-          
-          const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
-          const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
-          
-          return concerningDisagreement || identifiableDisagreement;
-        });
+      // In-memory guards to ensure adjudicator runs only once per scanRunId (per edge function instance)
+      gAny.__adjudicationStarted = gAny.__adjudicationStarted || new Set<string>();
+      gAny.__adjudicationCompleted = gAny.__adjudicationCompleted || new Set<string>();
 
-        console.log(`[ADJUDICATION] Found ${commentsNeedingAdjudication.length} comments that need adjudication`);
-
-        // Check for duplicate adjudication call
-        const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, commentsNeedingAdjudication);
+      if (gAny.__adjudicationStarted.has(scanRunId)) {
+        console.log(`[ADJUDICATION] Already started for scanRunId=${scanRunId}, skipping duplicate adjudicator call`);
+      } else {
+        gAny.__adjudicationStarted.add(scanRunId);
+        console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
         
-        if (isDuplicate) {
-          console.log(`[ADJUDICATION] These comments have already been processed, skipping duplicate call`);
-          // Continue without calling adjudicator again
-        } else {
-          // Process adjudication with proper batching
-          const adjudicatorConfig = {
-            provider: adjudicator.provider,
-            model: adjudicator.model,
-            prompt: adjudicator.analysis_prompt,
-            max_tokens: adjudicator.max_tokens
-          };
-
-          console.log(`[ADJUDICATION] Sending adjudicator config:`, {
-            provider: adjudicator.provider,
-            model: adjudicator.model,
-            promptLength: adjudicator.analysis_prompt?.length || 0,
-            maxTokens: adjudicator.max_tokens
+        try {
+          // Filter comments that need adjudication
+          const commentsNeedingAdjudication = allScannedComments.filter(comment => {
+            const scanAResult = comment.adjudicationData?.scanAResult;
+            const scanBResult = comment.adjudicationData?.scanBResult;
+            
+            if (!scanAResult || !scanBResult) return false;
+            
+            const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
+            const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
+            
+            return concerningDisagreement || identifiableDisagreement;
           });
 
-          // Use the new batching system
-          const adjudicatedResults = await processAdjudicationBatches(
-            supabase,
-            scanRunId,
-            commentsNeedingAdjudication,
-            adjudicatorConfig,
-            authHeader || '',
-            50 // maxBatchSize - adjust based on token limits
-          );
+          console.log(`[ADJUDICATION] Found ${commentsNeedingAdjudication.length} comments that need adjudication`);
 
-          // Update the comments with adjudicated results
-          if (adjudicatedResults.length > 0) {
-            const adjudicatedMap = new Map(adjudicatedResults.map(adj => [adj.id, adj]));
-            
-            allScannedComments = allScannedComments.map(comment => {
-              const adjudicated = adjudicatedMap.get(comment.id);
-              if (adjudicated) {
-                return {
-                  ...comment,
-                  concerning: adjudicated.concerning,
-                  identifiable: adjudicated.identifiable,
-                  mode: adjudicated.concerning ? 'redact' : adjudicated.identifiable ? 'rephrase' : 'original'
-                };
-              }
-              return comment;
+          // Check for duplicate adjudication call (cross-invocation, via DB logs)
+          const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, commentsNeedingAdjudication);
+          
+          if (isDuplicate) {
+            console.log(`[ADJUDICATION] These comments have already been processed, skipping duplicate call`);
+            // Continue without calling adjudicator again
+          } else {
+            // Process adjudication with proper batching
+            const adjudicatorConfig = {
+              provider: adjudicator.provider,
+              model: adjudicator.model,
+              prompt: adjudicator.analysis_prompt,
+              max_tokens: adjudicator.max_tokens
+            };
+
+            console.log(`[ADJUDICATION] Sending adjudicator config:`, {
+              provider: adjudicator.provider,
+              model: adjudicator.model,
+              promptLength: adjudicator.analysis_prompt?.length || 0,
+              maxTokens: adjudicator.max_tokens
             });
+
+            // Use the new batching system
+            const adjudicatedResults = await processAdjudicationBatches(
+              supabase,
+              scanRunId,
+              commentsNeedingAdjudication,
+              adjudicatorConfig,
+              authHeader || '',
+              50 // maxBatchSize - adjust based on token limits
+            );
+
+            // Update the comments with adjudicated results
+            if (adjudicatedResults.length > 0) {
+              const adjudicatedMap = new Map(adjudicatedResults.map(adj => [adj.id, adj]));
+              
+              allScannedComments = allScannedComments.map(comment => {
+                const adjudicated = adjudicatedMap.get(comment.id);
+                if (adjudicated) {
+                  return {
+                    ...comment,
+                    concerning: adjudicated.concerning,
+                    identifiable: adjudicated.identifiable,
+                    mode: adjudicated.concerning ? 'redact' : adjudicated.identifiable ? 'rephrase' : 'original'
+                  };
+                }
+                return comment;
+              });
+            }
           }
+        } catch (adjudicationError) {
+          console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
+          // Continue without failing the entire scan
+        } finally {
+          gAny.__adjudicationCompleted.add(scanRunId);
+          console.log(`[ADJUDICATION] Marked adjudication as completed for scanRunId=${scanRunId}`);
         }
-      } catch (adjudicationError) {
-        console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
-        // Continue without failing the entire scan
       }
     }
 
