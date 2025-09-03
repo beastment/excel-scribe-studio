@@ -932,7 +932,14 @@ serve(async (req) => {
     // Call adjudicator if there are comments that need adjudication and no more batches
     console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}`);
     
-    if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
+    // Ensure adjudicator is only called once per scan run by checking completion status
+    // Use a global tracking mechanism since scan-comments can be called multiple times for batching
+    if (!gAny.__adjudicatorCompleted) {
+      gAny.__adjudicatorCompleted = new Set();
+    }
+    const alreadyAdjudicated = gAny.__adjudicatorCompleted.has(scanRunId);
+    
+    if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator && !alreadyAdjudicated) {
       console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
       
       try {
