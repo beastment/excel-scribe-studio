@@ -274,10 +274,10 @@ serve(async (req) => {
     }
     
 
-
+    
     // Allow incremental processing: only block if this is a duplicate initial request
     if (gAny.__runInProgress.has(scanRunId) && !isIncrementalRequest) {
-      console.log(`[RUN IN PROGRESS] scanRunId=${scanRunId} received duplicate initial request. Ignoring to prevent duplicate analysis calls.`);
+      console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already in progress. Skipping duplicate call.`);
       return new Response(JSON.stringify({
         comments: [],
         batchStart: batchStartValue,
@@ -288,8 +288,11 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     
+    console.log(`[RUN STATUS] scanRunId=${scanRunId}, isIncrementalRequest=${isIncrementalRequest}, runInProgress=${gAny.__runInProgress.has(scanRunId)}`);
+    
     // Mark run as in progress
     gAny.__runInProgress.add(scanRunId);
+    console.log(`[RUN STATUS] scanRunId=${scanRunId} marked as in progress`);
     
     const { 
       comments: inputComments, 
@@ -323,6 +326,36 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') || '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     );
+    
+    // Check database for run status to prevent duplicates across function instances
+    const { data: existingRun, error: runCheckError } = await supabase
+      .from('ai_logs')
+      .select('id, function_name, response_status, created_at')
+      .eq('scan_run_id', scanRunId)
+      .eq('function_name', 'scan-comments')
+      .eq('response_status', 'success')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    
+    if (runCheckError) {
+      console.error('[RUN CHECK] Error checking run status:', runCheckError);
+    } else if (existingRun && existingRun.length > 0) {
+      const lastRun = existingRun[0];
+      const runAge = Date.now() - new Date(lastRun.created_at).getTime();
+      const maxRunAge = 5 * 60 * 1000; // 5 minutes
+      
+      if (runAge < maxRunAge) {
+        console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed recently (${Math.round(runAge/1000)}s ago). Skipping duplicate call.`);
+        return new Response(JSON.stringify({
+          comments: [],
+          batchStart: batchStartValue,
+          batchSize: 0,
+          hasMore: false,
+          totalComments: requestBody.comments?.length || 0,
+          summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
 
     const { data: configs, error: configError } = await supabase
       .from('ai_configurations')
@@ -1261,8 +1294,10 @@ serve(async (req) => {
     if (!hasMoreBatches) {
       console.log(`[COMPLETION] All comments processed for scanRunId=${scanRunId}, marking as completed`);
       gAny.__runCompleted.add(scanRunId);
+      console.log(`[RUN STATUS] scanRunId=${scanRunId} marked as completed`);
     }
     gAny.__runInProgress.delete(scanRunId);
+    console.log(`[RUN STATUS] scanRunId=${scanRunId} removed from in progress`);
 
     // Restore console methods before returning
     try {
