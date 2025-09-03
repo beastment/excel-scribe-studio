@@ -930,6 +930,13 @@ serve(async (req) => {
           agreements: comment.adjudicationData.agreements
         }));
 
+        console.log(`[ADJUDICATION] Sending adjudicator config:`, {
+          provider: adjudicator.provider,
+          model: adjudicator.model,
+          promptLength: adjudicator.analysis_prompt?.length || 0,
+          maxTokens: adjudicator.max_tokens
+        });
+        
         const adjudicationResponse = await supabase.functions.invoke('adjudicator', {
           body: {
             comments: adjudicatorComments,

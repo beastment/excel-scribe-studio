@@ -256,6 +256,12 @@ serve(async (req) => {
     const logPrefix = `[RUN ${runId}]`;
 
     console.log(`${logPrefix} [ADJUDICATOR] Processing ${comments.length} comments with ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
+    console.log(`${logPrefix} [ADJUDICATOR] Config received:`, {
+      provider: adjudicatorConfig.provider,
+      model: adjudicatorConfig.model,
+      promptLength: adjudicatorConfig.prompt?.length || 0,
+      maxTokens: adjudicatorConfig.max_tokens
+    });
 
     // Check user credits before processing adjudication
     const authHeader = req.headers.get('authorization');
@@ -317,6 +323,11 @@ serve(async (req) => {
     try {
       // Use the prompt from the adjudicator configuration (same as Scan A and Scan B)
       const prompt = adjudicatorConfig.prompt;
+      
+      if (!prompt) {
+        throw new Error('Adjudicator prompt is missing or empty');
+      }
+      
       const input = buildAdjudicationInput(needsAdjudication);
 
       console.log(`${logPrefix} [AI REQUEST] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
