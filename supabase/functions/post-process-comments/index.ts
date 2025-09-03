@@ -154,14 +154,6 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       }
       throw error;
     }
-    const responseText = result.choices?.[0]?.message?.content || null;
-    
-    // Log the AI response if logger is provided
-    if (aiLogger && userId && scanRunId && phase && responseText) {
-      await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
-    }
-    
-    return responseText;
   } else if (provider === 'openai') {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout

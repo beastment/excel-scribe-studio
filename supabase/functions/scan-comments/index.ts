@@ -549,12 +549,32 @@ serve(async (req) => {
     }
     
     // Use the smaller batch size to ensure both scans can process the same batches
-    const finalBatchSize = Math.min(scanABatchSize, scanBBatchSize);
+    let finalBatchSize = Math.min(scanABatchSize, scanBBatchSize);
     
     console.log(`[BATCH_SELECTION] Individual batch sizes calculated:`);
     console.log(`[BATCH_SELECTION]   Scan A: ${scanABatchSize} comments`);
     console.log(`[BATCH_SELECTION]   Scan B: ${scanBBatchSize} comments`);
-    console.log(`[BATCH_SELECTION] Final batch size: min(${scanABatchSize}, ${scanBBatchSize}) = ${finalBatchSize}`);
+    console.log(`[BATCH_SELECTION] Initial final batch size: min(${scanABatchSize}, ${scanBBatchSize}) = ${finalBatchSize}`);
+    
+    // Small-dataset override: if the full dataset fits within token limits, process in a single batch
+    if (inputComments.length <= 50) {
+      try {
+        const safetyMultiplier = 1 - (safetyMarginPercent / 100);
+        const scanAInputAll = await estimateBatchInputTokens(inputComments, scanA.analysis_prompt, scanA.provider, scanA.model);
+        const scanAOutputAll = inputComments.length * (scanA.tokens_per_comment || 13);
+        const scanBInputAll = await estimateBatchInputTokens(inputComments, scanB.analysis_prompt, scanB.provider, scanB.model);
+        const scanBOutputAll = inputComments.length * (scanB.tokens_per_comment || 13);
+        const fitsA = scanAInputAll <= Math.floor(scanATokenLimits.input_token_limit * safetyMultiplier) && scanAOutputAll <= Math.floor(scanATokenLimits.output_token_limit * safetyMultiplier);
+        const fitsB = scanBInputAll <= Math.floor(scanBTokenLimits.input_token_limit * safetyMultiplier) && scanBOutputAll <= Math.floor(scanBTokenLimits.output_token_limit * safetyMultiplier);
+        console.log(`[BATCH_SELECTION] Small dataset check: fitsA=${fitsA} fitsB=${fitsB}`);
+        if (fitsA && fitsB) {
+          finalBatchSize = inputComments.length;
+          console.log(`[BATCH_SELECTION] Overriding finalBatchSize to ${finalBatchSize} (single batch for small dataset)`);
+        }
+      } catch (e) {
+        console.warn('[BATCH_SELECTION] Small dataset override check failed, keeping computed batch size:', e);
+      }
+    }
     
     if (finalBatchSize === scanABatchSize) {
       console.log(`[BATCH_SELECTION] Scan A batch size is the limiting factor`);
