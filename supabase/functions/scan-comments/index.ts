@@ -105,14 +105,14 @@ const processAdjudicationBatches = async (
         originalRow: comment.originalRow,
         scannedIndex: comment.scannedIndex,
         scanAResult: {
-          ...comment.scanAResult,
-          reasoning: comment.scanAResult?.reasoning || 'No reasoning provided'
+          ...comment.adjudicationData.scanAResult,
+          reasoning: comment.adjudicationData.scanAResult?.reasoning || 'No reasoning provided'
         },
         scanBResult: {
-          ...comment.scanBResult,
-          reasoning: comment.scanBResult?.reasoning || 'No reasoning provided'
+          ...comment.adjudicationData.scanBResult,
+          reasoning: comment.adjudicationData.scanBResult?.reasoning || 'No reasoning provided'
         },
-        agreements: comment.agreements
+        agreements: comment.adjudicationData.agreements
       }));
 
       console.log(`[ADJUDICATION] Calling adjudicator for batch ${batchIndex + 1} with ${comments.length} comments`);

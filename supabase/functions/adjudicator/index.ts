@@ -138,7 +138,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
     
-    // Log the AI response
+    // Log the AI response //
     if (aiLogger && userId && scanRunId) {
       await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
     }
