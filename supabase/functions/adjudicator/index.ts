@@ -140,7 +140,7 @@ Identifiable: ${comment.scanBResult.identifiable ? 'Y' : 'N'}
 ${items}`;
 }
 
-// Parse adjudication response
+// Parse adjudication response //
 function parseAdjudicationResponse(response: string, expectedCount: number): Array<{ index: number; concerning: boolean; identifiable: boolean }> {
   try {
     // First try to parse the simple key-value format (i:1\nA:N\nB:Y)

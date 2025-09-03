@@ -38,7 +38,7 @@ export class AILogger {
     this.functionStartTime = Date.now();
   }
   
-  // Log an AI request (call this before making the AI call)
+  // Log an AI request (call this before making the AI call) //
   async logRequest(entry: Omit<AILogEntry, 'responseText' | 'responseTokens' | 'responseStatus' | 'responseError' | 'processingTimeMs'>): Promise<void> {
     try {
       // Count input tokens
