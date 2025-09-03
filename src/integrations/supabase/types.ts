@@ -20,12 +20,14 @@ export type Database = {
           created_at: string
           id: string
           model: string
-          preferred_batch_size: number | null
           provider: string
           redact_prompt: string
           rephrase_prompt: string
           rpm_limit: number | null
+          safety_margin_percent: number | null
           scanner_type: string
+          temperature: number | null
+          tokens_per_comment: number | null
           tpm_limit: number | null
           updated_at: string
         }
@@ -34,12 +36,14 @@ export type Database = {
           created_at?: string
           id?: string
           model: string
-          preferred_batch_size?: number | null
           provider: string
           redact_prompt: string
           rephrase_prompt: string
           rpm_limit?: number | null
+          safety_margin_percent?: number | null
           scanner_type: string
+          temperature?: number | null
+          tokens_per_comment?: number | null
           tpm_limit?: number | null
           updated_at?: string
         }
@@ -48,41 +52,91 @@ export type Database = {
           created_at?: string
           id?: string
           model?: string
-          preferred_batch_size?: number | null
           provider?: string
           redact_prompt?: string
           rephrase_prompt?: string
           rpm_limit?: number | null
+          safety_margin_percent?: number | null
           scanner_type?: string
+          temperature?: number | null
+          tokens_per_comment?: number | null
           tpm_limit?: number | null
           updated_at?: string
         }
         Relationships: []
       }
-      batch_sizing_config: {
+      ai_logs: {
         Row: {
-          id: string
-          redaction_io_ratio: number | null
-          rephrase_io_ratio: number | null
-          safety_margin_percent: number | null
           created_at: string
-          updated_at: string
+          function_name: string
+          id: string
+          model: string
+          phase: string | null
+          processing_time_ms: number | null
+          provider: string
+          request_input: string
+          request_max_tokens: number | null
+          request_prompt: string
+          request_temperature: number | null
+          request_tokens: number | null
+          request_type: string
+          response_error: string | null
+          response_status: string | null
+          response_text: string | null
+          response_tokens: number | null
+          scan_run_id: string | null
+          time_finished: string | null
+          time_started: string | null
+          total_run_time_ms: number | null
+          user_id: string | null
         }
         Insert: {
-          id?: string
-          redaction_io_ratio?: number | null
-          rephrase_io_ratio?: number | null
-          safety_margin_percent?: number | null
           created_at?: string
-          updated_at?: string
+          function_name: string
+          id?: string
+          model: string
+          phase?: string | null
+          processing_time_ms?: number | null
+          provider: string
+          request_input: string
+          request_max_tokens?: number | null
+          request_prompt: string
+          request_temperature?: number | null
+          request_tokens?: number | null
+          request_type: string
+          response_error?: string | null
+          response_status?: string | null
+          response_text?: string | null
+          response_tokens?: number | null
+          scan_run_id?: string | null
+          time_finished?: string | null
+          time_started?: string | null
+          total_run_time_ms?: number | null
+          user_id?: string | null
         }
         Update: {
-          id?: string
-          redaction_io_ratio?: number | null
-          rephrase_io_ratio?: number | null
-          safety_margin_percent?: number | null
           created_at?: string
-          updated_at?: string
+          function_name?: string
+          id?: string
+          model?: string
+          phase?: string | null
+          processing_time_ms?: number | null
+          provider?: string
+          request_input?: string
+          request_max_tokens?: number | null
+          request_prompt?: string
+          request_temperature?: number | null
+          request_tokens?: number | null
+          request_type?: string
+          response_error?: string | null
+          response_status?: string | null
+          response_text?: string | null
+          response_tokens?: number | null
+          scan_run_id?: string | null
+          time_finished?: string | null
+          time_started?: string | null
+          total_run_time_ms?: number | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -157,6 +211,42 @@ export type Database = {
           ip?: unknown
           is_locked?: boolean
           lockout_until?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      batch_sizing_config: {
+        Row: {
+          adjudicator_io_ratio: number | null
+          created_at: string
+          id: string
+          redaction_io_ratio: number | null
+          rephrase_io_ratio: number | null
+          safety_margin_percent: number | null
+          scan_a_io_ratio: number | null
+          scan_b_io_ratio: number | null
+          updated_at: string
+        }
+        Insert: {
+          adjudicator_io_ratio?: number | null
+          created_at?: string
+          id?: string
+          redaction_io_ratio?: number | null
+          rephrase_io_ratio?: number | null
+          safety_margin_percent?: number | null
+          scan_a_io_ratio?: number | null
+          scan_b_io_ratio?: number | null
+          updated_at?: string
+        }
+        Update: {
+          adjudicator_io_ratio?: number | null
+          created_at?: string
+          id?: string
+          redaction_io_ratio?: number | null
+          rephrase_io_ratio?: number | null
+          safety_margin_percent?: number | null
+          scan_a_io_ratio?: number | null
+          scan_b_io_ratio?: number | null
           updated_at?: string
         }
         Relationships: []
@@ -422,6 +512,7 @@ export type Database = {
           output_token_limit: number | null
           provider: string
           rpm_limit: number | null
+          temperature: number | null
           tpm_limit: number | null
           updated_at: string
         }
@@ -433,6 +524,7 @@ export type Database = {
           output_token_limit?: number | null
           provider: string
           rpm_limit?: number | null
+          temperature?: number | null
           tpm_limit?: number | null
           updated_at?: string
         }
@@ -444,6 +536,7 @@ export type Database = {
           output_token_limit?: number | null
           provider?: string
           rpm_limit?: number | null
+          temperature?: number | null
           tpm_limit?: number | null
           updated_at?: string
         }
