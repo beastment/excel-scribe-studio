@@ -778,6 +778,7 @@ serve(async (req) => {
 
         if (needsAdjudication) {
           totalSummary.needsAdjudication++;
+          console.log(`[ADJUDICATION] Comment ${comment.id} needs adjudication: concerning disagreement=${concerningDisagreement} (A:${scanAResult.concerning}, B:${scanBResult.concerning}), identifiable disagreement=${identifiableDisagreement} (A:${scanAResult.identifiable}, B:${scanBResult.identifiable})`);
         }
 
         // Set flags based on scan results (will be resolved by adjudicator later)
@@ -909,6 +910,8 @@ serve(async (req) => {
     }
     
     // Call adjudicator if there are comments that need adjudication and no more batches
+    console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}`);
+    
     if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
       console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
       
