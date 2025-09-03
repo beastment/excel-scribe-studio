@@ -158,8 +158,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
     
+    let response;
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY') || ''}`,

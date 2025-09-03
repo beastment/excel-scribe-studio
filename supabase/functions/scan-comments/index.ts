@@ -998,6 +998,9 @@ serve(async (req) => {
               return comment;
             });
           }
+          
+          // Mark adjudication as completed for this scan run
+          gAny.__runCompleted?.add(adjudicatorKey);
         }
       } catch (adjudicationError) {
         console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
