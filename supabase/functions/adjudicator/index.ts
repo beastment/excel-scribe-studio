@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { AILogger } from './ai-logger.ts';
 
 
 const corsHeaders = {
@@ -60,7 +59,7 @@ interface AdjudicationResponse {
 }
 
 // AI calling function
-async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, scanRunId?: string, aiLogger?: AILogger, temperature?: number) {
+async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, scanRunId?: string, aiLogger?: any, temperature?: number) {
   const payload = {
     model: model, // Add the model parameter for OpenAI
     messages: [
@@ -83,19 +82,11 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
     if (!response.ok) {
       const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
-              if (aiLogger && userId && scanRunId) {
-          await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage, undefined);
-        }
       throw new Error(errorMessage);
     }
 
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
-    
-    // Log the AI response
-    if (aiLogger && userId && scanRunId) {
-      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
-    }
     
     return responseText;
   } else if (provider === 'openai') {
@@ -110,19 +101,11 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
     if (!response.ok) {
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
-      if (aiLogger && userId && scanRunId) {
-        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage);
-      }
       throw new Error(errorMessage);
     }
 
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
-    
-    // Log the AI response
-    if (aiLogger && userId && scanRunId) {
-      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
-    }
     
     return responseText;
   } else if (provider === 'bedrock') {
@@ -389,9 +372,7 @@ serve(async (req) => {
       // Process all comments in a single batch (rate limiting removed)
       let batchedComments: typeof needsAdjudication[] = [needsAdjudication];
 
-      // Initialize AI logger
-      const aiLogger = new AILogger();
-      aiLogger.setFunctionStartTime(overallStartTime);
+
       
       // Process batches with TPM enforcement
       let allAdjudicatedResults: any[] = [];
@@ -408,20 +389,7 @@ serve(async (req) => {
         
 
         
-        // Log the AI request for this batch
-        await aiLogger.logRequest({
-          userId: user.id,
-          scanRunId: runId.toString(),
-          functionName: 'adjudicator',
-          provider: adjudicatorConfig.provider,
-          model: adjudicatorConfig.model,
-          requestType: 'adjudication',
-          phase: `adjudication_batch_${batchIndex + 1}`,
-          requestPrompt: prompt,
-          requestInput: batchInput,
-          requestTemperature: effectiveTemperature,
-          requestMaxTokens: actualMaxTokens
-        });
+
         
         // Call AI for this batch
         const rawResponse = await callAI(
@@ -432,7 +400,7 @@ serve(async (req) => {
           actualMaxTokens,
           user.id,
           runId.toString(),
-          aiLogger,
+          undefined,
           effectiveTemperature
         );
 
