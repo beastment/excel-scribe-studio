@@ -35,7 +35,7 @@ function getEffectiveMaxTokens(config: any): number {
   return 1000;
 }
 
-// Default batch size for post-processing - will be dynamically calculated based on model limits
+// Default batch size for post-processing - will be dynamically calculated based on model limits //
 const DEFAULT_POST_PROCESS_BATCH_SIZE = 100;
 
 const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
