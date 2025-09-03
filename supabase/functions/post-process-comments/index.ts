@@ -133,6 +133,16 @@ async function callAI(provider: string, model: string, prompt: string, input: st
         }
         throw new Error(errorMessage);
       }
+
+      const result = await response.json();
+      const responseText = result.choices?.[0]?.message?.content || null;
+      
+      // Log the AI response if logger is provided
+      if (aiLogger && userId && scanRunId && phase && responseText) {
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
+      }
+      
+      return responseText;
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
@@ -144,8 +154,6 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       }
       throw error;
     }
-
-    const result = await response.json();
     const responseText = result.choices?.[0]?.message?.content || null;
     
     // Log the AI response if logger is provided

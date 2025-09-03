@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { AILogger } from './ai-logger.ts';
 
 
 const corsHeaders = {
@@ -70,6 +71,23 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     max_tokens: maxTokens || 4096
   };
 
+  // Log the AI request if logger is provided
+  if (aiLogger && userId && scanRunId) {
+    await aiLogger.logRequest({
+      userId,
+      scanRunId,
+      functionName: 'adjudicator',
+      provider,
+      model,
+      requestType: 'adjudication',
+      phase: 'adjudication',
+      requestPrompt: prompt,
+      requestInput: input,
+      requestTemperature: temperature || 0,
+      requestMaxTokens: maxTokens
+    });
+  }
+
   if (provider === 'azure') {
     const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
       method: 'POST',
@@ -82,12 +100,20 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
     if (!response.ok) {
       const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
+      if (aiLogger && userId && scanRunId) {
+        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage, undefined);
+      }
       throw new Error(errorMessage);
     }
 
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
     
+    // Log the AI response
+    if (aiLogger && userId && scanRunId) {
+      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
+    }
+
     return responseText;
   } else if (provider === 'openai') {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -101,12 +127,20 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
     if (!response.ok) {
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
+      if (aiLogger && userId && scanRunId) {
+        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage, undefined);
+      }
       throw new Error(errorMessage);
     }
 
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
     
+    // Log the AI response
+    if (aiLogger && userId && scanRunId) {
+      await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
+    }
+
     return responseText;
   } else if (provider === 'bedrock') {
     // Bedrock implementation would go here
@@ -140,7 +174,7 @@ Identifiable: ${comment.scanBResult.identifiable ? 'Y' : 'N'}
 ${items}`;
 }
 
-// Parse adjudication response //
+// Parse adjudication response
 function parseAdjudicationResponse(response: string, expectedCount: number): Array<{ index: number; concerning: boolean; identifiable: boolean }> {
   try {
     // First try to parse the simple key-value format (i:1\nA:N\nB:Y)
@@ -372,7 +406,9 @@ serve(async (req) => {
       // Process all comments in a single batch (rate limiting removed)
       let batchedComments: typeof needsAdjudication[] = [needsAdjudication];
 
-
+      // Initialize AI logger for this adjudication run
+      const aiLogger = new AILogger();
+      aiLogger.setFunctionStartTime(overallStartTime);
       
       // Process batches with TPM enforcement
       let allAdjudicatedResults: any[] = [];
@@ -387,10 +423,6 @@ serve(async (req) => {
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}/${batchedComments.length}] Processing ${batch.length} comments`);
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Estimated tokens: ${batchTotalTokens} (${batchEstimatedInputTokens} input + ${batchEstimatedOutputTokens} output)`);
         
-
-        
-
-        
         // Call AI for this batch
         const rawResponse = await callAI(
           adjudicatorConfig.provider,
@@ -400,14 +432,12 @@ serve(async (req) => {
           actualMaxTokens,
           user.id,
           runId.toString(),
-          undefined,
+          aiLogger,
           effectiveTemperature
         );
 
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] AI RESPONSE ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] rawResponse=${JSON.stringify(rawResponse).substring(0, 500)}...`);
-        
-
         
         // Parse the batch response
         const batchResults = parseAdjudicationResponse(rawResponse, batch.length);
@@ -452,27 +482,27 @@ serve(async (req) => {
         };
       });
 
-             const totalRunTimeMs = Date.now() - overallStartTime;
+      const totalRunTimeMs = Date.now() - overallStartTime;
        
-       const summary = {
-         total: comments.length,
-         resolved: needsAdjudication.length,
-         errors: 0
-       };
+      const summary = {
+        total: comments.length,
+        resolved: needsAdjudication.length,
+        errors: 0
+      };
 
-       console.log(`${logPrefix} [ADJUDICATOR] Completed: ${summary.resolved} resolved, ${summary.total - summary.resolved} already agreed`);
-       console.log(`${logPrefix} [ADJUDICATOR] No credits deducted - adjudication is free`);
-       console.log(`${logPrefix} [TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`);
+      console.log(`${logPrefix} [ADJUDICATOR] Completed: ${summary.resolved} resolved, ${summary.total - summary.resolved} already agreed`);
+      console.log(`${logPrefix} [ADJUDICATOR] No credits deducted - adjudication is free`);
+      console.log(`${logPrefix} [TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`);
 
-       return new Response(
-         JSON.stringify({
-           success: true,
-           adjudicatedComments,
-           summary,
-           totalRunTimeMs: totalRunTimeMs
-         }),
-         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-       );
+      return new Response(
+        JSON.stringify({
+          success: true,
+          adjudicatedComments,
+          summary,
+          totalRunTimeMs: totalRunTimeMs
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
 
     } catch (error) {
       console.error(`${logPrefix} [ADJUDICATOR] Error during adjudication:`, error);
