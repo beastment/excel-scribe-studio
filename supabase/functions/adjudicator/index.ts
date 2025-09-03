@@ -254,7 +254,8 @@ serve(async (req) => {
   const overallStartTime = Date.now(); // Track overall process time
 
   try {
-    const { comments, adjudicatorConfig, scanRunId }: AdjudicationRequest = await req.json()
+    const request: AdjudicationRequest = await req.json();
+    const { comments, adjudicatorConfig, scanRunId, batchIndex, batchKey } = request;
     
     if (!comments || !Array.isArray(comments) || comments.length === 0) {
       return new Response(
@@ -309,9 +310,11 @@ serve(async (req) => {
     // Adjudication is now free - no credit checking needed
     console.log(`${logPrefix} [ADJUDICATOR] Adjudication is free - no credits required`);
     
-    const needsAdjudication = comments.filter(c => 
-      c.agreements.concerning === null || c.agreements.identifiable === null
-    );
+    const needsAdjudication = comments.filter(c => {
+      // Safely check if agreements exist and have null values
+      const agreements = c.agreements || {};
+      return agreements.concerning === null || agreements.identifiable === null;
+    });
 
     // Filter comments that need adjudication (where agreements are null)
 
@@ -320,13 +323,16 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
-          adjudicatedComments: comments.map(c => ({
-            id: c.id,
-            concerning: c.agreements.concerning !== null ? c.agreements.concerning : c.scanAResult.concerning,
-            identifiable: c.agreements.identifiable !== null ? c.agreements.identifiable : c.scanAResult.identifiable,
-            reasoning: 'No adjudication needed - scanners agreed',
-            model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
-          })),
+          adjudicatedComments: comments.map(c => {
+            const agreements = c.agreements || {};
+            return {
+              id: c.id,
+              concerning: agreements.concerning !== null ? agreements.concerning : c.scanAResult.concerning,
+              identifiable: agreements.identifiable !== null ? agreements.identifiable : c.scanAResult.identifiable,
+              reasoning: 'No adjudication needed - scanners agreed',
+              model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
+            };
+          }),
           summary: {
             total: comments.length,
             resolved: 0,
@@ -406,7 +412,7 @@ serve(async (req) => {
       console.log(`${logPrefix} [RATE_LIMITS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
 
       // Check if this batch has already been processed (additional safety check)
-      if (request.batchKey) {
+      if (batchKey) {
         const buildAdjudicationInput = (comments: any[]) => {
           return comments.map(comment => {
             const scanA = comment.scanAResult || {};
@@ -446,11 +452,11 @@ serve(async (req) => {
       aiLogger.setFunctionStartTime(overallStartTime);
       
       // Log batch information if provided
-      if (request.batchIndex !== undefined) {
-        console.log(`${logPrefix} [BATCH_INFO] Processing batch ${request.batchIndex + 1} with ${needsAdjudication.length} comments`);
+      if (batchIndex !== undefined) {
+        console.log(`${logPrefix} [BATCH_INFO] Processing batch ${batchIndex + 1} with ${needsAdjudication.length} comments`);
       }
-      if (request.batchKey) {
-        console.log(`${logPrefix} [BATCH_KEY] Batch key: ${request.batchKey}`);
+      if (batchKey) {
+        console.log(`${logPrefix} [BATCH_KEY] Batch key: ${batchKey}`);
       }
       
       // Process batches with TPM enforcement
@@ -516,10 +522,11 @@ serve(async (req) => {
         }
 
         // For comments that don't need adjudication, use agreement results
+        const agreements = comment.agreements || {};
         return {
           id: comment.id,
-          concerning: comment.agreements.concerning !== null ? comment.agreements.concerning : comment.scanAResult.concerning,
-          identifiable: comment.agreements.identifiable !== null ? comment.agreements.identifiable : comment.scanAResult.identifiable,
+          concerning: agreements.concerning !== null ? agreements.concerning : comment.scanAResult.concerning,
+          identifiable: agreements.identifiable !== null ? agreements.identifiable : comment.scanAResult.identifiable,
           reasoning: 'No adjudication needed - scanners agreed',
           model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
         };
