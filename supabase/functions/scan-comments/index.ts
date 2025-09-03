@@ -81,6 +81,10 @@ const processAdjudicationBatches = async (
   const batches = createAdjudicationBatches(commentsToAdjudicate, maxBatchSize);
   const allResults: any[] = [];
   
+  // Track completed batches for this run to prevent duplicates within the same execution
+  const gAny: any = globalThis as any;
+  const completedBatchKeys = gAny.__adjudicationBatchesCompleted || new Set<string>();
+  
   console.log(`[ADJUDICATION] Processing ${commentsToAdjudicate.length} comments in ${batches.length} batches`);
   
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
@@ -89,11 +93,18 @@ const processAdjudicationBatches = async (
     
     console.log(`[ADJUDICATION] Processing batch ${batchIndex + 1}/${batches.length} (${comments.length} comments, key: ${batchKey})`);
     
-    // Check for duplicate batch
+    // Check for duplicate batch in memory (same execution)
+    const batchKeyForRun = `${scanRunId}-${batchKey}`;
+    if (completedBatchKeys.has(batchKeyForRun)) {
+      console.log(`[ADJUDICATION] Batch ${batchIndex + 1} already processed in this execution, skipping duplicate call`);
+      continue;
+    }
+    
+    // Check for duplicate batch in database (previous executions)
     const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, comments);
     
     if (isDuplicate) {
-      console.log(`[ADJUDICATION] Batch ${batchIndex + 1} already processed, skipping duplicate call`);
+      console.log(`[ADJUDICATION] Batch ${batchIndex + 1} already processed in database, skipping duplicate call`);
       continue;
     }
     
@@ -141,6 +152,10 @@ const processAdjudicationBatches = async (
       }
 
       console.log(`[ADJUDICATION] Batch ${batchIndex + 1} completed successfully`);
+      
+      // Mark this batch as completed to prevent duplicates
+      completedBatchKeys.add(batchKeyForRun);
+      console.log(`[ADJUDICATION] Marked batch ${batchIndex + 1} (key: ${batchKeyForRun}) as completed`);
       
       // Add results to the collection
       if (adjudicationResponse.data?.adjudicatedComments) {
@@ -206,6 +221,7 @@ serve(async (req) => {
     gAny.__runInProgress = gAny.__runInProgress || new Set<string>();
     gAny.__runCompleted = gAny.__runCompleted || new Set<string>();
     gAny.__analysisStarted = gAny.__analysisStarted || new Set<string>();
+    gAny.__adjudicationBatchesCompleted = gAny.__adjudicationBatchesCompleted || new Set<string>();
     
     // Prefix all logs for this request with the run id.
     const __root = globalThis as any;
@@ -256,6 +272,8 @@ serve(async (req) => {
         summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+    
+
 
     // Allow incremental processing: only block if this is a duplicate initial request
     if (gAny.__runInProgress.has(scanRunId) && !isIncrementalRequest) {
