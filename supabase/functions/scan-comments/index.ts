@@ -26,7 +26,7 @@ const createAdjudicationKey = (comments: any[]): string => {
 };
 
 const buildAdjudicationInput = (comments: any[]): string => {
-  // Build the input string that will be sent to adjudicator
+  // Build the input string that will be sent to adjudicator //
   return comments.map(comment => {
     const scanA = comment.scanAResult || {};
     const scanB = comment.scanBResult || {};

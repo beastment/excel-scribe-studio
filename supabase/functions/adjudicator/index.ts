@@ -145,7 +145,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
     return responseText;
   } else if (provider === 'bedrock') {
-    // Bedrock implementation would go here
+    // Bedrock implementation would go here //
     throw new Error('Bedrock provider not yet implemented in adjudicator function');
   } else {
     throw new Error(`Unsupported provider: ${provider}`);
