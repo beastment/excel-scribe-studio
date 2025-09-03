@@ -171,13 +171,21 @@ serve(async (req) => {
 
     const scanA = configs.find(c => c.scanner_type === 'scan_a');
     const scanB = configs.find(c => c.scanner_type === 'scan_b');
+    const adjudicator = configs.find(c => c.scanner_type === 'adjudicator');
 
     if (!scanA || !scanB) {
       throw new Error('Missing required AI configurations: scan_a and scan_b');
     }
 
+    if (!adjudicator) {
+      console.warn('No adjudicator configuration found - adjudication will be skipped');
+    }
+
     console.log(`[CONFIG] Scan A: ${scanA.provider}/${scanA.model}, Scan B: ${scanB.provider}/${scanB.model}`);
     console.log(`[CONFIG] Scan A tokens_per_comment: ${scanA.tokens_per_comment || 13}, Scan B tokens_per_comment: ${scanB.tokens_per_comment || 13}`);
+    if (adjudicator) {
+      console.log(`[CONFIG] Adjudicator: ${adjudicator.provider}/${adjudicator.model}`);
+    }
 
     // Fetch model configurations for token limits
     const { data: modelConfigs, error: modelError } = await supabase
@@ -901,13 +909,36 @@ serve(async (req) => {
     }
     
     // Call adjudicator if there are comments that need adjudication and no more batches
-    if (!hasMoreBatches && totalSummary.needsAdjudication > 0) {
+    if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
       console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
       
       try {
+        // Transform comments to match adjudicator's expected format
+        const adjudicatorComments = allScannedComments.map(comment => ({
+          id: comment.id,
+          originalText: comment.originalText || comment.text,
+          originalRow: comment.originalRow,
+          scannedIndex: comment.scannedIndex,
+          scanAResult: {
+            ...comment.adjudicationData.scanAResult,
+            reasoning: comment.adjudicationData.scanAResult.reasoning || 'No reasoning provided'
+          },
+          scanBResult: {
+            ...comment.adjudicationData.scanBResult,
+            reasoning: comment.adjudicationData.scanBResult.reasoning || 'No reasoning provided'
+          },
+          agreements: comment.adjudicationData.agreements
+        }));
+
         const adjudicationResponse = await supabase.functions.invoke('adjudicator', {
           body: {
-            comments: allScannedComments,
+            comments: adjudicatorComments,
+            adjudicatorConfig: {
+              provider: adjudicator.provider,
+              model: adjudicator.model,
+              prompt: adjudicator.analysis_prompt,
+              max_tokens: adjudicator.max_tokens
+            },
             scanRunId: scanRunId
           },
           headers: {
@@ -920,8 +951,22 @@ serve(async (req) => {
         } else {
           console.log('[ADJUDICATION] Adjudication completed successfully');
           // Update the comments with adjudicated results if available
-          if (adjudicationResponse.data?.comments) {
-            allScannedComments = adjudicationResponse.data.comments;
+          if (adjudicationResponse.data?.adjudicatedComments) {
+            // Map adjudicated results back to the original comment structure
+            const adjudicatedMap = new Map(adjudicationResponse.data.adjudicatedComments.map(adj => [adj.id, adj]));
+            
+            allScannedComments = allScannedComments.map(comment => {
+              const adjudicated = adjudicatedMap.get(comment.id);
+              if (adjudicated) {
+                return {
+                  ...comment,
+                  concerning: adjudicated.concerning,
+                  identifiable: adjudicated.identifiable,
+                  mode: adjudicated.concerning ? 'redact' : adjudicated.identifiable ? 'rephrase' : 'original'
+                };
+              }
+              return comment;
+            });
           }
         }
       } catch (adjudicationError) {

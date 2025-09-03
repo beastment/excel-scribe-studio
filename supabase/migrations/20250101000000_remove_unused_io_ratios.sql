@@ -13,3 +13,4 @@ SET
   rephrase_io_ratio = COALESCE(rephrase_io_ratio, 2.3),
   safety_margin_percent = COALESCE(safety_margin_percent, 15)
 WHERE id IS NOT NULL;
+

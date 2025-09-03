@@ -36,3 +36,4 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_batch_sizing_config_updated_at BEFORE UPDATE ON public.batch_sizing_config
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+
