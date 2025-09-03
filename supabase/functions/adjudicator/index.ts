@@ -40,6 +40,8 @@ interface AdjudicationRequest {
     max_tokens?: number;
   };
   scanRunId?: string;
+  batchIndex?: number; // Track which batch this is
+  batchKey?: string; // Unique key for this batch to prevent duplicates
 }
 //
 interface AdjudicationResponse {
@@ -403,12 +405,53 @@ serve(async (req) => {
       const rpmLimit = modelCfg?.rpm_limit;
       console.log(`${logPrefix} [RATE_LIMITS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
 
+      // Check if this batch has already been processed (additional safety check)
+      if (request.batchKey) {
+        const buildAdjudicationInput = (comments: any[]) => {
+          return comments.map(comment => {
+            const scanA = comment.scanAResult || {};
+            const scanB = comment.scanBResult || {};
+            return `<<<ITEM ${comment.scannedIndex || comment.id}>>>\nText: ${comment.originalText || comment.text}\nAI1:\nConcerning: ${scanA.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanA.identifiable ? 'Y' : 'N'}\nAI2:\nConcerning: ${scanB.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanB.identifiable ? 'Y' : 'N'}\n<<<END ${comment.scannedIndex || comment.id}>>>`;
+          }).join('\n\n');
+        };
+
+        const existingLog = await supabase
+          .from('ai_logs')
+          .select('id')
+          .eq('scan_run_id', runId)
+          .eq('function_name', 'adjudicator')
+          .eq('response_status', 'success')
+          .eq('request_input', buildAdjudicationInput(needsAdjudication))
+          .limit(1);
+        
+        if (existingLog.data && existingLog.data.length > 0) {
+          console.log(`${logPrefix} [DUPLICATE_CHECK] This batch has already been processed, returning early`);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              adjudicatedComments: [],
+              summary: { total: 0, resolved: 0, errors: 0 },
+              message: 'Batch already processed'
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       // Process all comments in a single batch (rate limiting removed)
       let batchedComments: typeof needsAdjudication[] = [needsAdjudication];
 
       // Initialize AI logger for this adjudication run
       const aiLogger = new AILogger();
       aiLogger.setFunctionStartTime(overallStartTime);
+      
+      // Log batch information if provided
+      if (request.batchIndex !== undefined) {
+        console.log(`${logPrefix} [BATCH_INFO] Processing batch ${request.batchIndex + 1} with ${needsAdjudication.length} comments`);
+      }
+      if (request.batchKey) {
+        console.log(`${logPrefix} [BATCH_KEY] Batch key: ${request.batchKey}`);
+      }
       
       // Process batches with TPM enforcement
       let allAdjudicatedResults: any[] = [];

@@ -11,6 +11,159 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
+// Adjudication deduplication and batching utilities
+interface AdjudicationBatch {
+  comments: any[];
+  batchIndex: number;
+  batchKey: string;
+}
+
+const createAdjudicationKey = (comments: any[]): string => {
+  // Create a unique key based on comment indices and content hash
+  const indices = comments.map(c => c.id || c.scannedIndex).sort();
+  const contentHash = comments.map(c => c.originalText || c.text).join('|').length;
+  return `${indices.join(',')}-${contentHash}`;
+};
+
+const buildAdjudicationInput = (comments: any[]): string => {
+  // Build the input string that will be sent to adjudicator
+  return comments.map(comment => {
+    const scanA = comment.scanAResult || {};
+    const scanB = comment.scanBResult || {};
+    return `<<<ITEM ${comment.scannedIndex || comment.id}>>>\nText: ${comment.originalText || comment.text}\nAI1:\nConcerning: ${scanA.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanA.identifiable ? 'Y' : 'N'}\nAI2:\nConcerning: ${scanB.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanB.identifiable ? 'Y' : 'N'}\n<<<END ${comment.scannedIndex || comment.id}>>>`;
+  }).join('\n\n');
+};
+
+const checkForDuplicateAdjudication = async (supabase: any, scanRunId: string, comments: any[]): Promise<boolean> => {
+  try {
+    const inputString = buildAdjudicationInput(comments);
+    const existingAdjudication = await supabase
+      .from('ai_logs')
+      .select('id, response_status')
+      .eq('scan_run_id', scanRunId)
+      .eq('function_name', 'adjudicator')
+      .eq('response_status', 'success')
+      .eq('request_input', inputString)
+      .limit(1);
+
+    return existingAdjudication.data && existingAdjudication.data.length > 0;
+  } catch (error) {
+    console.error('[ADJUDICATION] Error checking for duplicates:', error);
+    return false; // If we can't check, proceed with the call
+  }
+};
+
+const createAdjudicationBatches = (comments: any[], maxBatchSize: number = 50): AdjudicationBatch[] => {
+  const batches: AdjudicationBatch[] = [];
+  
+  for (let i = 0; i < comments.length; i += maxBatchSize) {
+    const batchComments = comments.slice(i, i + maxBatchSize);
+    const batchKey = createAdjudicationKey(batchComments);
+    
+    batches.push({
+      comments: batchComments,
+      batchIndex: Math.floor(i / maxBatchSize),
+      batchKey: batchKey
+    });
+  }
+  
+  return batches;
+};
+
+const processAdjudicationBatches = async (
+  supabase: any,
+  scanRunId: string,
+  commentsToAdjudicate: any[],
+  adjudicatorConfig: any,
+  authHeader: string,
+  maxBatchSize: number = 50
+): Promise<any[]> => {
+  const batches = createAdjudicationBatches(commentsToAdjudicate, maxBatchSize);
+  const allResults: any[] = [];
+  
+  console.log(`[ADJUDICATION] Processing ${commentsToAdjudicate.length} comments in ${batches.length} batches`);
+  
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex];
+    const { comments, batchKey } = batch;
+    
+    console.log(`[ADJUDICATION] Processing batch ${batchIndex + 1}/${batches.length} (${comments.length} comments, key: ${batchKey})`);
+    
+    // Check for duplicate batch
+    const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, comments);
+    
+    if (isDuplicate) {
+      console.log(`[ADJUDICATION] Batch ${batchIndex + 1} already processed, skipping duplicate call`);
+      continue;
+    }
+    
+    try {
+      // Transform comments to match adjudicator's expected format
+      const adjudicatorComments = comments.map(comment => ({
+        id: comment.id,
+        originalText: comment.originalText || comment.text,
+        originalRow: comment.originalRow,
+        scannedIndex: comment.scannedIndex,
+        scanAResult: {
+          ...comment.scanAResult,
+          reasoning: comment.scanAResult?.reasoning || 'No reasoning provided'
+        },
+        scanBResult: {
+          ...comment.scanBResult,
+          reasoning: comment.scanBResult?.reasoning || 'No reasoning provided'
+        },
+        agreements: comment.agreements
+      }));
+
+      console.log(`[ADJUDICATION] Calling adjudicator for batch ${batchIndex + 1} with ${comments.length} comments`);
+      
+      const adjudicationResponse = await supabase.functions.invoke('adjudicator', {
+        body: {
+          comments: adjudicatorComments,
+          adjudicatorConfig: {
+            provider: adjudicatorConfig.provider,
+            model: adjudicatorConfig.model,
+            prompt: adjudicatorConfig.prompt,
+            max_tokens: adjudicatorConfig.max_tokens
+          },
+          scanRunId: scanRunId,
+          batchIndex: batchIndex,
+          batchKey: batchKey
+        },
+        headers: {
+          authorization: authHeader
+        }
+      });
+
+      if (adjudicationResponse.error) {
+        console.error(`[ADJUDICATION] Error calling adjudicator for batch ${batchIndex + 1}:`, adjudicationResponse.error);
+        throw new Error(`Adjudicator batch ${batchIndex + 1} failed: ${adjudicationResponse.error.message}`);
+      }
+
+      console.log(`[ADJUDICATION] Batch ${batchIndex + 1} completed successfully`);
+      
+      // Add results to the collection
+      if (adjudicationResponse.data?.adjudicatedComments) {
+        allResults.push(...adjudicationResponse.data.adjudicatedComments);
+      }
+      
+      // Add delay between batches to respect rate limits (if not the last batch)
+      if (batchIndex < batches.length - 1) {
+        const delayMs = 1000; // 1 second delay between batches
+        console.log(`[ADJUDICATION] Waiting ${delayMs}ms before next batch to respect rate limits`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+      
+    } catch (batchError) {
+      console.error(`[ADJUDICATION] Failed to process batch ${batchIndex + 1}:`, batchError);
+      throw batchError; // Re-throw to stop processing
+    }
+  }
+  
+  console.log(`[ADJUDICATION] All batches completed. Total results: ${allResults.length}`);
+  return allResults;
+};
+
 serve(async (req) => {
   console.log('Edge function called with method:', req.method);
   
@@ -932,65 +1085,60 @@ serve(async (req) => {
     // Call adjudicator if there are comments that need adjudication and no more batches
     console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}`);
     
-    // Ensure adjudicator is only called once per scan run by checking completion status
-    // Use a global tracking mechanism since scan-comments can be called multiple times for batching
-    if (!gAny.__adjudicatorCompleted) {
-      gAny.__adjudicatorCompleted = new Set();
-    }
-    const alreadyAdjudicated = gAny.__adjudicatorCompleted.has(scanRunId);
-    
-    if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator && !alreadyAdjudicated) {
+    if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
       console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
       
       try {
-        // Transform comments to match adjudicator's expected format
-        const adjudicatorComments = allScannedComments.map(comment => ({
-          id: comment.id,
-          originalText: comment.originalText || comment.text,
-          originalRow: comment.originalRow,
-          scannedIndex: comment.scannedIndex,
-          scanAResult: {
-            ...comment.adjudicationData.scanAResult,
-            reasoning: comment.adjudicationData.scanAResult.reasoning || 'No reasoning provided'
-          },
-          scanBResult: {
-            ...comment.adjudicationData.scanBResult,
-            reasoning: comment.adjudicationData.scanBResult.reasoning || 'No reasoning provided'
-          },
-          agreements: comment.adjudicationData.agreements
-        }));
-
-        console.log(`[ADJUDICATION] Sending adjudicator config:`, {
-          provider: adjudicator.provider,
-          model: adjudicator.model,
-          promptLength: adjudicator.analysis_prompt?.length || 0,
-          maxTokens: adjudicator.max_tokens
+        // Filter comments that need adjudication
+        const commentsNeedingAdjudication = allScannedComments.filter(comment => {
+          const scanAResult = comment.adjudicationData?.scanAResult;
+          const scanBResult = comment.adjudicationData?.scanBResult;
+          
+          if (!scanAResult || !scanBResult) return false;
+          
+          const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
+          const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
+          
+          return concerningDisagreement || identifiableDisagreement;
         });
+
+        console.log(`[ADJUDICATION] Found ${commentsNeedingAdjudication.length} comments that need adjudication`);
+
+        // Check for duplicate adjudication call
+        const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, commentsNeedingAdjudication);
         
-        const adjudicationResponse = await supabase.functions.invoke('adjudicator', {
-          body: {
-            comments: adjudicatorComments,
-            adjudicatorConfig: {
-              provider: adjudicator.provider,
-              model: adjudicator.model,
-              prompt: adjudicator.analysis_prompt,
-              max_tokens: adjudicator.max_tokens
-            },
-            scanRunId: scanRunId
-          },
-          headers: {
-            authorization: authHeader || ''
-          }
-        });
-
-        if (adjudicationResponse.error) {
-          console.error('[ADJUDICATION] Error calling adjudicator:', adjudicationResponse.error);
+        if (isDuplicate) {
+          console.log(`[ADJUDICATION] These comments have already been processed, skipping duplicate call`);
+          // Continue without calling adjudicator again
         } else {
-          console.log('[ADJUDICATION] Adjudication completed successfully');
-          // Update the comments with adjudicated results if available
-          if (adjudicationResponse.data?.adjudicatedComments) {
-            // Map adjudicated results back to the original comment structure
-            const adjudicatedMap = new Map(adjudicationResponse.data.adjudicatedComments.map(adj => [adj.id, adj]));
+          // Process adjudication with proper batching
+          const adjudicatorConfig = {
+            provider: adjudicator.provider,
+            model: adjudicator.model,
+            prompt: adjudicator.analysis_prompt,
+            max_tokens: adjudicator.max_tokens
+          };
+
+          console.log(`[ADJUDICATION] Sending adjudicator config:`, {
+            provider: adjudicator.provider,
+            model: adjudicator.model,
+            promptLength: adjudicator.analysis_prompt?.length || 0,
+            maxTokens: adjudicator.max_tokens
+          });
+
+          // Use the new batching system
+          const adjudicatedResults = await processAdjudicationBatches(
+            supabase,
+            scanRunId,
+            commentsNeedingAdjudication,
+            adjudicatorConfig,
+            authHeader || '',
+            50 // maxBatchSize - adjust based on token limits
+          );
+
+          // Update the comments with adjudicated results
+          if (adjudicatedResults.length > 0) {
+            const adjudicatedMap = new Map(adjudicatedResults.map(adj => [adj.id, adj]));
             
             allScannedComments = allScannedComments.map(comment => {
               const adjudicated = adjudicatedMap.get(comment.id);
@@ -1005,9 +1153,6 @@ serve(async (req) => {
               return comment;
             });
           }
-          
-          // Mark adjudication as completed for this scan run
-          gAny.__runCompleted?.add(adjudicatorKey);
         }
       } catch (adjudicationError) {
         console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
