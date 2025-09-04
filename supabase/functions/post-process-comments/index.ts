@@ -96,7 +96,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       if (aiLogger && userId && scanRunId && phase) {
         await aiLogger.logRequest({
           userId,
-          scanRunId,
+          scanRunId: String(runId),
           functionName: 'post-process-comments',
           provider,
           model,
@@ -128,8 +128,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
       if (!response.ok) {
         const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
-        if (aiLogger && userId && scanRunId && phase) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+        if (aiLogger && userId && phase) {
+          await aiLogger.logResponse(userId, String(runId), 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
         }
         throw new Error(errorMessage);
       }
@@ -138,8 +138,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       const responseText = result.choices?.[0]?.message?.content || null;
       
       // Log the AI response if logger is provided
-      if (aiLogger && userId && scanRunId && phase && responseText) {
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
+      if (aiLogger && userId && phase && responseText) {
+        await aiLogger.logResponse(userId, String(runId), 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
       }
       
       return responseText;
@@ -147,8 +147,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
         const timeoutMessage = 'Azure OpenAI API timeout after 115 seconds';
-        if (aiLogger && userId && scanRunId && phase) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
+        if (aiLogger && userId && phase) {
+          await aiLogger.logResponse(userId, String(runId), 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
         }
         throw new Error(timeoutMessage);
       }
@@ -192,9 +192,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
         throw new Error(timeoutMessage);
       }
       // Log unexpected errors (e.g., network) before rethrow
-      if (aiLogger && userId && scanRunId && phase) {
+      if (aiLogger && userId && phase) {
         const errMsg = (error instanceof Error) ? error.message : String(error);
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined);
+        await aiLogger.logResponse(userId, String(runId), 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined);
       }
       throw error;
     }
@@ -214,8 +214,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       return responseText;
     } catch (parseError) {
       const errMsg = (parseError instanceof Error) ? parseError.message : String(parseError);
-      if (aiLogger && userId && scanRunId && phase) {
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', `OpenAI JSON parse error: ${errMsg}`, undefined);
+      if (aiLogger && userId && phase) {
+        await aiLogger.logResponse(userId, String(runId), 'post-process-comments', provider, model, responseType, phase, '', `OpenAI JSON parse error: ${errMsg}`, undefined);
       }
       throw (parseError instanceof Error) ? parseError : new Error(errMsg);
     }
@@ -276,31 +276,31 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       if (!response.ok) {
         const errorText = await response.text();
         const errorMessage = `Bedrock API error: ${response.status} ${response.statusText} ${errorText}`;
-        if (aiLogger && userId && scanRunId && phase) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+        if (aiLogger && userId && phase) {
+          await aiLogger.logResponse(userId, String(runId), 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
         }
         throw new Error(errorMessage);
       }
 
       const result = await response.json();
       const responseText = result.content?.[0]?.text || null;
-      if (aiLogger && userId && scanRunId && phase && responseText) {
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
+      if (aiLogger && userId && phase && responseText) {
+        await aiLogger.logResponse(userId, String(runId), 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
       }
       return responseText;
     } catch (error) {
       clearTimeout(timeoutId);
       if ((error as any)?.name === 'AbortError') {
         const timeoutMessage = 'Bedrock API timeout after 115 seconds';
-        if (aiLogger && userId && scanRunId && phase) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
+        if (aiLogger && userId && phase) {
+          await aiLogger.logResponse(userId, String(runId), 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
         }
         throw new Error(timeoutMessage);
       }
       // Log unexpected errors as well
-      if (aiLogger && userId && scanRunId && phase) {
+      if (aiLogger && userId && phase) {
         const errMsg = (error instanceof Error) ? error.message : String(error);
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined);
+        await aiLogger.logResponse(userId, String(runId), 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined);
       }
       throw error;
     }
