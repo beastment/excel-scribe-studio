@@ -556,19 +556,27 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         if (ppRephraseA.status === 'rejected') console.error('Post-processing (rephrase A) error:', ppRephraseA.reason);
         if (ppRephraseB.status === 'rejected') console.error('Post-processing (rephrase B) error:', ppRephraseB.reason);
 
-        // Merge all four results by comment id
+        // Merge all four results using multiple keys to avoid misses
         const processedCombined: Record<string, any> = {};
+        const processedByOriginalRow: Map<number, any> = new Map();
+        const processedByScannedIndex: Map<number, any> = new Map();
         const addResults = (arr?: any[]) => {
           if (!Array.isArray(arr)) return;
           for (const item of arr) {
-            const existing = processedCombined[item.id] || { id: item.id };
-            processedCombined[item.id] = {
+            const key = String(item.id ?? '');
+            const existing = key ? (processedCombined[key] || { id: key }) : {};
+            const merged = {
               ...existing,
               redactedText: item.redactedText ?? existing.redactedText,
               rephrasedText: item.rephrasedText ?? existing.rephrasedText,
               finalText: item.finalText ?? existing.finalText,
               mode: item.mode ?? existing.mode,
+              originalRow: item.originalRow ?? existing.originalRow,
+              scannedIndex: item.scannedIndex ?? existing.scannedIndex,
             };
+            if (key) processedCombined[key] = merged;
+            if (typeof item.originalRow === 'number') processedByOriginalRow.set(item.originalRow, merged);
+            if (typeof item.scannedIndex === 'number') processedByScannedIndex.set(item.scannedIndex, merged);
           }
         };
         addResults(postRedactA?.processedComments);
@@ -635,7 +643,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const finalComments = data.comments.map((comment: any) => {
             // Process comments that are identifiable OR concerning-only
             if (comment.identifiable || comment.concerning) {
-              const processed = processedMap.get(comment.id) as any;
+              let processed = processedMap.get(comment.id) as any;
+              if (!processed && typeof comment.originalRow === 'number') {
+                processed = processedByOriginalRow.get(comment.originalRow);
+              }
+              if (!processed && typeof comment.scannedIndex === 'number') {
+                processed = processedByScannedIndex.get(comment.scannedIndex);
+              }
               if (processed) {
                 console.log(`[POSTPROCESS] Raw processed comment:`, {
                   id: processed.id,
