@@ -1492,15 +1492,25 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                          {/* Always show the unified final text */}
                          <p className="text-foreground leading-relaxed text-sm sm:text-base">
                            {(() => {
+                             // Derive the text to display based on mode and available processed text
+                             const preferMode = comment.mode || (hasScanRun ? defaultMode : undefined);
+                             const displayText =
+                               preferMode === 'redact'
+                                 ? (comment.redactedText || comment.rephrasedText || comment.text || comment.originalText)
+                                 : preferMode === 'rephrase'
+                                   ? (comment.rephrasedText || comment.redactedText || comment.text || comment.originalText)
+                                   : preferMode === 'revert'
+                                     ? (comment.originalText)
+                                     : (comment.redactedText || comment.rephrasedText || comment.text || comment.originalText);
                              console.log(`[DISPLAY] Comment ${comment.id}:`, {
                                mode: comment.mode,
+                               chosen: displayText?.substring(0, 100),
                                text: comment.text?.substring(0, 100),
                                originalText: comment.originalText?.substring(0, 100),
                                redactedText: comment.redactedText?.substring(0, 100),
-                               rephrasedText: comment.rephrasedText?.substring(0, 100),
-                               textEqualsOriginal: comment.text === comment.originalText
+                               rephrasedText: comment.rephrasedText?.substring(0, 100)
                              });
-                             return comment.text;
+                             return displayText;
                            })()}
                          </p>
                         {/* Context badge */}
