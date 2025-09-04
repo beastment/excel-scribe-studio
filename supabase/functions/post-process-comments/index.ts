@@ -1002,8 +1002,12 @@ serve(async (req) => {
         console.log(`${logPrefix} [POSTPROCESS] Processing ${chunk.length} comments in chunk...`);
         for (let i = 0; i < chunk.length; i++) {
           const comment = chunk[i];
-          const redactedText = redactedTextsAligned[i] || comment.text;
-          const rephrasedText = rephrasedTextsAligned[i] || comment.text;
+          const redCandidate = redactedTextsAligned[i] || '';
+          let redactedText = redCandidate.trim().length > 0
+            ? redCandidate
+            : (comment.identifiable ? (enforceRedactionPolicy(comment.text) || comment.text) : comment.text);
+          const rephCandidate = rephrasedTextsAligned[i] || '';
+          const rephrasedText = rephCandidate.trim().length > 0 ? rephCandidate : comment.text;
           let mode = comment.mode;
 
           // Determine mode if not specified
