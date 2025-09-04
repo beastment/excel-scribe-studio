@@ -428,7 +428,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 concerning: c.concerning,
                 identifiable: c.identifiable,
                 mode: c.mode,
-                scanAResult: c.scanAResult,
+                scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
                 adjudicationResult: c.adjudicationResult
               })),
               scanConfig: {
@@ -453,7 +454,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 concerning: c.concerning,
                 identifiable: c.identifiable,
                 mode: c.mode,
-                scanAResult: c.scanAResult,
+                scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
                 adjudicationResult: c.adjudicationResult
               })),
               scanConfig: {

@@ -316,6 +316,7 @@ interface PostProcessRequest {
     identifiable: boolean;
     mode: 'redact' | 'rephrase' | 'original';
     scanAResult: any;
+    scanBResult?: any;
     adjudicationResult?: any;
   }>;
   scanConfig: {
@@ -538,12 +539,52 @@ serve(async (req) => {
       console.log(`${logPrefix} [BATCH_CALC] Calculation breakdown: DEFAULT_POST_PROCESS_BATCH_SIZE=${DEFAULT_POST_PROCESS_BATCH_SIZE}, maxBatchByTokens=${maxBatchByTokens}, safetyMarginPercent=${safetyMarginPercent}%`);
       console.log(`${logPrefix} [BATCH_CALC] Token estimation: avgCommentLength=${Math.round(avgCommentLength)}, inputTokensPerComment=${estimatedInputTokensPerComment}, outputTokensPerComment=${estimatedOutputTokensPerComment}`);
       
-      // Use batch processing for efficiency
-      const chunks = chunkArray(flaggedComments, optimalBatchSize);
-      
-      console.log(`${logPrefix} [POSTPROCESS] Processing ${flaggedComments.length} comments in ${chunks.length} chunks of size ${optimalBatchSize}`);
-      
-      for (const chunk of chunks) {
+      // Route each comment to Scan A/B model based on identifiable flags; random if both; for concerning-only use concerning flags, else random
+      type GroupKey = string;
+      interface Group { provider: string; model: string; items: any[] }
+      const parseProviderModel = (modelStr: string | undefined): { provider: string | null; model: string | null } => {
+        if (!modelStr) return { provider: null, model: null };
+        const parts = modelStr.split('/');
+        if (parts.length === 2) return { provider: parts[0], model: parts[1] };
+        return { provider: null, model: modelStr };
+      };
+      const pickModelForComment = (c: any): { provider: string; model: string } => {
+        const aIdent = Boolean(c.scanAResult?.identifiable);
+        const bIdent = Boolean(c.scanBResult?.identifiable);
+        const aConc = Boolean(c.scanAResult?.concerning);
+        const bConc = Boolean(c.scanBResult?.concerning);
+        const aPM = parseProviderModel(c.scanAResult?.model);
+        const bPM = parseProviderModel(c.scanBResult?.model);
+        // Prefer identifiable routing
+        if (aIdent && !bIdent && aPM.provider && aPM.model) return { provider: aPM.provider, model: aPM.model };
+        if (!aIdent && bIdent && bPM.provider && bPM.model) return { provider: bPM.provider, model: bPM.model };
+        if (aIdent && bIdent) {
+          const useA = Math.random() < 0.5;
+          const pm = useA ? aPM : bPM;
+          if (pm.provider && pm.model) return { provider: pm.provider, model: pm.model };
+        }
+        // Concerning-only: prefer the model that flagged concerning; else random; fallback to effective config
+        if (aConc !== bConc) {
+          const pm = aConc ? aPM : bPM;
+          if (pm.provider && pm.model) return { provider: pm.provider, model: pm.model };
+        }
+        const pm = Math.random() < 0.5 ? aPM : bPM;
+        return { provider: pm.provider || effectiveConfig.provider, model: pm.model || effectiveConfig.model };
+      };
+
+      const groups = new Map<GroupKey, Group>();
+      for (const c of flaggedComments) {
+        const { provider, model } = pickModelForComment(c);
+        const key = `${provider}/${model}`;
+        if (!groups.has(key)) groups.set(key, { provider, model, items: [] });
+        groups.get(key)!.items.push(c);
+      }
+      console.log(`${logPrefix} [ROUTING] Routed ${flaggedComments.length} comments into ${groups.size} groups`);
+
+      for (const [key, group] of groups.entries()) {
+        const chunks = chunkArray(group.items, optimalBatchSize);
+        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} chunks`);
+        for (const chunk of chunks) {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
         const chunkTexts = chunk.map(c => c.originalText || c.text);
         const sentinelInput = buildSentinelInput(chunkTexts, chunk);
@@ -552,10 +593,10 @@ serve(async (req) => {
         const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt + REDACTION_POLICY, chunk.length);
         const rephrasePrompt = buildBatchTextPrompt(scanConfig.rephrase_prompt, chunk.length);
         
-        console.log(`${logPrefix} [AI REQUEST] ${effectiveConfig.provider}/${effectiveConfig.model} type=batch_text phase=redaction`);
+        console.log(`${logPrefix} [AI REQUEST] ${group.provider}/${group.model} type=batch_text phase=redaction`);
         console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
-          provider: effectiveConfig.provider,
-          model: effectiveConfig.model,
+          provider: group.provider,
+          model: group.model,
           prompt_length: redactPrompt.length,
           input_length: sentinelInput.length,
           chunk_size: chunk.length
@@ -575,11 +616,11 @@ serve(async (req) => {
 
         
         const calls: Promise<string | null>[] = [];
-        if (phase === 'both' || phase === 'redaction') {
+        if ((phase === 'both' || phase === 'redaction') && chunk.some(c => c.identifiable)) {
           calls.push(
             callAI(
-              effectiveConfig.provider,
-              effectiveConfig.model,
+              group.provider,
+              group.model,
               redactPrompt,
               sentinelInput,
               'batch_text',
@@ -595,8 +636,8 @@ serve(async (req) => {
         if (phase === 'both' || phase === 'rephrase') {
           calls.push(
             callAI(
-              effectiveConfig.provider,
-              effectiveConfig.model,
+              group.provider,
+              group.model,
               rephrasePrompt,
               sentinelInput,
               'batch_text',
@@ -638,9 +679,9 @@ serve(async (req) => {
           }
         }
         
-        console.log(`${logPrefix} [AI RESPONSE] ${scanConfig.provider}/${scanConfig.model} type=batch_text phase=redaction`);
+        console.log(`${logPrefix} [AI RESPONSE] ${group.provider}/${group.model} type=batch_text phase=redaction`);
         console.log(`${logPrefix} [AI RESPONSE] rawRedacted=${JSON.stringify(rawRedacted).substring(0, 500)}...`);
-        console.log(`${logPrefix} [AI RESPONSE] ${scanConfig.provider}/${scanConfig.model} type=batch_text phase=rephrase`);
+        console.log(`${logPrefix} [AI RESPONSE] ${group.provider}/${group.model} type=batch_text phase=rephrase`);
         console.log(`${logPrefix} [AI RESPONSE] rawRephrased=${JSON.stringify(rawRephrased).substring(0, 500)}...`);
         
 
@@ -746,6 +787,7 @@ serve(async (req) => {
             finalText,
             mode
           });
+        }
         }
       }
     } catch (error) {
