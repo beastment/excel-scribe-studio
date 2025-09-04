@@ -1014,19 +1014,27 @@ serve(async (req) => {
       for (const comment of flaggedComments) {
         let mode = comment.mode;
         if (!mode) {
-          mode = (comment.concerning || comment.identifiable) ? defaultMode : 'original'
+          if (comment.identifiable) {
+            mode = defaultMode;
+          } else if (comment.concerning) {
+            mode = 'rephrase';
+          } else {
+            mode = 'original';
+          }
         }
 
         let finalText = comment.text;
         let redactedText = comment.text;
         let rephrasedText = comment.text;
 
-        if (mode === 'redact' && comment.concerning) {
-          redactedText = `[REDACTED: ${comment.scanAResult?.reasoning || 'Concerning content removed'}]`;
+        if (mode === 'redact' && comment.identifiable) {
+          // Deterministic minimal redaction fallback
+          redactedText = enforceRedactionPolicy(comment.text) || comment.text;
           finalText = redactedText;
           redactedCount++;
-        } else if (mode === 'rephrase' && comment.identifiable) {
-          rephrasedText = `[REPHRASED: ${comment.scanAResult?.reasoning || 'Identifiable information rephrased'}]`;
+        } else if (mode === 'rephrase' && (comment.identifiable || comment.concerning)) {
+          // Fallback: keep original text; in UI user can switch modes
+          rephrasedText = comment.text;
           finalText = rephrasedText;
           rephrasedCount++;
         } else {

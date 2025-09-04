@@ -575,7 +575,52 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         addResults(postRedactB?.processedComments);
         addResults(postRephraseA?.processedComments);
         addResults(postRephraseB?.processedComments);
-        const mergedProcessed = Object.values(processedCombined);
+        let mergedProcessed = Object.values(processedCombined);
+        // Safety: ensure concerning-only comments are present (rephrase-only)
+        const concerningOnly = commentsToProcess.filter((c: any) => c.concerning && !c.identifiable);
+        const missingConcerning = concerningOnly.filter((c: any) => !processedCombined[c.id]);
+        if (missingConcerning.length > 0) {
+          console.log(`[PHASE3] Safety rephrase for concerning-only: ${missingConcerning.length} items`);
+          const { data: ppRephraseSafety, error: safetyErr } = await supabase.functions.invoke('post-process-comments', {
+            body: {
+              comments: missingConcerning.map((c: any) => ({
+                id: c.id,
+                originalRow: c.originalRow,
+                scannedIndex: c.scannedIndex,
+                originalText: c.originalText || c.text,
+                text: c.text,
+                concerning: c.concerning,
+                identifiable: c.identifiable,
+                mode: 'rephrase',
+                scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
+                adjudicationResult: c.adjudicationResult
+              })),
+              scanConfig: {
+                provider: aiConfigs?.provider || 'openai',
+                model: aiConfigs?.model || 'gpt-4o-mini',
+                redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+              },
+              defaultMode,
+              scanRunId,
+              phase: 'rephrase',
+              routingMode: 'both'
+            }
+          });
+          if (!safetyErr && ppRephraseSafety?.processedComments) {
+            for (const item of ppRephraseSafety.processedComments as any[]) {
+              const existing = processedCombined[item.id] || { id: item.id };
+              processedCombined[item.id] = {
+                ...existing,
+                rephrasedText: item.rephrasedText ?? existing.rephrasedText,
+                finalText: item.finalText ?? existing.finalText,
+                mode: item.mode ?? existing.mode,
+              };
+            }
+            mergedProcessed = Object.values(processedCombined);
+          }
+        }
         if (mergedProcessed.length > 0) {
           console.log(`Post-processing completed: merged ${mergedProcessed.length} items`);
           
