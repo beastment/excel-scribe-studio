@@ -507,6 +507,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
       } else {
         setScanProgress(95);
+        // Explicit log note when Phase 3 is skipped (no identifiable items to post-process)
+        console.log(`[POSTPROCESS] Skipped: 0 identifiable comments after adjudication. Concerning-only to revert: ${commentsToRevert.length}`);
         if (commentsToRevert.length > 0) {
           toast.info(`Phase 3: ${commentsToRevert.length} comments set to revert mode (concerning but not identifiable), no post-processing needed`);
         } else {
