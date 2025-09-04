@@ -1277,7 +1277,9 @@ serve(async (req) => {
       summary: totalSummary,
       totalRunTimeMs: totalRunTimeMs,
       batchesProcessed: batchesProcessed,
-      nextBatchStart: hasMoreBatches ? lastProcessedIndex : inputComments.length // Next batch to process or all done
+      nextBatchStart: hasMoreBatches ? lastProcessedIndex : inputComments.length, // Next batch to process or all done
+      adjudicationStarted: Boolean((globalThis as any).__adjudicationStarted && (globalThis as any).__adjudicationStarted.has(scanRunId)),
+      adjudicationCompleted: Boolean((globalThis as any).__adjudicationCompleted && (globalThis as any).__adjudicationCompleted.has(scanRunId))
     };
     
     console.log('Returning response with comments count:', response.comments.length);
