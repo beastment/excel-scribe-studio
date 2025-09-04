@@ -731,6 +731,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             }))
           );
           onCommentsUpdate(finalComments);
+          setFilteredComments(finalComments);
           didPostProcessUpdate = true;
           
           // Show success message with a computed summary based on final comments
