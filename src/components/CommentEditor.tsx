@@ -1479,44 +1479,24 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       setFocusedCommentId(null);
                     }} autoFocus={focusedCommentId === comment.id} className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0" placeholder="Edit your comment..." />
                      </div> : <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors" onClick={() => setFocusedCommentId(comment.id)}>
-                        {/* Show the appropriate text based on mode and available processed text */}
-                        {comment.mode === 'redact' && comment.redactedText ? (
-                          <div>
-                            <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                              {comment.redactedText}
+                        {/* Always show the unified final text */}
+                        <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                          {comment.text}
+                        </p>
+                        {/* Context badge */}
+                        {comment.mode === 'redact' && comment.redactedText && (
+                          <div className="mt-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
+                            <p className="text-xs text-blue-700 dark:text-blue-300">
+                              <strong>Redacted Version</strong> - Personally identifiable information has been removed
                             </p>
-                            <div className="mt-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
-                              <p className="text-xs text-blue-700 dark:text-blue-300">
-                                <strong>Redacted Version</strong> - Personally identifiable information has been removed
-                              </p>
-                            </div>
                           </div>
-                        ) : comment.mode === 'rephrase' && comment.rephrasedText ? (
-                          <div>
-                            <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                              {comment.rephrasedText}
+                        )}
+                        {comment.mode === 'rephrase' && comment.rephrasedText && (
+                          <div className="mt-2 p-2 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50">
+                            <p className="text-xs text-green-700 dark:text-green-300">
+                              <strong>Rephrased Version</strong> - Personally identifiable information has been anonymized
                             </p>
-                            <div className="mt-2 p-2 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50">
-                              <p className="text-xs text-green-700 dark:text-green-300">
-                                <strong>Rephrased Version</strong> - Personally identifiable information has been anonymized
-                              </p>
-                            </div>
                           </div>
-                        ) : comment.identifiable && (comment.redactedText || comment.rephrasedText) ? (
-                          <div>
-                            <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                              {comment.redactedText || comment.rephrasedText}
-                            </p>
-                            <div className="mt-2 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800/50">
-                              <p className="text-xs text-yellow-700 dark:text-yellow-300">
-                                <strong>Processed Text Available</strong> - Click Redact or Rephrase to apply
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                            {comment.text}
-                          </p>
                         )}
                       </div>}
                  </div>
