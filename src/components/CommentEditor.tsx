@@ -400,6 +400,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
 
       // Phase 3: Post-process flagged comments
+      let didPostProcessUpdate = false;
       // Process comments that are identifiable OR concerning-only (per updated logic)
       const commentsToProcess = data.comments.filter((c: any) => c.identifiable || c.concerning);
       const phase3Counts = {
@@ -730,6 +731,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             }))
           );
           onCommentsUpdate(finalComments);
+          didPostProcessUpdate = true;
           
           // Show success message with a computed summary based on final comments
           const redactedSummaryCount = finalComments.filter((c: any) => (c.identifiable || c.concerning) && c.mode === 'redact').length;
@@ -767,7 +769,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         });
       });
       
-      onCommentsUpdate(data.comments);
+      if (!didPostProcessUpdate) {
+        onCommentsUpdate(data.comments);
+      }
       toast.success(`Scan complete: ${data.comments.length} comments processed`);
       
       // Refresh credits after successful scan completion
