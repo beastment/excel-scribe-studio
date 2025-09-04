@@ -880,8 +880,8 @@ serve(async (req) => {
           throw new Error('AI responses are empty or null');
         }
         
-        let redactedTexts = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : new Array(chunk.length).fill('');
-        let rephrasedTexts = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : new Array(chunk.length).fill('');
+        let redactedTexts = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : [];
+        let rephrasedTexts = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : [];
         
         console.log(`${logPrefix} [POSTPROCESS] Parsed redactedTexts: ${redactedTexts.length} items`);
         console.log(`${logPrefix} [POSTPROCESS] Parsed rephrasedTexts: ${rephrasedTexts.length} items`);
@@ -904,17 +904,21 @@ serve(async (req) => {
         
         const redIdx = stripAndIndex(redactedTexts);
         const rephIdx = stripAndIndex(rephrasedTexts);
-        const allHaveIds = redIdx.every(x => x.idx != null) && rephIdx.every(x => x.idx != null);
+        const allRedHaveIds = !requestRedaction || redIdx.length === 0 || redIdx.every(x => x.idx != null);
+        const allRephHaveIds = !requestRephrase || rephIdx.length === 0 || rephIdx.every(x => x.idx != null);
+        const allHaveIds = allRedHaveIds && allRephHaveIds;
         
         console.log(`${logPrefix} [POSTPROCESS] ID handling - allHaveIds: ${allHaveIds}, redIdx: ${redIdx.length}, rephIdx: ${rephIdx.length}`);
         
+        // Build full-length arrays aligned to chunk positions
+        const expected = chunk.length;
+        let redactedTextsAligned: string[] = Array(expected).fill('');
+        let rephrasedTextsAligned: string[] = Array(expected).fill('');
         if (allHaveIds) {
-          const expected = chunk.length;
           const byId = (list: { idx: number|null; text: string }[]) => {
             const out: string[] = Array(expected).fill('');
             for (const it of list) {
-              if (it.idx) {
-                // Find the comment in the chunk that matches this ID
+              if (it.idx != null) {
                 const commentIndex = chunk.findIndex(c => 
                   (c.originalRow && c.originalRow === it.idx) || 
                   (c.scannedIndex && c.scannedIndex === it.idx)
@@ -926,25 +930,52 @@ serve(async (req) => {
             }
             return out;
           };
-          redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
-          rephrasedTexts = byId(rephIdx);
-          console.log(`${logPrefix} [POSTPROCESS] Realigned by ID - redactedTexts: ${redactedTexts.length}, rephrasedTexts: ${rephrasedTexts.length}`);
+          if (requestRedaction) {
+            redactedTextsAligned = byId(redIdx).map(enforceRedactionPolicy) as string[];
+          }
+          if (requestRephrase) {
+            rephrasedTextsAligned = byId(rephIdx);
+          }
+          console.log(`${logPrefix} [POSTPROCESS] Realigned by ID - redactedTextsAligned: ${redactedTextsAligned.length}, rephrasedTextsAligned: ${rephrasedTextsAligned.length}`);
         } else {
-          redactedTexts = redactedTexts.map(enforceRedactionPolicy);
-          console.log(`${logPrefix} [POSTPROCESS] Using sequential alignment - redactedTexts: ${redactedTexts.length}`);
+          // Sequential alignment per subset order: map outputs to the subset item positions
+          if (requestRedaction) {
+            let k = 0;
+            for (let i = 0; i < expected; i++) {
+              if (chunk[i]?.identifiable) {
+                const val = redactedTexts[k++] ?? '';
+                redactedTextsAligned[i] = enforceRedactionPolicy(val) as string;
+              }
+            }
+          }
+          if (requestRephrase) {
+            let k = 0;
+            for (let i = 0; i < expected; i++) {
+              if (chunk[i]?.identifiable || chunk[i]?.concerning) {
+                rephrasedTextsAligned[i] = rephrasedTexts[k++] ?? '';
+              }
+            }
+          }
+          console.log(`${logPrefix} [POSTPROCESS] Sequential subset alignment applied`);
         }
 
         // Process each comment in the chunk
         console.log(`${logPrefix} [POSTPROCESS] Processing ${chunk.length} comments in chunk...`);
         for (let i = 0; i < chunk.length; i++) {
           const comment = chunk[i];
-          const redactedText = redactedTexts[i] || comment.text;
-          const rephrasedText = rephrasedTexts[i] || comment.text;
+          const redactedText = redactedTextsAligned[i] || comment.text;
+          const rephrasedText = rephrasedTextsAligned[i] || comment.text;
           let mode = comment.mode;
 
           // Determine mode if not specified
           if (!mode) {
-            mode = (comment.concerning || comment.identifiable) ? defaultMode : 'original'
+            if (comment.identifiable) {
+              mode = defaultMode; // honor user preference for identifiable
+            } else if (comment.concerning) {
+              mode = 'rephrase'; // concerning-only must be rephrase-only
+            } else {
+              mode = 'original';
+            }
           }
 
           let finalText = comment.text;
