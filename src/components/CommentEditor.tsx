@@ -700,17 +700,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   console.log(`[MODE] Last-resort apply rephrased for comment ${comment.id}`);
                 }
                 
-                console.log(`[MODE] Final result for comment ${comment.id}: mode=${finalMode}, textLength=${finalText.length}`);
-                
-                return {
-                  ...comment,
-                  text: finalText,
-                  redactedText: processed.redactedText,
-                  rephrasedText: processed.rephrasedText,
-                  mode: finalMode, // Use the determined final mode
-                  needsPostProcessing: false, // Mark as processed
-                  isPostProcessed: true // Add flag to prevent re-processing
-                };
+                 console.log(`[MODE] Final result for comment ${comment.id}: mode=${finalMode}, textLength=${finalText.length}`);
+                 console.log(`[UPDATE] Setting comment.text to:`, finalText?.substring(0, 100));
+                 
+                 return {
+                   ...comment,
+                   text: finalText,
+                   redactedText: processed.redactedText,
+                   rephrasedText: processed.rephrasedText,
+                   mode: finalMode, // Use the determined final mode
+                   needsPostProcessing: false, // Mark as processed
+                   isPostProcessed: true // Add flag to prevent re-processing
+                 };
               }
             }
             return comment;
@@ -729,6 +730,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               hasRedacted: !!c.redactedText,
               hasRephrased: !!c.rephrasedText,
               textPreview: (c.text || '').substring(0, 80)
+            }))
+          );
+          console.log('[UPDATE] Calling onCommentsUpdate with finalComments sample:', 
+            finalComments.slice(0, 3).map((c: any) => ({ 
+              id: c.id, 
+              mode: c.mode, 
+              textPreview: c.text?.substring(0, 50),
+              isOriginal: c.text === c.originalText 
             }))
           );
           onCommentsUpdate(finalComments);
@@ -1480,10 +1489,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       setFocusedCommentId(null);
                     }} autoFocus={focusedCommentId === comment.id} className="min-h-[120px] resize-none text-sm sm:text-base border-none p-0 bg-transparent focus-visible:ring-0" placeholder="Edit your comment..." />
                      </div> : <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border cursor-text hover:bg-muted/40 transition-colors" onClick={() => setFocusedCommentId(comment.id)}>
-                        {/* Always show the unified final text */}
-                        <p className="text-foreground leading-relaxed text-sm sm:text-base">
-                          {comment.text}
-                        </p>
+                         {/* Always show the unified final text */}
+                         <p className="text-foreground leading-relaxed text-sm sm:text-base">
+                           {(() => {
+                             console.log(`[DISPLAY] Comment ${comment.id}:`, {
+                               mode: comment.mode,
+                               text: comment.text?.substring(0, 100),
+                               originalText: comment.originalText?.substring(0, 100),
+                               redactedText: comment.redactedText?.substring(0, 100),
+                               rephrasedText: comment.rephrasedText?.substring(0, 100),
+                               textEqualsOriginal: comment.text === comment.originalText
+                             });
+                             return comment.text;
+                           })()}
+                         </p>
                         {/* Context badge */}
                         {comment.mode === 'redact' && comment.redactedText && (
                           <div className="mt-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50">
