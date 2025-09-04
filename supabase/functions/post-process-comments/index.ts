@@ -360,7 +360,7 @@ serve(async (req) => {
   const overallStartTime = Date.now(); // Track overall process time
 
   try {
-    const { comments, scanConfig, defaultMode, scanRunId }: PostProcessRequest = await req.json()
+    const { comments, scanConfig, defaultMode, scanRunId, phase = 'both' }: PostProcessRequest = await req.json()
     
     if (!comments || !Array.isArray(comments) || comments.length === 0) {
       return new Response(
