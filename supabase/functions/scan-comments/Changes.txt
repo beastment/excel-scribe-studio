@@ -1,0 +1,57 @@
+# Scan Comments Edge Function - Recent Changes
+
+## Latest Updates
+
+### Enhanced Token Counting and Batch Sizing
+- **Precise Token Counting**: Implemented more accurate token estimation based on model characteristics
+- **Dynamic Batch Sizing**: Optimized batch sizes using I/O ratios and actual token limits
+- **Safety Margins**: Added configurable safety margins to prevent hitting token limits
+- **Performance Monitoring**: Added detailed timing and performance metrics
+
+### Improved Adjudication System
+- **Batch Processing**: Adjudication now processes comments in batches for efficiency
+- **Duplicate Prevention**: Enhanced duplicate detection across function instances
+- **Free Adjudication**: Made adjudication completely free (no credit consumption)
+- **Better Error Handling**: Improved error recovery and fallback mechanisms
+
+### Enhanced AI Provider Support
+- **AWS Bedrock Integration**: Full support for Claude, Llama, and Titan models
+- **AWS Signature V4**: Proper authentication for Bedrock API calls
+- **Model-Specific Token Counting**: Different token estimation for each model type
+- **Temperature Configuration**: Support for configurable temperature per model
+
+### Rate Limiting Improvements
+- **TPM/RPM Tracking**: Comprehensive rate limit monitoring
+- **Automatic Waiting**: Smart waiting when approaching rate limits
+- **Cross-Instance Coordination**: Rate limiting works across multiple function instances
+- **Configurable Limits**: Support for different limits per model
+
+### Logging and Monitoring Enhancements
+- **AI Request/Response Logging**: Complete logging of all AI interactions
+- **Token Usage Tracking**: Detailed token consumption monitoring
+- **Performance Metrics**: Timing and efficiency measurements
+- **Error Correlation**: Better error tracking with scan run IDs
+
+### Duplicate Prevention
+- **Scan Run ID System**: Unique identifiers for each scan operation
+- **Database Checks**: Prevents duplicates across function restarts
+- **In-Memory Guards**: Prevents duplicates within same execution
+- **Incremental Processing**: Support for resuming interrupted scans
+
+### Credit Management
+- **Demo Mode**: Free processing for testing and demonstration
+- **Credit Validation**: Pre-processing credit checks
+- **Flexible Charging**: Only charges for Scan A, Scan B and adjudication are free
+- **Usage Tracking**: Detailed credit consumption reporting
+
+### Error Handling and Resilience
+- **Graceful Degradation**: Continues processing even when some AI calls fail
+- **Timeout Protection**: Prevents gateway timeouts with partial results
+- **Fallback Mechanisms**: Default classifications when AI fails
+- **Comprehensive Logging**: Detailed error tracking and debugging
+
+### Performance Optimizations
+- **Parallel Processing**: Scan A and Scan B run concurrently
+- **Optimized Batching**: Intelligent batch size calculation
+- **Memory Management**: Efficient memory usage with cleanup
+- **Incremental Processing**: Support for large dataset processing

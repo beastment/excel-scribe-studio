@@ -1,0 +1,51 @@
+# Adjudicator Edge Function - Recent Changes
+
+## Latest Updates
+
+### Enhanced Batch Processing
+- **Batch Key System**: Implemented unique batch keys to prevent duplicate processing
+- **Configurable Batch Sizes**: Support for different batch sizes based on model limits
+- **Efficient Processing**: Optimized for handling large volumes of comments
+- **Memory Management**: Improved memory usage with cleanup
+
+### Improved AI Integration
+- **Multiple Provider Support**: Enhanced support for OpenAI and Azure OpenAI
+- **Model Configuration**: Uses same configuration system as scan-comments
+- **Temperature Control**: Support for configurable temperature settings
+- **Token Limit Optimization**: Better token usage and limit management
+
+### Free Processing Model
+- **No Credit Consumption**: Adjudication is completely free for users
+- **Value-Added Service**: Provides additional accuracy without cost
+- **Encourages Dual-AI**: Promotes use of dual-AI approach for better results
+- **User-Friendly**: Transparent pricing model
+
+### Enhanced Error Handling
+- **Graceful Degradation**: Continues processing even when some AI calls fail
+- **Fallback Mechanisms**: Uses Scan A results when adjudication fails
+- **Comprehensive Logging**: Detailed error tracking and debugging
+- **Robust Recovery**: Better handling of partial failures
+
+### Duplicate Prevention
+- **Batch Key System**: Unique identifiers for each batch
+- **Database Checks**: Prevents duplicates across function restarts
+- **In-Memory Guards**: Prevents duplicates within same execution
+- **Scan Run ID Correlation**: Better tracking and correlation
+
+### Result Processing Improvements
+- **Multiple Format Support**: Handles both simple key-value and JSON formats
+- **Result Validation**: Ensures completeness of adjudication results
+- **Better Mapping**: Improved mapping of results to original comments
+- **Error Recovery**: Handles incomplete or malformed responses
+
+### Performance Optimizations
+- **Efficient Batching**: Optimized batch sizes for different models
+- **Parallel Processing**: Support for parallel AI calls when possible
+- **Token Optimization**: Better token usage and limit management
+- **Memory Efficiency**: Improved memory usage patterns
+
+### Integration Enhancements
+- **Seamless Integration**: Better integration with scan-comments function
+- **Shared Infrastructure**: Uses same authentication and configuration systems
+- **Consistent Logging**: Unified logging and monitoring approach
+- **Data Consistency**: Maintains consistency across all functions

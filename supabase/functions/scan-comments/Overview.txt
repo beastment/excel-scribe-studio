@@ -1,0 +1,85 @@
+# Scan Comments Edge Function Overview
+
+## Purpose
+The scan-comments edge function is the core AI-powered comment analysis system that processes employee feedback comments to identify concerning content and personally identifiable information (PII). It uses a dual-AI approach with adjudication to ensure accuracy and reliability.
+
+## Main Functionality
+
+### 1. Dual AI Scanning System
+- **Scan A**: Primary AI model that analyzes comments for concerning content and PII
+- **Scan B**: Secondary AI model that provides independent analysis for validation
+- Both scans run in parallel for efficiency
+- Results are compared to identify disagreements that need adjudication
+
+### 2. Adjudication Process
+- When Scan A and Scan B disagree on classification, a third AI (adjudicator) resolves the conflict
+- Adjudication is free and doesn't consume user credits
+- Ensures consistent and accurate classification across all comments
+
+### 3. Batch Processing
+- Processes comments in optimized batches based on token limits
+- Uses precise token counting to maximize batch sizes while staying within limits
+- Supports incremental processing for large datasets
+- Implements timeout protection to prevent gateway timeouts
+
+### 4. Credit Management
+- Charges 1 credit per comment for Scan A only
+- Scan B and adjudication are free
+- Validates user credits before processing
+- Supports demo mode for testing without credit consumption
+
+### 5. Rate Limiting
+- Implements TPM (Tokens Per Minute) and RPM (Requests Per Minute) tracking
+- Automatically waits when approaching rate limits
+- Prevents API violations across multiple function instances
+
+## Technical Architecture
+
+### AI Provider Support
+- **OpenAI**: GPT-3.5, GPT-4 models
+- **Azure OpenAI**: Azure-hosted OpenAI models
+- **AWS Bedrock**: Claude, Llama, Titan models with AWS Signature V4
+
+### Configuration Management
+- Fetches AI configurations from database
+- Supports configurable prompts, models, and token limits
+- Dynamic batch sizing based on model capabilities
+- Temperature and token limit configuration per model
+
+### Logging and Monitoring
+- Comprehensive AI request/response logging
+- Token usage tracking
+- Performance metrics and timing
+- Error handling with fallback mechanisms
+
+### Duplicate Prevention
+- Prevents duplicate processing across function instances
+- Uses scan run IDs for correlation
+- Database-based duplicate detection
+- In-memory guards for same-execution duplicates
+
+## Input/Output
+
+### Input
+- Array of comments with original text
+- AI configuration settings
+- User authentication token
+- Processing options (batch start, cached analysis, demo mode)
+
+### Output
+- Processed comments with classification results
+- Summary statistics (total, concerning, identifiable, needs adjudication)
+- Batch processing information (hasMore, nextBatchStart)
+- Credit information and usage details
+
+## Error Handling
+- Graceful degradation when AI calls fail
+- Fallback to default classifications
+- Comprehensive error logging
+- Timeout protection and partial result returns
+
+## Performance Optimizations
+- Parallel AI calls for Scan A and Scan B
+- Precise token counting for optimal batch sizes
+- Incremental processing for large datasets
+- Memory-efficient processing with cleanup

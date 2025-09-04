@@ -1,0 +1,87 @@
+# Adjudicator Edge Function Overview
+
+## Purpose
+The adjudicator edge function resolves disagreements between the primary (Scan A) and secondary (Scan B) AI models when they classify comments differently. It acts as a "tie-breaker" to ensure consistent and accurate classification of employee feedback comments.
+
+## Main Functionality
+
+### 1. Disagreement Resolution
+- Analyzes comments where Scan A and Scan B disagree on classification
+- Determines final classification for concerning content and PII detection
+- Provides reasoning for the final decision
+- Ensures consistency across all processed comments
+
+### 2. Batch Processing
+- Processes comments in batches for efficiency
+- Supports configurable batch sizes based on model limits
+- Handles large volumes of comments requiring adjudication
+- Implements duplicate prevention to avoid redundant processing
+
+### 3. Free Processing
+- Adjudication is completely free (no credit consumption)
+- Provides value-added service without additional cost
+- Encourages use of dual-AI approach for better accuracy
+
+### 4. AI Provider Support
+- Supports multiple AI providers (OpenAI, Azure OpenAI)
+- Uses same model configuration as other scanning functions
+- Configurable prompts and parameters
+- Temperature and token limit support
+
+## Technical Architecture
+
+### Input Processing
+- Receives comments with Scan A and Scan B results
+- Identifies disagreements in classification
+- Builds structured input for adjudicator AI
+- Validates input data integrity
+
+### AI Integration
+- Uses same AI configuration system as scan-comments
+- Supports multiple AI providers and models
+- Implements proper error handling and retry logic
+- Logs all AI interactions for monitoring
+
+### Result Processing
+- Parses AI responses in multiple formats
+- Handles both simple key-value and JSON formats
+- Validates result completeness
+- Maps results back to original comments
+
+### Duplicate Prevention
+- Uses batch keys to prevent duplicate processing
+- Database-based duplicate detection
+- In-memory guards for same-execution duplicates
+- Scan run ID correlation
+
+## Input/Output
+
+### Input
+- Array of comments with Scan A and Scan B results
+- Adjudicator AI configuration
+- Scan run ID for correlation
+- Batch information for tracking
+
+### Output
+- Final classification for each comment
+- Reasoning for adjudication decisions
+- Summary statistics (total, resolved, errors)
+- Processing timing information
+
+## Error Handling
+- Graceful handling of AI failures
+- Fallback to Scan A results when adjudication fails
+- Comprehensive error logging
+- Continues processing even with partial failures
+
+## Performance Features
+- Efficient batch processing
+- Parallel AI calls when possible
+- Token limit optimization
+- Memory-efficient processing
+
+## Integration
+- Called automatically by scan-comments function
+- Uses same authentication and configuration systems
+- Shares logging and monitoring infrastructure
+- Maintains data consistency across functions

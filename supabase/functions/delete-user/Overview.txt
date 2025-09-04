@@ -1,0 +1,93 @@
+# Delete User Edge Function Overview
+
+## Purpose
+The delete-user edge function provides secure user account deletion functionality. It removes user data from both the profiles table and the authentication system, ensuring complete account cleanup while maintaining data integrity.
+
+## Main Functionality
+
+### 1. User Account Deletion
+- **Profile Removal**: Deletes user profile data from profiles table
+- **Auth Deletion**: Removes user from Supabase authentication system
+- **Complete Cleanup**: Ensures all user data is properly removed
+- **Data Integrity**: Maintains referential integrity during deletion
+
+### 2. Security Features
+- **Service Role Access**: Uses service role key for administrative operations
+- **Input Validation**: Validates user ID before processing
+- **Error Handling**: Comprehensive error handling and logging
+- **Secure Operations**: All operations performed with proper authentication
+
+### 3. Database Operations
+- **Profile Deletion**: Removes user profile records
+- **Auth Cleanup**: Cleans up authentication records
+- **Transaction Safety**: Ensures operations are atomic
+- **Error Recovery**: Handles partial failures gracefully
+
+## Technical Architecture
+
+### Deletion Flow
+1. **Input Validation**: Validates user ID parameter
+2. **Profile Deletion**: Removes user from profiles table
+3. **Auth Deletion**: Removes user from auth.users table
+4. **Response**: Returns success/error status
+
+### Database Integration
+- **Supabase Client**: Uses Supabase client with service role key
+- **Profile Table**: Accesses profiles table for user data
+- **Auth System**: Uses admin API for auth user deletion
+- **Error Handling**: Graceful handling of database errors
+
+### Security Implementation
+- **Service Role**: Uses service role key for admin operations
+- **Input Sanitization**: Validates and sanitizes input parameters
+- **Error Logging**: Logs errors without exposing sensitive data
+- **Access Control**: Ensures only authorized operations
+
+## API Endpoints
+
+### Delete User
+- **Method**: POST
+- **Authentication**: Service role required
+- **Input**: userId (string)
+- **Output**: Success/error message
+
+## Input/Output
+
+### Input Parameters
+- **userId**: Unique identifier of user to delete
+
+### Output Response
+- **message**: Success confirmation or error details
+- **error**: Error message if operation fails
+
+## Error Handling
+- **Validation Errors**: Handles invalid or missing user IDs
+- **Profile Errors**: Manages profile deletion failures
+- **Auth Errors**: Handles authentication system errors
+- **Database Errors**: Manages database connection issues
+
+## Security Considerations
+- **Service Role**: Requires service role key for operation
+- **Input Validation**: Validates all input parameters
+- **Error Logging**: Logs errors without exposing sensitive data
+- **Atomic Operations**: Ensures data consistency
+
+## Performance
+- **Fast Execution**: Quick deletion operations
+- **Efficient Queries**: Optimized database operations
+- **Minimal Dependencies**: Minimal external dependencies
+- **Scalable Design**: Handles multiple deletion requests
+
+## Integration Points
+
+### Supabase Integration
+- **Service Role**: Uses service role key for admin access
+- **Profile Management**: Manages user profile data
+- **Auth System**: Integrates with Supabase authentication
+- **Database Operations**: Performs database cleanup
+
+### Error Recovery
+- **Partial Failures**: Handles cases where only partial deletion succeeds
+- **Rollback Support**: Supports rollback of partial operations
+- **Status Reporting**: Provides detailed status of deletion operations
+- **Audit Trail**: Maintains audit trail of deletion activities

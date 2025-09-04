@@ -1,0 +1,95 @@
+# Generate Login Link Edge Function Overview
+
+## Purpose
+The generate-login-link edge function creates secure magic link authentication for users. It generates temporary login links that allow users to authenticate without passwords, providing a secure and convenient authentication method.
+
+## Main Functionality
+
+### 1. Magic Link Generation
+- **Secure Links**: Creates time-limited magic links for authentication
+- **Email Delivery**: Generates links that can be sent via email
+- **Passwordless Auth**: Enables authentication without password entry
+- **Dashboard Redirect**: Redirects users to dashboard after authentication
+
+### 2. User Management
+- **User Lookup**: Finds users by ID in the authentication system
+- **Email Validation**: Validates user email addresses
+- **Profile Integration**: Links magic links to user profiles
+- **Security**: Uses service role for administrative operations
+
+### 3. Security Features
+- **Service Role Access**: Uses service role key for admin operations
+- **Input Validation**: Validates user ID before processing
+- **Error Handling**: Comprehensive error handling and logging
+- **Secure URLs**: Generates secure authentication URLs
+
+## Technical Architecture
+
+### Magic Link Flow
+1. **User ID Validation**: Validates provided user ID
+2. **User Lookup**: Retrieves user from auth.users table
+3. **Email Extraction**: Gets user email address
+4. **Link Generation**: Creates magic link with Supabase admin API
+5. **Response**: Returns login link and email
+
+### Supabase Integration
+- **Admin API**: Uses Supabase admin API for magic link generation
+- **User Management**: Accesses auth.users table for user data
+- **Service Role**: Uses service role key for administrative access
+- **Error Handling**: Graceful handling of Supabase errors
+
+### Security Implementation
+- **Service Role**: Uses service role key for admin operations
+- **Input Sanitization**: Validates and sanitizes input parameters
+- **Error Logging**: Logs errors without exposing sensitive data
+- **Access Control**: Ensures only authorized operations
+
+## API Endpoints
+
+### Generate Login Link
+- **Method**: POST
+- **Authentication**: Service role required
+- **Input**: userId (string)
+- **Output**: loginLink and email
+
+## Input/Output
+
+### Input Parameters
+- **userId**: Unique identifier of user for link generation
+
+### Output Response
+- **loginLink**: Generated magic link URL
+- **email**: User's email address
+- **error**: Error message if operation fails
+
+## Error Handling
+- **Validation Errors**: Handles invalid or missing user IDs
+- **User Errors**: Manages user lookup failures
+- **Email Errors**: Handles missing or invalid email addresses
+- **Link Generation Errors**: Manages magic link creation failures
+
+## Security Considerations
+- **Service Role**: Requires service role key for operation
+- **Input Validation**: Validates all input parameters
+- **Error Logging**: Logs errors without exposing sensitive data
+- **Time-Limited Links**: Magic links have expiration times
+
+## Performance
+- **Fast Generation**: Quick magic link creation
+- **Efficient Queries**: Optimized user lookup operations
+- **Minimal Dependencies**: Minimal external dependencies
+- **Scalable Design**: Handles multiple link generation requests
+
+## Integration Points
+
+### Supabase Integration
+- **Admin API**: Uses Supabase admin API for magic link generation
+- **User Management**: Manages user data in auth.users table
+- **Service Role**: Uses service role key for admin access
+- **Authentication**: Integrates with Supabase authentication system
+
+### Email Integration
+- **Link Delivery**: Ready for email delivery systems
+- **Dashboard Redirect**: Redirects to dashboard after authentication
+- **URL Generation**: Creates secure authentication URLs
+- **Link Management**: Manages link lifecycle and expiration

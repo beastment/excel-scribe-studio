@@ -1,0 +1,102 @@
+# Verify Payment Edge Function Overview
+
+## Purpose
+The verify-payment edge function handles payment verification and credit allocation after successful Stripe payments. It verifies payment completion and adds credits to user accounts using Supabase RPC functions.
+
+## Main Functionality
+
+### 1. Payment Verification
+- **Stripe Integration**: Verifies payment completion with Stripe API
+- **Session Validation**: Validates Stripe checkout session status
+- **Payment Status**: Checks if payment was successfully completed
+- **Metadata Extraction**: Extracts user and credit information from session
+
+### 2. Credit Allocation
+- **Credit Addition**: Adds credits to user accounts after successful payment
+- **RPC Integration**: Uses Supabase RPC functions for credit management
+- **User Validation**: Validates user existence and eligibility
+- **Transaction Safety**: Ensures atomic credit allocation operations
+
+### 3. Security Features
+- **Service Role Access**: Uses service role key for administrative operations
+- **Input Validation**: Validates session ID and payment data
+- **Error Handling**: Comprehensive error handling and logging
+- **Secure Operations**: All operations performed with proper authentication
+
+## Technical Architecture
+
+### Payment Verification Flow
+1. **Session Retrieval**: Retrieves Stripe checkout session by ID
+2. **Payment Validation**: Validates payment status and completion
+3. **Metadata Extraction**: Extracts user ID and credit amount
+4. **Credit Allocation**: Adds credits to user account via RPC
+5. **Response**: Returns success/error status with details
+
+### Stripe Integration
+- **API Integration**: Uses Stripe API for session verification
+- **Payment Status**: Checks payment_status field for completion
+- **Metadata Access**: Extracts custom metadata from session
+- **Error Handling**: Graceful handling of Stripe API errors
+
+### Supabase Integration
+- **Service Role**: Uses service role key for admin operations
+- **RPC Functions**: Uses add_user_credits RPC for credit allocation
+- **User Management**: Validates user existence and eligibility
+- **Database Operations**: Performs secure database operations
+
+## API Endpoints
+
+### Verify Payment
+- **Method**: POST
+- **Authentication**: Service role required
+- **Input**: sessionId (string)
+- **Output**: Payment verification status and credit allocation
+
+## Input/Output
+
+### Input Parameters
+- **sessionId**: Stripe checkout session ID for verification
+
+### Output Response
+- **success**: Boolean indicating operation success
+- **credits_added**: Number of credits added to account
+- **message**: Success or error message
+- **error**: Error details if operation fails
+
+## Error Handling
+- **Session Errors**: Handles invalid or missing session IDs
+- **Payment Errors**: Manages incomplete or failed payments
+- **Credit Errors**: Handles credit allocation failures
+- **Validation Errors**: Validates payment and user data
+
+## Security Considerations
+- **Service Role**: Requires service role key for operation
+- **Input Validation**: Validates all input parameters
+- **Error Logging**: Logs errors without exposing sensitive data
+- **Payment Verification**: Ensures payment completion before credit allocation
+
+## Performance
+- **Fast Verification**: Quick payment verification via Stripe API
+- **Efficient Allocation**: Optimized credit allocation operations
+- **Minimal Dependencies**: Minimal external dependencies
+- **Scalable Design**: Handles multiple verification requests
+
+## Integration Points
+
+### Stripe Integration
+- **Session Verification**: Verifies Stripe checkout sessions
+- **Payment Status**: Checks payment completion status
+- **Metadata Access**: Extracts transaction metadata
+- **Error Management**: Handles Stripe API errors
+
+### Supabase Integration
+- **Service Role**: Uses service role key for admin access
+- **RPC Functions**: Uses add_user_credits RPC function
+- **User Management**: Manages user credit allocation
+- **Database Operations**: Performs secure database operations
+
+### Credit Management
+- **Credit Addition**: Adds credits to user accounts
+- **Transaction Safety**: Ensures atomic credit operations
+- **User Validation**: Validates user eligibility
+- **Balance Updates**: Updates user credit balances

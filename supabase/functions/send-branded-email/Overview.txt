@@ -1,0 +1,132 @@
+# Send Branded Email Edge Function Overview
+
+## Purpose
+The send-branded-email edge function provides email delivery services using Resend. It sends professionally branded emails for user signup, password reset, and other system notifications with consistent SurveyJumper branding and styling.
+
+## Main Functionality
+
+### 1. Email Templates
+- **Signup Emails**: Welcome emails for new user registration
+- **Password Reset**: Secure password reset links
+- **Welcome Messages**: General welcome communications
+- **Branded Design**: Consistent SurveyJumper branding and styling
+
+### 2. Email Delivery
+- **Resend Integration**: Uses Resend service for reliable email delivery
+- **HTML Templates**: Rich HTML email templates with CSS styling
+- **Responsive Design**: Mobile-friendly email layouts
+- **Professional Branding**: Consistent brand identity across all emails
+
+### 3. Template System
+- **Dynamic Content**: Supports dynamic content insertion
+- **Token Integration**: Handles authentication tokens and redirect URLs
+- **Type-Based Templates**: Different templates for different email types
+- **Customizable Content**: Flexible content management
+
+## Technical Architecture
+
+### Email Flow
+1. **Template Selection**: Selects appropriate template based on email type
+2. **Content Generation**: Generates dynamic content with user data
+3. **HTML Rendering**: Renders complete HTML email with styling
+4. **Email Delivery**: Sends email via Resend API
+5. **Response**: Returns delivery status
+
+### Resend Integration
+- **API Integration**: Uses Resend API for email delivery
+- **Authentication**: Uses Resend API key for authentication
+- **Error Handling**: Graceful handling of delivery failures
+- **Status Tracking**: Tracks email delivery status
+
+### Template System
+- **HTML Templates**: Rich HTML templates with embedded CSS
+- **Dynamic Variables**: Support for dynamic content insertion
+- **Brand Consistency**: Consistent SurveyJumper branding
+- **Mobile Responsive**: Responsive design for mobile devices
+
+## API Endpoints
+
+### Send Email
+- **Method**: POST
+- **Authentication**: API key required
+- **Input**: to, subject, type, token (optional), redirectUrl (optional)
+- **Output**: Email delivery status
+
+## Input/Output
+
+### Input Parameters
+- **to**: Recipient email address
+- **subject**: Email subject line
+- **type**: Email type (signup, reset, welcome)
+- **token**: Authentication token (optional)
+- **redirectUrl**: Redirect URL for links (optional)
+
+### Output Response
+- **emailResponse**: Resend API response with delivery status
+- **error**: Error message if operation fails
+
+## Email Types
+
+### Signup Email
+- **Welcome Message**: Welcomes new users to SurveyJumper
+- **Email Verification**: Includes email verification link
+- **Brand Introduction**: Introduces platform features
+- **Professional Design**: Clean, professional layout
+
+### Password Reset Email
+- **Reset Link**: Includes secure password reset link
+- **Security Notice**: Explains link expiration
+- **Clear Instructions**: Provides clear reset instructions
+- **Brand Consistency**: Maintains brand identity
+
+### Welcome Email
+- **General Welcome**: Generic welcome message
+- **Platform Info**: Basic platform information
+- **Brand Elements**: SurveyJumper branding
+- **Simple Design**: Clean, simple layout
+
+## Design Features
+
+### Branding Elements
+- **Logo**: SurveyJumper logo representation
+- **Color Scheme**: Consistent blue and purple gradient
+- **Typography**: Professional font choices
+- **Layout**: Clean, modern email layout
+
+### Responsive Design
+- **Mobile Friendly**: Optimized for mobile devices
+- **Flexible Layout**: Adapts to different screen sizes
+- **Readable Text**: Clear, readable typography
+- **Touch Friendly**: Optimized for touch interfaces
+
+## Error Handling
+- **Delivery Errors**: Handles email delivery failures
+- **Template Errors**: Manages template rendering issues
+- **API Errors**: Handles Resend API errors
+- **Validation Errors**: Validates input parameters
+
+## Security Considerations
+- **API Key Protection**: Secures Resend API key
+- **Input Validation**: Validates all input parameters
+- **Error Logging**: Logs errors without exposing sensitive data
+- **Secure Links**: Uses HTTPS for all email links
+
+## Performance
+- **Fast Delivery**: Quick email delivery via Resend
+- **Efficient Templates**: Optimized HTML template rendering
+- **Minimal Dependencies**: Minimal external dependencies
+- **Scalable Design**: Handles multiple email requests
+
+## Integration Points
+
+### Resend Integration
+- **API Delivery**: Uses Resend API for email delivery
+- **Authentication**: Uses Resend API key
+- **Status Tracking**: Tracks delivery status
+- **Error Handling**: Manages delivery errors
+
+### Template System
+- **HTML Generation**: Generates HTML email content
+- **CSS Styling**: Applies consistent styling
+- **Dynamic Content**: Inserts dynamic content
+- **Brand Management**: Maintains brand consistency

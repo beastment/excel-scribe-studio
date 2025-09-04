@@ -1,0 +1,57 @@
+# Post-Process Comments Edge Function - Recent Changes
+
+## Latest Updates
+
+### Enhanced Content Transformation
+- **AI-Powered Redaction**: Improved AI models for intelligent content redaction
+- **Smart Rephrasing**: Better preservation of meaning while ensuring anonymity
+- **Policy Enforcement**: Enhanced automatic detection and replacement of sensitive content
+- **Consistent Output**: Better formatting and structure preservation
+
+### Improved Batch Processing
+- **I/O Ratio Optimization**: Better batch size calculation using input/output ratios
+- **Safety Margins**: Configurable safety margins to prevent token limit violations
+- **Large Dataset Support**: Improved handling of large comment volumes
+- **Timeout Protection**: Better timeout handling for long-running processes
+
+### Enhanced AI Integration
+- **Multiple Provider Support**: Enhanced support for OpenAI and Azure OpenAI
+- **Model Configuration**: Uses same configuration system as other functions
+- **Temperature Control**: Support for configurable temperature settings
+- **Token Limit Optimization**: Better token usage and limit management
+
+### Policy Enforcement Improvements
+- **Job Level Detection**: Enhanced detection of job levels, grades, and bands
+- **Tenure Redaction**: Better identification and replacement of tenure statements
+- **Role Identifier Removal**: Improved detection of role and position identifiers
+- **Consistent Placeholders**: Standardized "XXXX" usage across all redactions
+
+### Error Handling Enhancements
+- **Graceful Degradation**: Continues processing even when some AI calls fail
+- **Fallback Mechanisms**: Uses policy-based redaction when AI fails
+- **Comprehensive Logging**: Detailed error tracking and debugging
+- **Robust Recovery**: Better handling of partial failures
+
+### Performance Optimizations
+- **Parallel Processing**: Redaction and rephrasing run concurrently
+- **Efficient Batching**: Optimized batch sizes for different models
+- **Token Optimization**: Better token usage and limit management
+- **Memory Efficiency**: Improved memory usage patterns
+
+### Input/Output Improvements
+- **Better Format Handling**: Improved parsing of AI responses
+- **ID Tagging Support**: Enhanced support for ID-tagged responses
+- **Result Validation**: Better validation of transformation results
+- **Error Recovery**: Improved handling of malformed responses
+
+### Integration Enhancements
+- **Seamless Integration**: Better integration with scan-comments and adjudicator
+- **Shared Infrastructure**: Uses same authentication and configuration systems
+- **Consistent Logging**: Unified logging and monitoring approach
+- **Data Consistency**: Maintains consistency across the processing pipeline
+
+### Monitoring and Logging
+- **AI Interaction Logging**: Complete logging of all AI transformations
+- **Performance Metrics**: Detailed timing and efficiency measurements
+- **Error Correlation**: Better error tracking with scan run IDs
+- **Usage Analytics**: Comprehensive usage and performance analytics

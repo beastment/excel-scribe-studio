@@ -1,0 +1,100 @@
+# Create Payment Edge Function Overview
+
+## Purpose
+The create-payment edge function handles credit package purchases through Stripe integration. It creates payment sessions for users to buy credits for comment scanning services, supporting both predefined packages and custom credit amounts.
+
+## Main Functionality
+
+### 1. Credit Package Management
+- **Predefined Packages**: Offers standard credit packages (100, 500, 1000 credits)
+- **Custom Credits**: Supports custom credit amounts with tiered pricing
+- **Tiered Pricing**: Implements volume discounts for larger purchases
+- **AUD Currency**: All transactions processed in Australian Dollars
+
+### 2. Stripe Integration
+- **Checkout Sessions**: Creates Stripe checkout sessions for secure payments
+- **Customer Management**: Handles existing and new Stripe customers
+- **Metadata Storage**: Stores user and credit information in session metadata
+- **Success/Cancel URLs**: Provides proper redirect URLs after payment
+
+### 3. User Authentication
+- **Token Validation**: Validates user authentication tokens
+- **User Verification**: Ensures user exists and has valid email
+- **Profile Integration**: Links payments to user profiles
+- **Security**: Uses Supabase authentication for user verification
+
+### 4. Pricing Structure
+- **Tier 1**: $1.00 per credit (up to 1,000 credits)
+- **Tier 2**: $1,000 + $0.50 per credit above 1,000 (up to 10,000 credits)
+- **Tier 3**: $5,500 + $0.25 per credit above 10,000 (up to 50,000 credits)
+- **Volume Discounts**: Automatic discounts for larger purchases
+
+## Technical Architecture
+
+### Payment Flow
+1. **User Selection**: User selects credit package or custom amount
+2. **Validation**: Validates user authentication and input parameters
+3. **Price Calculation**: Calculates total price based on tiered pricing
+4. **Stripe Session**: Creates Stripe checkout session with payment details
+5. **Redirect**: Returns checkout URL for user payment completion
+
+### Stripe Integration
+- **API Version**: Uses Stripe API version 2023-10-16
+- **Checkout Sessions**: Creates one-time payment sessions
+- **Customer Lookup**: Finds existing customers by email
+- **Metadata**: Stores user ID, credits, and package information
+
+### Security Features
+- **Authentication Required**: All requests require valid user tokens
+- **Input Validation**: Validates all input parameters
+- **Error Handling**: Comprehensive error handling and logging
+- **Secure URLs**: Uses HTTPS for all payment operations
+
+## API Endpoints
+
+### Create Payment Session
+- **Method**: POST
+- **Authentication**: Required (Bearer token)
+- **Input**: packageId, customCredits (optional)
+- **Output**: Stripe checkout URL
+
+## Input/Output
+
+### Input Parameters
+- **packageId**: Predefined package ID or "custom-credits"
+- **customCredits**: Number of credits for custom packages (1-50,000)
+
+### Output Response
+- **url**: Stripe checkout session URL
+- **error**: Error message if operation fails
+
+## Error Handling
+- **Authentication Errors**: Handles invalid or missing tokens
+- **Validation Errors**: Validates input parameters and credit limits
+- **Stripe Errors**: Handles Stripe API errors gracefully
+- **Database Errors**: Manages Supabase connection issues
+
+## Integration Points
+
+### Supabase Integration
+- **User Authentication**: Validates user tokens with Supabase
+- **Profile Data**: Accesses user profile information
+- **Service Role**: Uses service role key for admin operations
+
+### Stripe Integration
+- **Checkout Sessions**: Creates payment sessions
+- **Customer Management**: Handles customer records
+- **Webhook Support**: Ready for webhook integration
+- **Metadata**: Stores transaction metadata
+
+## Security Considerations
+- **Token Validation**: Validates all authentication tokens
+- **Input Sanitization**: Sanitizes all input parameters
+- **Error Logging**: Logs errors without exposing sensitive data
+- **HTTPS Only**: All communications use HTTPS
+
+## Performance
+- **Fast Response**: Quick response times for session creation
+- **Efficient Validation**: Optimized user and input validation
+- **Minimal Dependencies**: Minimal external dependencies
+- **Scalable Design**: Handles multiple concurrent requests

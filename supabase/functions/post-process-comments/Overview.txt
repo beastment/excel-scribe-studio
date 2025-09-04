@@ -1,0 +1,94 @@
+# Post-Process Comments Edge Function Overview
+
+## Purpose
+The post-process-comments edge function applies AI-powered transformations to comments that have been flagged as concerning or containing personally identifiable information (PII). It provides redaction and rephrasing capabilities to make comments safe for sharing while preserving their core meaning.
+
+## Main Functionality
+
+### 1. Content Transformation
+- **Redaction**: Removes or replaces concerning content with safe alternatives
+- **Rephrasing**: Rewrites identifiable information to maintain anonymity
+- **Original Preservation**: Keeps safe comments unchanged
+- **Policy Enforcement**: Applies consistent redaction policies
+
+### 2. AI-Powered Processing
+- Uses advanced AI models for intelligent content transformation
+- Maintains context and meaning while ensuring privacy
+- Supports multiple AI providers (OpenAI, Azure OpenAI)
+- Configurable prompts for different transformation types
+
+### 3. Batch Processing
+- Processes comments in optimized batches for efficiency
+- Uses I/O ratios to calculate optimal batch sizes
+- Implements safety margins to prevent token limit violations
+- Supports large-scale processing with timeout protection
+
+### 4. Policy Enforcement
+- Enforces redaction policies for job levels, tenure, and identifiers
+- Replaces specific patterns with "XXXX" placeholders
+- Maintains consistency across all processed comments
+- Provides fallback mechanisms for policy violations
+
+## Technical Architecture
+
+### Input Processing
+- Receives comments with classification results from scanning
+- Identifies comments requiring transformation
+- Groups comments by transformation type (redact/rephrase)
+- Validates input data integrity
+
+### AI Integration
+- Uses same AI configuration system as other functions
+- Supports multiple AI providers and models
+- Implements proper error handling and retry logic
+- Logs all AI interactions for monitoring
+
+### Content Transformation
+- Applies redaction policies to remove sensitive information
+- Uses AI for intelligent rephrasing of identifiable content
+- Maintains comment structure and formatting
+- Ensures consistent output format
+
+### Batch Optimization
+- Calculates optimal batch sizes based on model limits
+- Uses I/O ratios for accurate batch sizing
+- Implements safety margins to prevent token violations
+- Supports incremental processing for large datasets
+
+## Input/Output
+
+### Input
+- Array of comments with classification results
+- AI configuration for transformation models
+- Processing mode preferences (redact/rephrase)
+- Scan run ID for correlation
+
+### Output
+- Transformed comments with redacted/rephrased content
+- Original text preservation for reference
+- Summary statistics (total, redacted, rephrased, original)
+- Processing timing information
+
+## Error Handling
+- Graceful handling of AI failures
+- Fallback to policy-based redaction when AI fails
+- Comprehensive error logging
+- Continues processing even with partial failures
+
+## Performance Features
+- Efficient batch processing with optimal sizing
+- Parallel AI calls for redaction and rephrasing
+- Token limit optimization
+- Memory-efficient processing with cleanup
+
+## Policy Enforcement
+- Automatic detection and replacement of job levels
+- Tenure and experience statement redaction
+- Role and position identifier removal
+- Consistent "XXXX" placeholder usage
+
+## Integration
+- Called after scan-comments and adjudicator functions
+- Uses same authentication and configuration systems
+- Shares logging and monitoring infrastructure
+- Maintains data consistency across the processing pipeline
