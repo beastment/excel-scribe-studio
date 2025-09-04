@@ -9,10 +9,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
 }
 
-
-// Constants and utility functions copied from the main scan function
-const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace ALL personally identifiable information including:\n  * Names of people (e.g., "John Smith", "Sarah Johnson", "Mike Wilson", "Tom Anderson", "Jennifer Lee", "David Chen", "Lisa Rodriguez", "Rebecca Williams") with "[NAME]"\n  * Employee IDs, badge numbers, or other identifiers (e.g., "employee ID 12345", "badge #789") with "[ID]"\n  * Phone numbers (e.g., "555-0123") with "[PHONE]"\n  * Social Security Numbers (e.g., "SSN: 123-45-6789") with "[SSN]"\n  * Email addresses with "[EMAIL]"\n  * Job level/grade indicators (e.g., "Level 5", "L5", "Band 3") with "XXXX"\n  * Tenure/time-in-role statements (e.g., "3 years in role", "tenure") with "XXXX"\n- CRITICAL: You MUST redact ALL names, even if they appear to be common names\n- Preserve the general meaning and tone of the comment while removing all identifying details\n- Use consistent replacement patterns (e.g., always use "[NAME]" for names)\n- Do NOT leave any personally identifiable information in the output`;
-
 // Utility functions
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -816,7 +812,7 @@ serve(async (req) => {
         const sentinelInputRephrase = buildSentinelInput(rephraseItems.map((c: any) => c.originalText || c.text), rephraseItems);
         
         // Build prompts with expected lengths matching each phase's item count
-        const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt + REDACTION_POLICY, redactItems.length);
+        const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt, redactItems.length);
         const rephrasePrompt = buildBatchTextPrompt(scanConfig.rephrase_prompt, rephraseItems.length);
         
         // Determine which phases to request for this chunk
