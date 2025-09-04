@@ -939,10 +939,30 @@ serve(async (req) => {
         }
       }
       
-      const [scanAResults, scanBResults] = await Promise.all([
+      const settled = await Promise.allSettled([
         callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
         callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
       ]);
+      let scanAResults: any = null;
+      let scanBResults: any = null;
+      if (settled[0].status === 'fulfilled') {
+        scanAResults = settled[0].value;
+      } else {
+        const errMsg = settled[0].reason instanceof Error ? settled[0].reason.message : String(settled[0].reason);
+        console.error(`[SCAN_A] Error: ${errMsg}`);
+        if (aiLogger) {
+          await aiLogger.logResponse(user.id, scanRunId, 'scan-comments', scanA.provider, scanA.model, 'batch_analysis', 'scan_a', '', errMsg, undefined);
+        }
+      }
+      if (settled[1].status === 'fulfilled') {
+        scanBResults = settled[1].value;
+      } else {
+        const errMsg = settled[1].reason instanceof Error ? settled[1].reason.message : String(settled[1].reason);
+        console.error(`[SCAN_B] Error: ${errMsg}`);
+        if (aiLogger) {
+          await aiLogger.logResponse(user.id, scanRunId, 'scan-comments', scanB.provider, scanB.model, 'batch_analysis', 'scan_b', '', errMsg, undefined);
+        }
+      }
       const batchEndTime = Date.now();
       console.log(`[PERFORMANCE] Batch ${currentBatchStart + 1}-${batchEnd} processed in ${batchEndTime - batchStartTime}ms (parallel AI calls)`);
       
@@ -1781,23 +1801,35 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       }
 
   if (provider === 'azure') {
-    const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
-      method: 'POST',
-      headers: {
-        'api-key': Deno.env.get('AZURE_OPENAI_API_KEY') || '',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
-
-          if (!response.ok) {
-        const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
-        // Log the error response
-        if (aiLogger) {
-          await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
-        }
-        throw new Error(errorMessage);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    let response: Response;
+    try {
+      response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
+        method: 'POST',
+        headers: {
+          'api-key': Deno.env.get('AZURE_OPENAI_API_KEY') || '',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      const errorMessage = e && e.name === 'AbortError' ? 'Azure OpenAI API timeout after 5 minutes' : `Azure OpenAI API fetch failed: ${String(e && e.message || e)}`;
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
+      throw new Error(errorMessage);
+    }
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+      }
+      throw new Error(errorMessage);
+    }
 
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
@@ -1840,23 +1872,33 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     console.log(`[OPENAI] API Key: ${openaiApiKey ? '***' + openaiApiKey.slice(-4) : 'NOT SET'}`);
     console.log(`[OPENAI] Request payload:`, JSON.stringify(payload, null, 2));
-    
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
-
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    let response: Response;
+    try {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      const errorMessage = e && e.name === 'AbortError' ? 'OpenAI API timeout after 5 minutes' : `OpenAI API fetch failed: ${String(e && e.message || e)}`;
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+      }
+      throw new Error(errorMessage);
+    }
+    clearTimeout(timeoutId);
     console.log(`[OPENAI] Response status: ${response.status} ${response.statusText}`);
-    
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[OPENAI] Error response:`, errorText);
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
-      // Log the error response
       if (aiLogger) {
         await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
@@ -1954,32 +1996,44 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     // Create signature using raw endpoint (without encoding) for canonical request
     const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
     
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Host': host,
-        'X-Amz-Date': amzDate,
-        'Authorization': await createAWSSignature(
-          'POST',
-          rawEndpoint, // Use raw endpoint for signature calculation
-          JSON.stringify(bedrockPayload),
-          accessKeyId,
-          secretAccessKey,
-          region,
-          amzDate
-        ),
-      },
-      body: JSON.stringify(bedrockPayload)
-    });
-
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Host': host,
+          'X-Amz-Date': amzDate,
+          'Authorization': await createAWSSignature(
+            'POST',
+            rawEndpoint, // Use raw endpoint for signature calculation
+            JSON.stringify(bedrockPayload),
+            accessKeyId,
+            secretAccessKey,
+            region,
+            amzDate
+          ),
+        },
+        body: JSON.stringify(bedrockPayload),
+        signal: controller.signal
+      });
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      const errorMessage = e && e.name === 'AbortError' ? 'Bedrock API timeout after 5 minutes' : `Bedrock API fetch failed: ${String(e && e.message || e)}`;
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+      }
+      throw new Error(errorMessage);
+    }
+    clearTimeout(timeoutId);
     console.log(`[BEDROCK] Response status: ${response.status} ${response.statusText}`);
     
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[BEDROCK] Error response:`, errorText);
       const errorMessage = `Bedrock API error: ${response.status} ${response.statusText}`;
-      // Log the error response
       if (aiLogger) {
         await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
