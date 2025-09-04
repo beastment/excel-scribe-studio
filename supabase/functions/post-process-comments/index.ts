@@ -11,7 +11,7 @@ const corsHeaders = {
 
 
 // Constants and utility functions copied from the main scan function
-const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace ALL personally identifiable information including:\n  * Names of people (e.g., "John Smith", "Sarah Johnson") with "[NAME]" or "the person"\n  * Employee IDs, badge numbers, or other identifiers (e.g., "employee ID 12345", "badge #789") with "[ID]"\n  * Phone numbers (e.g., "555-0123") with "[PHONE]"\n  * Social Security Numbers (e.g., "SSN: 123-45-6789") with "[SSN]"\n  * Email addresses with "[EMAIL]"\n  * Job level/grade indicators (e.g., "Level 5", "L5", "Band 3") with "XXXX"\n  * Tenure/time-in-role statements (e.g., "3 years in role", "tenure") with "XXXX"\n- Preserve the general meaning and tone of the comment while removing all identifying details\n- Use consistent replacement patterns (e.g., always use "[NAME]" for names)\n- Do NOT leave any personally identifiable information in the output`;
+const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace ALL personally identifiable information including:\n  * Names of people (e.g., "John Smith", "Sarah Johnson", "Mike Wilson", "Tom Anderson", "Jennifer Lee", "David Chen", "Lisa Rodriguez", "Rebecca Williams") with "[NAME]"\n  * Employee IDs, badge numbers, or other identifiers (e.g., "employee ID 12345", "badge #789") with "[ID]"\n  * Phone numbers (e.g., "555-0123") with "[PHONE]"\n  * Social Security Numbers (e.g., "SSN: 123-45-6789") with "[SSN]"\n  * Email addresses with "[EMAIL]"\n  * Job level/grade indicators (e.g., "Level 5", "L5", "Band 3") with "XXXX"\n  * Tenure/time-in-role statements (e.g., "3 years in role", "tenure") with "XXXX"\n- CRITICAL: You MUST redact ALL names, even if they appear to be common names\n- Preserve the general meaning and tone of the comment while removing all identifying details\n- Use consistent replacement patterns (e.g., always use "[NAME]" for names)\n- Do NOT leave any personally identifiable information in the output`;
 
 // Utility functions
 function chunkArray<T>(arr: T[], size: number): T[][] {
@@ -62,8 +62,12 @@ function enforceRedactionPolicy(text: string | null | undefined): string | null 
   if (!text) return text ?? null;
   let out = String(text);
   
-  // Names (basic pattern - this is a fallback, AI should handle more complex cases)
+  // Names (more comprehensive pattern to catch names that AI might miss)
+  // Match common name patterns: First Last, First M. Last, etc.
   out = out.replace(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g, '[NAME]');
+  out = out.replace(/\b[A-Z][a-z]+\s+[A-Z]\.\s+[A-Z][a-z]+\b/g, '[NAME]');
+  // Also catch single names that might be identifiable in context (simpler approach)
+  out = out.replace(/\b[A-Z][a-z]+(?=\s+(?:in|from|at|of|with|to|for|by|manager|supervisor|employee|staff|worker|operator|director|head|lead|chief|senior|junior|assistant|coordinator|specialist|analyst|engineer|developer|designer|consultant|advisor|trainer|instructor|teacher|professor|doctor|nurse|officer|agent|representative|associate|clerk|receptionist|secretary|administrator))/g, '[NAME]');
   
   // Employee IDs, badge numbers, etc.
   out = out.replace(/\b(?:employee\s+)?ID\s+\d+\b/gi, '[ID]');
