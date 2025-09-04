@@ -396,8 +396,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         
         console.log(`[BATCH] AI Config loaded for post-processing`);
         
-        // Call post-process in parallel (separate invocations) and merge
-        const [ppRephrase, ppRedact] = await Promise.allSettled([
+        // New orchestration:
+        // 1) Run Redaction for Scan A and Scan B in parallel (separate instances via routingMode)
+        const [ppRedactA, ppRedactB] = await Promise.allSettled([
           supabase.functions.invoke('post-process-comments', {
             body: {
               comments: commentsToProcess.map((c: any) => ({
@@ -421,7 +422,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               },
               defaultMode,
               scanRunId,
-              phase: 'rephrase'
+              phase: 'redaction',
+              routingMode: 'scan_a'
             }
           }),
           supabase.functions.invoke('post-process-comments', {
@@ -447,18 +449,98 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               },
               defaultMode,
               scanRunId,
-              phase: 'redaction'
+              phase: 'redaction',
+              routingMode: 'scan_b'
             }
           })
         ]);
-        const postRephrase = ppRephrase.status === 'fulfilled' ? ppRephrase.value.data : null;
-        const postRedact = ppRedact.status === 'fulfilled' ? ppRedact.value.data : null;
-        if (ppRephrase.status === 'rejected') {
-          console.error('Post-processing (rephrase) error:', ppRephrase.reason);
-        }
-        if (ppRedact.status === 'rejected') {
-          console.error('Post-processing (redaction) error:', ppRedact.reason);
-        }
+        const postRedactA = ppRedactA.status === 'fulfilled' ? ppRedactA.value.data : null;
+        const postRedactB = ppRedactB.status === 'fulfilled' ? ppRedactB.value.data : null;
+        if (ppRedactA.status === 'rejected') console.error('Post-processing (redaction A) error:', ppRedactA.reason);
+        if (ppRedactB.status === 'rejected') console.error('Post-processing (redaction B) error:', ppRedactB.reason);
+
+        // 2) After both redaction calls complete, run Rephrase for A and B in parallel
+        const [ppRephraseA, ppRephraseB] = await Promise.allSettled([
+          supabase.functions.invoke('post-process-comments', {
+            body: {
+              comments: commentsToProcess.map((c: any) => ({
+                id: c.id,
+                originalRow: c.originalRow,
+                scannedIndex: c.scannedIndex,
+                originalText: c.originalText || c.text,
+                text: c.text,
+                concerning: c.concerning,
+                identifiable: c.identifiable,
+                mode: c.mode,
+                scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
+                adjudicationResult: c.adjudicationResult
+              })),
+              scanConfig: {
+                provider: aiConfigs?.provider || 'openai',
+                model: aiConfigs?.model || 'gpt-4o-mini',
+                redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+              },
+              defaultMode,
+              scanRunId,
+              phase: 'rephrase',
+              routingMode: 'scan_a'
+            }
+          }),
+          supabase.functions.invoke('post-process-comments', {
+            body: {
+              comments: commentsToProcess.map((c: any) => ({
+                id: c.id,
+                originalRow: c.originalRow,
+                scannedIndex: c.scannedIndex,
+                originalText: c.originalText || c.text,
+                text: c.text,
+                concerning: c.concerning,
+                identifiable: c.identifiable,
+                mode: c.mode,
+                scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
+                adjudicationResult: c.adjudicationResult
+              })),
+              scanConfig: {
+                provider: aiConfigs?.provider || 'openai',
+                model: aiConfigs?.model || 'gpt-4o-mini',
+                redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+              },
+              defaultMode,
+              scanRunId,
+              phase: 'rephrase',
+              routingMode: 'scan_b'
+            }
+          })
+        ]);
+        const postRephraseA = ppRephraseA.status === 'fulfilled' ? ppRephraseA.value.data : null;
+        const postRephraseB = ppRephraseB.status === 'fulfilled' ? ppRephraseB.value.data : null;
+        if (ppRephraseA.status === 'rejected') console.error('Post-processing (rephrase A) error:', ppRephraseA.reason);
+        if (ppRephraseB.status === 'rejected') console.error('Post-processing (rephrase B) error:', ppRephraseB.reason);
+
+        // Merge all four results by comment id
+        const processedCombined: Record<string, any> = {};
+        const addResults = (arr?: any[]) => {
+          if (!Array.isArray(arr)) return;
+          for (const item of arr) {
+            const existing = processedCombined[item.id] || { id: item.id };
+            processedCombined[item.id] = {
+              ...existing,
+              redactedText: item.redactedText ?? existing.redactedText,
+              rephrasedText: item.rephrasedText ?? existing.rephrasedText,
+              finalText: item.finalText ?? existing.finalText,
+              mode: item.mode ?? existing.mode,
+            };
+          }
+        };
+        addResults(postRedactA?.processedComments);
+        addResults(postRedactB?.processedComments);
+        addResults(postRephraseA?.processedComments);
+        addResults(postRephraseB?.processedComments);
+        const mergedProcessed = Object.values(processedCombined);
         // Merge results from both calls by comment id
         const processedCombined: Record<string, any> = {};
         const addResults = (arr?: any[]) => {

@@ -191,18 +191,34 @@ async function callAI(provider: string, model: string, prompt: string, input: st
         }
         throw new Error(timeoutMessage);
       }
+      // Log unexpected errors (e.g., network) before rethrow
+      if (aiLogger && userId && scanRunId && phase) {
+        const errMsg = (error instanceof Error) ? error.message : String(error);
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined);
+      }
       throw error;
     }
-
-    const result = await response.json();
-    const responseText = result.choices?.[0]?.message?.content || null;
-    
-    // Log the AI response if logger is provided
-    if (aiLogger && userId && scanRunId && phase && responseText) {
-      await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
+    try {
+      const result = await response.json();
+      const responseText = result.choices?.[0]?.message?.content || null;
+      
+      // Log the AI response if logger is provided
+      if (aiLogger && userId && scanRunId && phase) {
+        if (responseText) {
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
+        } else {
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', 'OpenAI returned empty content', undefined);
+        }
+      }
+      
+      return responseText;
+    } catch (parseError) {
+      const errMsg = (parseError instanceof Error) ? parseError.message : String(parseError);
+      if (aiLogger && userId && scanRunId && phase) {
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', `OpenAI JSON parse error: ${errMsg}`, undefined);
+      }
+      throw (parseError instanceof Error) ? parseError : new Error(errMsg);
     }
-    
-    return responseText;
   } else if (provider === 'bedrock') {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 115000); // 115s, below edge 120s cap
@@ -280,6 +296,11 @@ async function callAI(provider: string, model: string, prompt: string, input: st
           await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
         }
         throw new Error(timeoutMessage);
+      }
+      // Log unexpected errors as well
+      if (aiLogger && userId && scanRunId && phase) {
+        const errMsg = (error instanceof Error) ? error.message : String(error);
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined);
       }
       throw error;
     }
@@ -468,6 +489,7 @@ interface PostProcessRequest {
   defaultMode: 'redact' | 'rephrase';
   scanRunId?: string; // Add scanRunId to the interface
   phase?: 'redaction' | 'rephrase' | 'both';
+  routingMode?: 'scan_a' | 'scan_b' | 'both';
 }
 
 interface PostProcessResponse {
@@ -500,7 +522,7 @@ serve(async (req) => {
   const overallStartTime = Date.now(); // Track overall process time
 
   try {
-    const { comments, scanConfig, defaultMode, scanRunId, phase = 'both' }: PostProcessRequest = await req.json()
+    const { comments, scanConfig, defaultMode, scanRunId, phase = 'both', routingMode = 'both' }: PostProcessRequest = await req.json()
     
     if (!comments || !Array.isArray(comments) || comments.length === 0) {
       return new Response(
@@ -694,6 +716,13 @@ serve(async (req) => {
         const bConc = Boolean(c.scanBResult?.concerning);
         const aPM = parseProviderModel(c.scanAResult?.model);
         const bPM = parseProviderModel(c.scanBResult?.model);
+        // If routingMode is forced, prefer that branch when possible
+        if (routingMode === 'scan_a' && (aPM.provider && aPM.model)) {
+          return { provider: aPM.provider, model: aPM.model };
+        }
+        if (routingMode === 'scan_b' && (bPM.provider && bPM.model)) {
+          return { provider: bPM.provider, model: bPM.model };
+        }
         // Prefer identifiable routing
         if (aIdent && !bIdent && aPM.provider && aPM.model) return { provider: aPM.provider, model: aPM.model };
         if (!aIdent && bIdent && bPM.provider && bPM.model) return { provider: bPM.provider, model: bPM.model };
@@ -725,12 +754,18 @@ serve(async (req) => {
         console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} chunks`);
         for (const chunk of chunks) {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
-        const chunkTexts = chunk.map(c => c.originalText || c.text);
-        const sentinelInput = buildSentinelInput(chunkTexts, chunk);
+
+        // Determine which items should be processed by redaction vs rephrase
+        const redactItems = chunk.filter((c: any) => Boolean(c.identifiable));
+        const rephraseItems = chunk.filter((c: any) => Boolean(c.identifiable) || Boolean(c.concerning));
+
+        // Build sentinel inputs separately for each phase to honor concerning-only = rephrase-only
+        const sentinelInputRedact = buildSentinelInput(redactItems.map((c: any) => c.originalText || c.text), redactItems);
+        const sentinelInputRephrase = buildSentinelInput(rephraseItems.map((c: any) => c.originalText || c.text), rephraseItems);
         
-        // Process redaction and rephrasing in parallel for each chunk
-        const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt + REDACTION_POLICY, chunk.length);
-        const rephrasePrompt = buildBatchTextPrompt(scanConfig.rephrase_prompt, chunk.length);
+        // Build prompts with expected lengths matching each phase's item count
+        const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt + REDACTION_POLICY, redactItems.length);
+        const rephrasePrompt = buildBatchTextPrompt(scanConfig.rephrase_prompt, rephraseItems.length);
         
         console.log(`${logPrefix} [AI REQUEST] ${group.provider}/${group.model} type=batch_text phase=redaction`);
         console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
@@ -755,13 +790,22 @@ serve(async (req) => {
 
         
         const calls: Promise<string | null>[] = [];
-        if ((phase === 'both' || phase === 'redaction') && chunk.some(c => c.identifiable)) {
+        const requestRedaction = (phase === 'both' || phase === 'redaction') && redactItems.length > 0;
+        const requestRephrase = (phase === 'both' || phase === 'rephrase') && rephraseItems.length > 0;
+
+        // If nothing to do for this chunk under current phase, skip to next chunk
+        if (!requestRedaction && !requestRephrase) {
+          console.log(`${logPrefix} [POSTPROCESS] Skipping chunk: no items for current phase (${phase})`);
+          continue;
+        }
+
+        if (requestRedaction) {
           calls.push(
             callAI(
               group.provider,
               group.model,
               redactPrompt,
-              sentinelInput,
+              sentinelInputRedact,
               'batch_text',
               effectiveConfig.max_tokens,
               user.id,
@@ -772,13 +816,13 @@ serve(async (req) => {
             )
           );
         }
-        if (phase === 'both' || phase === 'rephrase') {
+        if (requestRephrase) {
           calls.push(
             callAI(
               group.provider,
               group.model,
               rephrasePrompt,
-              sentinelInput,
+              sentinelInputRephrase,
               'batch_text',
               effectiveConfig.max_tokens,
               user.id,
@@ -793,7 +837,7 @@ serve(async (req) => {
         let rawRedacted: string | null = null;
         let rawRephrased: string | null = null;
         let idx = 0;
-        if (phase === 'both' || phase === 'redaction') {
+        if (requestRedaction) {
           const s = settled[idx++];
           if (s.status === 'fulfilled') {
             rawRedacted = s.value as string;
@@ -805,7 +849,7 @@ serve(async (req) => {
             }
           }
         }
-        if (phase === 'both' || phase === 'rephrase') {
+        if (requestRephrase) {
           const s = settled[idx++];
           if (s && s.status === 'fulfilled') {
             rawRephrased = s.value as string;
@@ -829,7 +873,9 @@ serve(async (req) => {
         console.log(`${logPrefix} [POSTPROCESS] Parsing AI responses...`);
         
         // Validate AI responses before parsing
-        if (!rawRedacted && !rawRephrased) {
+        if ((!requestRedaction || rawRedacted) || (!requestRephrase || rawRephrased)) {
+          // At least one requested phase returned data (or phase not requested)
+        } else {
           console.error(`${logPrefix} [POSTPROCESS] ERROR: Both AI responses are empty or null`);
           throw new Error('AI responses are empty or null');
         }
@@ -841,7 +887,7 @@ serve(async (req) => {
         console.log(`${logPrefix} [POSTPROCESS] Parsed rephrasedTexts: ${rephrasedTexts.length} items`);
         
         // Validate parsed results
-        if (redactedTexts.length === 0 || rephrasedTexts.length === 0) {
+        if ((requestRedaction && redactedTexts.length === 0) || (requestRephrase && rephrasedTexts.length === 0)) {
           console.error(`${logPrefix} [POSTPROCESS] ERROR: Parsed results are empty`);
           console.error(`${logPrefix} [POSTPROCESS] redactedTexts: ${JSON.stringify(redactedTexts)}`);
           console.error(`${logPrefix} [POSTPROCESS] rephrasedTexts: ${JSON.stringify(rephrasedTexts)}`);
@@ -904,11 +950,11 @@ serve(async (req) => {
           let finalText = comment.text;
           
           // Apply the appropriate transformation based on mode
-          if (mode === 'redact' && comment.concerning) {
+          if (mode === 'redact' && comment.identifiable) {
             finalText = redactedText;
             redactedCount++;
             console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REDACTED: ${redactedText.substring(0, 100)}...`);
-          } else if (mode === 'rephrase' && comment.identifiable) {
+          } else if (mode === 'rephrase' && (comment.identifiable || comment.concerning)) {
             finalText = rephrasedText;
             rephrasedCount++;
             console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REPHRASED: ${rephrasedText.substring(0, 100)}...`);
