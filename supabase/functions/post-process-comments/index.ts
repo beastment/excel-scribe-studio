@@ -96,7 +96,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       if (aiLogger && userId && scanRunId && phase) {
         await aiLogger.logRequest({
           userId,
-          scanRunId: String(runId),
+          scanRunId: scanRunId,
           functionName: 'post-process-comments',
           provider,
           model,
@@ -772,7 +772,7 @@ serve(async (req) => {
           provider: group.provider,
           model: group.model,
           prompt_length: redactPrompt.length,
-          input_length: sentinelInput.length,
+          input_length: sentinelInputRedact.length,
           chunk_size: chunk.length
         }).substring(0, 500)}...`);
         
@@ -781,8 +781,8 @@ serve(async (req) => {
          aiLogger.setFunctionStartTime(overallStartTime);
         
         // Estimate tokens for this chunk more accurately
-        const chunkEstimatedInputTokens = Math.ceil(sentinelInput.length / 5);
-        const chunkEstimatedOutputTokens = Math.ceil(sentinelInput.length / 5) * 1.1; // Post-processing typically generates similar text
+        const chunkEstimatedInputTokens = Math.ceil((requestRedaction ? sentinelInputRedact.length : sentinelInputRephrase.length) / 5);
+        const chunkEstimatedOutputTokens = Math.ceil((requestRedaction ? sentinelInputRedact.length : sentinelInputRephrase.length) / 5) * 1.1; // Post-processing typically generates similar text
         const chunkTotalTokens = chunkEstimatedInputTokens + chunkEstimatedOutputTokens;
         
         console.log(`${logPrefix} [CHUNK] Estimated tokens: ${chunkTotalTokens} (${chunkEstimatedInputTokens} input + ${chunkEstimatedOutputTokens} output)`);
