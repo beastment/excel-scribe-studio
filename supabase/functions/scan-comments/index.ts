@@ -328,33 +328,38 @@ serve(async (req) => {
     );
     
     // Check database for run status to prevent duplicates across function instances
-    const { data: existingRun, error: runCheckError } = await supabase
-      .from('ai_logs')
-      .select('id, function_name, response_status, created_at')
-      .eq('scan_run_id', scanRunId)
-      .eq('function_name', 'scan-comments')
-      .eq('response_status', 'success')
-      .order('created_at', { ascending: false })
-      .limit(1);
-    
-    if (runCheckError) {
-      console.error('[RUN CHECK] Error checking run status:', runCheckError);
-    } else if (existingRun && existingRun.length > 0) {
-      const lastRun = existingRun[0];
-      const runAge = Date.now() - new Date(lastRun.created_at).getTime();
-      const maxRunAge = 5 * 60 * 1000; // 5 minutes
+    // IMPORTANT: Only apply this to duplicate INITIAL requests. Incremental follow-ups must not be blocked.
+    if (!isIncrementalRequest && !isCached) {
+      const { data: existingRun, error: runCheckError } = await supabase
+        .from('ai_logs')
+        .select('id, function_name, response_status, created_at')
+        .eq('scan_run_id', scanRunId)
+        .eq('function_name', 'scan-comments')
+        .eq('response_status', 'success')
+        .order('created_at', { ascending: false })
+        .limit(1);
       
-      if (runAge < maxRunAge) {
-        console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed recently (${Math.round(runAge/1000)}s ago). Skipping duplicate call.`);
-        return new Response(JSON.stringify({
-          comments: [],
-          batchStart: batchStartValue,
-          batchSize: 0,
-          hasMore: false,
-          totalComments: requestBody.comments?.length || 0,
-          summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (runCheckError) {
+        console.error('[RUN CHECK] Error checking run status:', runCheckError);
+      } else if (existingRun && existingRun.length > 0) {
+        const lastRun = existingRun[0];
+        const runAge = Date.now() - new Date(lastRun.created_at).getTime();
+        const maxRunAge = 5 * 60 * 1000; // 5 minutes
+        
+        if (runAge < maxRunAge) {
+          console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed recently (${Math.round(runAge/1000)}s ago). Skipping duplicate initial call.`);
+          return new Response(JSON.stringify({
+            comments: [],
+            batchStart: batchStartValue,
+            batchSize: 0,
+            hasMore: false,
+            totalComments: requestBody.comments?.length || 0,
+            summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
       }
+    } else if (isIncrementalRequest) {
+      console.log(`[RUN CHECK] Skipping DB duplicate check for incremental request scanRunId=${scanRunId}`);
     }
 
     const { data: configs, error: configError } = await supabase
