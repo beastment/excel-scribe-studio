@@ -106,6 +106,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       const matchesDemographic = selectedDemographic ? comment.demographics === selectedDemographic : true;
       return matchesSearch && matchesConcerning && matchesIdentifiable && matchesDemographic;
     });
+    console.log('[FILTER] Updating filteredComments, count:', filtered.length, 'from comments:', comments.length);
     setFilteredComments(filtered);
   }, [comments, searchTerm, showConcerningOnly, showIdentifiableOnly, selectedDemographic]);
 
@@ -731,7 +732,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             }))
           );
           onCommentsUpdate(finalComments);
-          setFilteredComments(finalComments);
           didPostProcessUpdate = true;
           
           // Show success message with a computed summary based on final comments
