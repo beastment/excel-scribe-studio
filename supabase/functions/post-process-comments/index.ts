@@ -771,7 +771,7 @@ serve(async (req) => {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
 
         // Determine which items should be processed by redaction vs rephrase
-        const redactItems = chunk.filter((c: any) => Boolean(c.identifiable));
+        const redactItems = chunk.filter((c: any) => Boolean(c.identifiable) || Boolean(c.concerning));
         const rephraseItems = chunk.filter((c: any) => Boolean(c.identifiable) || Boolean(c.concerning));
 
         // Build sentinel inputs separately for each phase to honor concerning-only = rephrase-only
@@ -981,7 +981,7 @@ serve(async (req) => {
           if (requestRedaction) {
             let k = 0;
             for (let i = 0; i < expected; i++) {
-              if (chunk[i]?.identifiable) {
+              if (chunk[i]?.identifiable || chunk[i]?.concerning) {
                 const val = redactedTexts[k++] ?? '';
                 redactedTextsAligned[i] = enforceRedactionPolicy(val) as string;
               }
