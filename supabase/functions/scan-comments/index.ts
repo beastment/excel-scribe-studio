@@ -831,7 +831,7 @@ serve(async (req) => {
     
     // Process comments in smaller chunks to avoid gateway timeout
     // Reduce batch limits to prevent edge function timeout
-    const MAX_BATCHES_PER_REQUEST = inputComments.length > 500 ? 3 : 2; // Much smaller batches to prevent timeout
+    const MAX_BATCHES_PER_REQUEST = 1; // Process exactly one batch per invocation to stay under edge timeout
     const MAX_EXECUTION_TIME = 120 * 1000; // Fixed 120 second limit for safety
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
@@ -1802,7 +1802,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
   if (provider === 'azure') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below 120s function max
     let response: Response;
     try {
       response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -1873,7 +1873,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     console.log(`[OPENAI] API Key: ${openaiApiKey ? '***' + openaiApiKey.slice(-4) : 'NOT SET'}`);
     console.log(`[OPENAI] Request payload:`, JSON.stringify(payload, null, 2));
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below 120s function max
     let response: Response;
     try {
       response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1997,7 +1997,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below 120s function max
     let response: Response;
     try {
       response = await fetch(endpoint, {
