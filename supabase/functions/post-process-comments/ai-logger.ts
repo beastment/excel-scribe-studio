@@ -110,6 +110,9 @@ export class AILogger {
         })
         .eq('user_id', userId)
         .eq('function_name', functionName)
+        .eq('provider', provider)
+        .eq('model', model)
+        .eq('request_type', requestType)
         .eq('phase', phase)
         .eq('response_status', 'pending');
 
