@@ -671,6 +671,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   finalText = processed.redactedText;
                   finalMode = 'redact';
                   console.log(`[MODE] Fallback to redacted text for comment ${comment.id} (rephrased not available)`);
+                } else if (processed.redactedText) {
+                  // As a last resort, if any processed text exists, apply it
+                  finalText = processed.redactedText;
+                  finalMode = 'redact';
+                  console.log(`[MODE] Last-resort apply redacted for comment ${comment.id}`);
+                } else if (processed.rephrasedText) {
+                  finalText = processed.rephrasedText;
+                  finalMode = 'rephrase';
+                  console.log(`[MODE] Last-resort apply rephrased for comment ${comment.id}`);
                 }
                 
                 console.log(`[MODE] Final result for comment ${comment.id}: mode=${finalMode}, textLength=${finalText.length}`);

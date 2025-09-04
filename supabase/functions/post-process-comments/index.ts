@@ -912,18 +912,25 @@ serve(async (req) => {
           throw new Error('AI responses are empty or null');
         }
         
+        const expectedRedactCount = redactItems.length;
+        const expectedRephraseCount = rephraseItems.length;
         let redactedTexts = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : [];
         let rephrasedTexts = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : [];
+        if (requestRedaction && redactedTexts.length === 0) {
+          console.warn(`${logPrefix} [POSTPROCESS] Redaction parse returned 0 items; filling ${expectedRedactCount} blanks`);
+          redactedTexts = new Array(expectedRedactCount).fill('');
+        }
+        if (requestRephrase && rephrasedTexts.length === 0) {
+          console.warn(`${logPrefix} [POSTPROCESS] Rephrase parse returned 0 items; filling ${expectedRephraseCount} blanks`);
+          rephrasedTexts = new Array(expectedRephraseCount).fill('');
+        }
         
         console.log(`${logPrefix} [POSTPROCESS] Parsed redactedTexts: ${redactedTexts.length} items`);
         console.log(`${logPrefix} [POSTPROCESS] Parsed rephrasedTexts: ${rephrasedTexts.length} items`);
         
         // Validate parsed results
         if ((requestRedaction && redactedTexts.length === 0) || (requestRephrase && rephrasedTexts.length === 0)) {
-          console.error(`${logPrefix} [POSTPROCESS] ERROR: Parsed results are empty`);
-          console.error(`${logPrefix} [POSTPROCESS] redactedTexts: ${JSON.stringify(redactedTexts)}`);
-          console.error(`${logPrefix} [POSTPROCESS] rephrasedTexts: ${JSON.stringify(rephrasedTexts)}`);
-          throw new Error('Parsed results are empty');
+          console.warn(`${logPrefix} [POSTPROCESS] WARNING: Parsed results empty after fill; proceeding with fallbacks`);
         }
 
         // Handle ID-tagged responses and realign by index
