@@ -11,7 +11,7 @@ const corsHeaders = {
 
 
 // Constants and utility functions copied from the main scan function
-const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace job level/grade indicators (e.g., "Level 5", "L5", "Band 3") with "XXXX".\n- Replace tenure/time-in-role statements (e.g., "3 years in role", "tenure") with "XXXX".`;
+const REDACTION_POLICY = `\nREDACTION POLICY:\n- Replace ALL personally identifiable information including:\n  * Names of people (e.g., "John Smith", "Sarah Johnson") with "[NAME]" or "the person"\n  * Employee IDs, badge numbers, or other identifiers (e.g., "employee ID 12345", "badge #789") with "[ID]"\n  * Phone numbers (e.g., "555-0123") with "[PHONE]"\n  * Social Security Numbers (e.g., "SSN: 123-45-6789") with "[SSN]"\n  * Email addresses with "[EMAIL]"\n  * Job level/grade indicators (e.g., "Level 5", "L5", "Band 3") with "XXXX"\n  * Tenure/time-in-role statements (e.g., "3 years in role", "tenure") with "XXXX"\n- Preserve the general meaning and tone of the comment while removing all identifying details\n- Use consistent replacement patterns (e.g., always use "[NAME]" for names)\n- Do NOT leave any personally identifiable information in the output`;
 
 // Utility functions
 function chunkArray<T>(arr: T[], size: number): T[][] {
@@ -61,21 +61,42 @@ const buildSentinelInput = (texts: string[], comments?: any[]): string => {
 function enforceRedactionPolicy(text: string | null | undefined): string | null {
   if (!text) return text ?? null;
   let out = String(text);
+  
+  // Names (basic pattern - this is a fallback, AI should handle more complex cases)
+  out = out.replace(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g, '[NAME]');
+  
+  // Employee IDs, badge numbers, etc.
+  out = out.replace(/\b(?:employee\s+)?ID\s+\d+\b/gi, '[ID]');
+  out = out.replace(/\bbadge\s*#\s*\d+\b/gi, '[ID]');
+  
+  // Phone numbers
+  out = out.replace(/\b\d{3}-\d{3}-\d{4}\b/g, '[PHONE]');
+  out = out.replace(/\b\d{3}-\d{4}\b/g, '[PHONE]');
+  
+  // Social Security Numbers
+  out = out.replace(/\bSSN\s*:\s*\d{3}-\d{2}-\d{4}\b/gi, '[SSN]');
+  
+  // Email addresses
+  out = out.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '[EMAIL]');
+  
   // Job level/grade indicators: Level 5, L5, Band 3
   out = out.replace(/\b(?:Level|Band)\s*\d+\b/gi, 'XXXX');
   out = out.replace(/\bL\s*\d+\b/gi, 'XXXX');
   out = out.replace(/\bL(?:evel)?\s*\d+\b/gi, 'XXXX');
+  
   // Tenure/time-in-role
   out = out.replace(/\b\d+\s*(?:years?|yrs?)\s+(?:in\s+role|experience|tenure)\b/gi, 'XXXX');
   // Additional tenure/experience phrasings
   out = out.replace(/\b\d+\s*(?:years?|yrs?)\s+(?:of\s+)?(?:work\s+)?experience\b/gi, 'XXXX');
   out = out.replace(/\b\d+\s*(?:months?)\s+(?:in\s+role|experience)\b/gi, 'XXXX');
   out = out.replace(/\btenure\b/gi, 'XXXX');
+  
   // Role/position indicators that can make an individual identifiable in context
   out = out.replace(/\bHDR\b/gi, 'XXXX');
   out = out.replace(/\bHigher\s+Degree\s+Research(?:er)?\b/gi, 'XXXX');
   out = out.replace(/\bacademic\s+staff\b/gi, 'XXXX');
   out = out.replace(/\bstaff\s+member(?:s)?\b/gi, 'XXXX');
+  
   return out;
 }
 
@@ -382,6 +403,8 @@ function arrayBufferToHex(buffer: ArrayBuffer): string {
 
 // Parse and normalize batch text responses
 function normalizeBatchTextParsed(parsed: any): string[] {
+  console.log('[NORMALIZE] Input type:', typeof parsed);
+  console.log('[NORMALIZE] Input content:', typeof parsed === 'string' ? parsed.substring(0, 200) : parsed);
   // Helper function to clean up any remaining sentinel markers
   const cleanSentinels = (text: string): string => {
     return text
@@ -447,15 +470,21 @@ function normalizeBatchTextParsed(parsed: any): string[] {
   
   // Check if this is a JSON array (the AI might return the entire array as a string)
   if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
+    console.log('[NORMALIZE] Attempting JSON parse of:', content.substring(0, 200));
     try {
       const jsonArray = JSON.parse(content);
+      console.log('[NORMALIZE] JSON parse successful, type:', typeof jsonArray, 'isArray:', Array.isArray(jsonArray));
       if (Array.isArray(jsonArray)) {
-        return jsonArray.map(item => {
+        const result = jsonArray.map(item => {
+          console.log('[NORMALIZE] Processing item:', item);
           if (typeof item === 'string') {
             return cleanSentinels(item.trim());
           } else if (typeof item === 'object' && item !== null) {
             // Handle JSON objects with redacted/rephrased/text fields
-            if (item.redacted) return cleanSentinels(item.redacted);
+            if (item.redacted) {
+              console.log('[NORMALIZE] Found redacted field:', item.redacted.substring(0, 50));
+              return cleanSentinels(item.redacted);
+            }
             if (item.rephrased) return cleanSentinels(item.rephrased);
             if (item.text) return cleanSentinels(item.text);
             // Fallback to stringifying the object
@@ -464,13 +493,17 @@ function normalizeBatchTextParsed(parsed: any): string[] {
             return cleanSentinels(String(item));
           }
         }).filter(s => s.length > 0);
+        console.log('[NORMALIZE] JSON array result:', result);
+        return result;
       }
     } catch (e) {
       console.warn('[NORMALIZE] Failed to parse JSON array, falling back to string parsing:', e);
     }
   }
 
-  return [String(parsed || '')];
+  const result = [String(parsed || '')];
+  console.log('[NORMALIZE] Final result:', result);
+  return result;
 }
 
 interface PostProcessRequest {
@@ -918,6 +951,8 @@ serve(async (req) => {
         
         const expectedRedactCount = redactItems.length;
         const expectedRephraseCount = rephraseItems.length;
+        console.log(`${logPrefix} [DEBUG] rawRedacted type:`, typeof rawRedacted);
+        console.log(`${logPrefix} [DEBUG] rawRedacted content:`, rawRedacted?.substring(0, 200));
         let redactedTexts = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : [];
         let rephrasedTexts = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : [];
         if (requestRedaction && redactedTexts.length === 0) {
