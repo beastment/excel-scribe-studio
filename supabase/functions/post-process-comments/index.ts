@@ -715,6 +715,13 @@ serve(async (req) => {
         if (!modelStr) return { provider: null, model: null };
         const parts = modelStr.split('/');
         if (parts.length === 2) return { provider: parts[0], model: parts[1] };
+        const lower = modelStr.toLowerCase();
+        if (lower.startsWith('anthropic.') || lower.startsWith('mistral.') || lower.startsWith('amazon.titan')) {
+          return { provider: 'bedrock', model: modelStr };
+        }
+        if (lower.startsWith('gpt') || lower.includes('gpt-4')) {
+          return { provider: 'openai', model: modelStr };
+        }
         return { provider: null, model: modelStr };
       };
       const pickModelForComment = (c: any): { provider: string; model: string } => {
