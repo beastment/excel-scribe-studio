@@ -899,6 +899,10 @@ serve(async (req) => {
         console.log(`${logPrefix} [AI RESPONSE] ${group.provider}/${group.model} type=batch_text phase=rephrase`);
         console.log(`${logPrefix} [AI RESPONSE] rawRephrased=${JSON.stringify(rawRephrased).substring(0, 500)}...`);
         
+        // Debug: Log the parsed results
+        console.log(`${logPrefix} [DEBUG] Parsed redactedTexts:`, redactedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
+        console.log(`${logPrefix} [DEBUG] Parsed rephrasedTexts:`, rephrasedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
+        
 
 
         // Parse and normalize the responses
@@ -1000,6 +1004,8 @@ serve(async (req) => {
 
         // Process each comment in the chunk
         console.log(`${logPrefix} [POSTPROCESS] Processing ${chunk.length} comments in chunk...`);
+        console.log(`${logPrefix} [DEBUG] redactedTextsAligned:`, redactedTextsAligned.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
+        console.log(`${logPrefix} [DEBUG] rephrasedTextsAligned:`, rephrasedTextsAligned.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
         for (let i = 0; i < chunk.length; i++) {
           const comment = chunk[i];
           const redCandidate = redactedTextsAligned[i] || '';
@@ -1008,6 +1014,16 @@ serve(async (req) => {
             : (comment.identifiable ? (enforceRedactionPolicy(comment.text) || comment.text) : comment.text);
           const rephCandidate = rephrasedTextsAligned[i] || '';
           const rephrasedText = rephCandidate.trim().length > 0 ? rephCandidate : comment.text;
+          
+          console.log(`${logPrefix} [DEBUG] Comment ${i+1} (${comment.id}):`, {
+            identifiable: comment.identifiable,
+            concerning: comment.concerning,
+            redCandidate: redCandidate?.substring(0, 50),
+            rephCandidate: rephCandidate?.substring(0, 50),
+            redactedText: redactedText?.substring(0, 50),
+            rephrasedText: rephrasedText?.substring(0, 50),
+            originalText: comment.text?.substring(0, 50)
+          });
           let mode = comment.mode;
 
           // Determine mode if not specified
