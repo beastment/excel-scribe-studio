@@ -376,27 +376,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       }
 
       // Phase 3: Post-process flagged comments
-      // Process comments that are identifiable (with or without concerning)
-      // Comments that are only concerning (but not identifiable) should be set to revert mode
-      const commentsToProcess = data.comments.filter((c: any) => c.identifiable);
-      const commentsToRevert = data.comments.filter((c: any) => c.concerning && !c.identifiable);
-      
-      // Set comments that are only concerning to revert mode
-      if (commentsToRevert.length > 0) {
-        console.log(`Setting ${commentsToRevert.length} comments to revert mode (concerning but not identifiable)`);
-        data.comments = data.comments.map((comment: any) => {
-          if (comment.concerning && !comment.identifiable) {
-            return {
-              ...comment,
-              mode: 'revert',
-              text: comment.originalText || comment.text,
-              needsPostProcessing: false,
-              isPostProcessed: true
-            };
-          }
-          return comment;
-        });
-      }
+      // Process comments that are identifiable OR concerning-only (per updated logic)
+      const commentsToProcess = data.comments.filter((c: any) => c.identifiable || c.concerning);
       
       if (commentsToProcess.length > 0) {
         setScanProgress(70);
@@ -478,21 +459,38 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         if (ppRedact.status === 'rejected') {
           console.error('Post-processing (redaction) error:', ppRedact.reason);
         }
-        const postProcessData = postRephrase || postRedact;
-        if (postProcessData?.processedComments) {
-          console.log(`Post-processing completed:`, postProcessData);
+        // Merge results from both calls by comment id
+        const processedCombined: Record<string, any> = {};
+        const addResults = (arr?: any[]) => {
+          if (!Array.isArray(arr)) return;
+          for (const item of arr) {
+            const existing = processedCombined[item.id] || { id: item.id };
+            processedCombined[item.id] = {
+              ...existing,
+              redactedText: item.redactedText ?? existing.redactedText,
+              rephrasedText: item.rephrasedText ?? existing.rephrasedText,
+              finalText: item.finalText ?? existing.finalText,
+              mode: item.mode ?? existing.mode,
+            };
+          }
+        };
+        addResults(postRephrase?.processedComments);
+        addResults(postRedact?.processedComments);
+        const mergedProcessed = Object.values(processedCombined);
+        if (mergedProcessed.length > 0) {
+          console.log(`Post-processing completed: merged ${mergedProcessed.length} items`);
           
           // Create a map of processed comments by ID
           const processedMap = new Map(
-            postProcessData.processedComments.map((c: any) => [c.id, c])
+            (mergedProcessed as any[]).map((c: any) => [c.id, c])
           );
           
           console.log(`Created processedMap with ${processedMap.size} entries:`, Array.from(processedMap.keys()));
           
           // Merge post-processing results back into the scan data
           const finalComments = data.comments.map((comment: any) => {
-            // Process comments that are identifiable (with or without concerning)
-            if (comment.identifiable) {
+            // Process comments that are identifiable OR concerning-only
+            if (comment.identifiable || comment.concerning) {
               const processed = processedMap.get(comment.id) as any;
               if (processed) {
                 console.log(`[POSTPROCESS] Raw processed comment:`, {
