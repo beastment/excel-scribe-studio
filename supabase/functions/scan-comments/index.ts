@@ -1175,19 +1175,19 @@ serve(async (req) => {
       }
     }
     
-    // Call adjudicator if there are comments that need adjudication and no more batches
-    console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}`);
+    // Call adjudicator for this batch if there are disagreements (per-batch adjudication)
+    console.log(`[ADJUDICATION] Checking conditions (per-batch): needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}`);
     
-    if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
+    if (totalSummary.needsAdjudication > 0 && adjudicator) {
       // In-memory guards to ensure adjudicator runs only once per scanRunId (per edge function instance)
       gAny.__adjudicationStarted = gAny.__adjudicationStarted || new Set<string>();
       gAny.__adjudicationCompleted = gAny.__adjudicationCompleted || new Set<string>();
 
-      if (gAny.__adjudicationStarted.has(scanRunId)) {
-        console.log(`[ADJUDICATION] Already started for scanRunId=${scanRunId}, skipping duplicate adjudicator call`);
+      if (gAny.__adjudicationStarted.has(`${scanRunId}-${batchStart}`)) {
+        console.log(`[ADJUDICATION] Already started for scanRunId=${scanRunId} batchStart=${batchStart}, skipping duplicate adjudicator call`);
       } else {
-        gAny.__adjudicationStarted.add(scanRunId);
-        console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
+        gAny.__adjudicationStarted.add(`${scanRunId}-${batchStart}`);
+        console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments in this batch`);
         
         try {
           // Filter comments that need adjudication
@@ -1203,7 +1203,7 @@ serve(async (req) => {
             return concerningDisagreement || identifiableDisagreement;
           });
 
-          console.log(`[ADJUDICATION] Found ${commentsNeedingAdjudication.length} comments that need adjudication`);
+          console.log(`[ADJUDICATION] Found ${commentsNeedingAdjudication.length} comments that need adjudication in this batch`);
 
           // Check for duplicate adjudication call (cross-invocation, via DB logs)
           const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, commentsNeedingAdjudication);
@@ -1212,7 +1212,7 @@ serve(async (req) => {
             console.log(`[ADJUDICATION] These comments have already been processed, skipping duplicate call`);
             // Continue without calling adjudicator again
           } else {
-            // Process adjudication with proper batching
+            // Process adjudication for this batch only
             const adjudicatorConfig = {
               provider: adjudicator.provider,
               model: adjudicator.model,
@@ -1227,7 +1227,7 @@ serve(async (req) => {
               maxTokens: adjudicator.max_tokens
             });
 
-            // Use the new batching system
+            // Use batching system (within-batch if needed)
             const adjudicatedResults = await processAdjudicationBatches(
               supabase,
               scanRunId,
@@ -1259,11 +1259,11 @@ serve(async (req) => {
             }
           }
         } catch (adjudicationError) {
-          console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
+          console.error('[ADJUDICATION] Failed to call adjudicator for this batch:', adjudicationError);
           // Continue without failing the entire scan
         } finally {
-          gAny.__adjudicationCompleted.add(scanRunId);
-          console.log(`[ADJUDICATION] Marked adjudication as completed for scanRunId=${scanRunId}`);
+          gAny.__adjudicationCompleted.add(`${scanRunId}-${batchStart}`);
+          console.log(`[ADJUDICATION] Marked adjudication as completed for scanRunId=${scanRunId} batchStart=${batchStart}`);
         }
       }
     }
