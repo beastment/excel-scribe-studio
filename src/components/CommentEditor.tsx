@@ -1520,9 +1520,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                              
                              if (comment.mode === 'revert') {
                                displayText = comment.originalText;
-                             } else if (comment.mode === 'edit') {
-                               // For edit mode, use the current text (which may have been manually edited)
-                               displayText = comment.text;
                              }
                              
                              console.log(`[DISPLAY] Comment ${comment.id}:`, {
