@@ -288,6 +288,69 @@ async function callAI(provider: string, model: string, prompt: string, input: st
   throw new Error(`Unsupported provider: ${provider}`);
 }
 
+// AWS Signature V4 utilities for Bedrock (used by callAI for provider 'bedrock')
+async function createAWSSignature(
+  method: string,
+  url: string,
+  body: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+  region: string,
+  amzDate: string
+): Promise<string> {
+  const parsed = new URL(url);
+  const hostname = parsed.hostname;
+  const pathname = parsed.pathname;
+  const search = parsed.search;
+  const dateStamp = amzDate.substring(0, 8);
+
+  // Bedrock requires the model path segment to have colons double-encoded
+  const canonicalPath = pathname.replace(/:/g, '%3A').replace(/%3A/g, '%253A');
+  const canonicalHeaders = `content-type:application/json\nhost:${hostname}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'content-type;host;x-amz-date';
+  const payloadHash = await sha256(body);
+  const canonicalRequest = `${method}\n${canonicalPath}${search}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+
+  const algorithm = 'AWS4-HMAC-SHA256';
+  const credentialScope = `${dateStamp}/${region}/bedrock/aws4_request`;
+  const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${await sha256(canonicalRequest)}`;
+
+  const kDate = await hmacSha256(`AWS4${secretAccessKey}`, dateStamp);
+  const kRegion = await hmacSha256(kDate, region);
+  const kService = await hmacSha256(kRegion, 'bedrock');
+  const kSigning = await hmacSha256(kService, 'aws4_request');
+  const signature = await hmacSha256(kSigning, stringToSign);
+  const authorization = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${arrayBufferToHex(signature)}`;
+  return authorization;
+}
+
+async function sha256(message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const msgBuffer = encoder.encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  return arrayBufferToHex(hashBuffer);
+}
+
+async function hmacSha256(key: string | ArrayBuffer, message: string): Promise<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  const keyBuffer: ArrayBuffer = typeof key === 'string' ? encoder.encode(key) : key;
+  const msgBuffer = encoder.encode(message);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBuffer,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  return await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
+}
+
+function arrayBufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 // Parse and normalize batch text responses
 function normalizeBatchTextParsed(parsed: any): string[] {
   // Helper function to clean up any remaining sentinel markers
