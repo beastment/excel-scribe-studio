@@ -548,26 +548,22 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           // Update processedComments with the merged results
           data.comments = finalComments;
           
-          // Show success message with post-processing summary
-          const summary = postProcessData.summary;
-          if (summary) {
-            toast.success(`Post-processing complete: ${summary.redacted} redacted, ${summary.rephrased} rephrased, ${summary.original} unchanged`);
-          }
+          // Show success message with a computed summary based on final comments
+          const redactedSummaryCount = finalComments.filter((c: any) => (c.identifiable || c.concerning) && c.mode === 'redact').length;
+          const rephrasedSummaryCount = finalComments.filter((c: any) => (c.identifiable || c.concerning) && c.mode === 'rephrase').length;
+          const originalSummaryCount = finalComments.length - redactedSummaryCount - rephrasedSummaryCount;
+          toast.success(`Post-processing complete: ${redactedSummaryCount} redacted, ${rephrasedSummaryCount} rephrased, ${originalSummaryCount} unchanged`);
           
           setScanProgress(95);
         } else {
           console.warn('Post-processing returned no data, using scan results with placeholders');
-          console.log('Full post-process response:', postProcessData);
+          console.log('Full post-process responses:', { postRephrase, postRedact });
         }
       } else {
         setScanProgress(95);
         // Explicit log note when Phase 3 is skipped (no identifiable items to post-process)
-        console.log(`[POSTPROCESS] Skipped: 0 identifiable comments after adjudication. Concerning-only to revert: ${commentsToRevert.length}`);
-        if (commentsToRevert.length > 0) {
-          toast.info(`Phase 3: ${commentsToRevert.length} comments set to revert mode (concerning but not identifiable), no post-processing needed`);
-        } else {
-          toast.info('Phase 3: No flagged comments to post-process');
-        }
+        console.log(`[POSTPROCESS] Skipped: 0 flagged comments after adjudication.`);
+        toast.info('Phase 3: No flagged comments to post-process');
       }
 
       // Final update with all processed comments
