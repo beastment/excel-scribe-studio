@@ -111,7 +111,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
   if (provider === 'azure') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below edge 120s cap
     
     try {
       const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -156,7 +156,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
   } else if (provider === 'openai') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below edge 120s cap
     
     let response;
     try {
@@ -573,7 +573,7 @@ serve(async (req) => {
         
 
         
-        const [rawRedacted, rawRephrased] = await Promise.all([
+        const settled = await Promise.allSettled([
           callAI(
             effectiveConfig.provider,
             effectiveConfig.model,
@@ -601,6 +601,26 @@ serve(async (req) => {
             effectiveConfig.temperature
           )
         ]);
+        let rawRedacted: string | null = null;
+        let rawRephrased: string | null = null;
+        if (settled[0].status === 'fulfilled') {
+          rawRedacted = settled[0].value as string;
+        } else {
+          const errMsg = settled[0].reason instanceof Error ? settled[0].reason.message : String(settled[0].reason);
+          console.error(`${logPrefix} [POSTPROCESS][REDACTION] Error: ${errMsg}`);
+          if (aiLogger && user && scanRunId) {
+            await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', effectiveConfig.provider, effectiveConfig.model, 'batch_text', 'redaction', '', errMsg, undefined);
+          }
+        }
+        if (settled[1].status === 'fulfilled') {
+          rawRephrased = settled[1].value as string;
+        } else {
+          const errMsg = settled[1].reason instanceof Error ? settled[1].reason.message : String(settled[1].reason);
+          console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
+          if (aiLogger && user && scanRunId) {
+            await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', effectiveConfig.provider, effectiveConfig.model, 'batch_text', 'rephrase', '', errMsg, undefined);
+          }
+        }
         
         console.log(`${logPrefix} [AI RESPONSE] ${scanConfig.provider}/${scanConfig.model} type=batch_text phase=redaction`);
         console.log(`${logPrefix} [AI RESPONSE] rawRedacted=${JSON.stringify(rawRedacted).substring(0, 500)}...`);
@@ -613,15 +633,13 @@ serve(async (req) => {
         console.log(`${logPrefix} [POSTPROCESS] Parsing AI responses...`);
         
         // Validate AI responses before parsing
-        if (!rawRedacted || !rawRephrased) {
-          console.error(`${logPrefix} [POSTPROCESS] ERROR: AI responses are empty or null`);
-          console.error(`${logPrefix} [POSTPROCESS] rawRedacted: ${rawRedacted}`);
-          console.error(`${logPrefix} [POSTPROCESS] rawRephrased: ${rawRephrased}`);
+        if (!rawRedacted && !rawRephrased) {
+          console.error(`${logPrefix} [POSTPROCESS] ERROR: Both AI responses are empty or null`);
           throw new Error('AI responses are empty or null');
         }
         
-        let redactedTexts = normalizeBatchTextParsed(rawRedacted);
-        let rephrasedTexts = normalizeBatchTextParsed(rawRephrased);
+        let redactedTexts = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : new Array(chunk.length).fill('');
+        let rephrasedTexts = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : new Array(chunk.length).fill('');
         
         console.log(`${logPrefix} [POSTPROCESS] Parsed redactedTexts: ${redactedTexts.length} items`);
         console.log(`${logPrefix} [POSTPROCESS] Parsed rephrasedTexts: ${rephrasedTexts.length} items`);
