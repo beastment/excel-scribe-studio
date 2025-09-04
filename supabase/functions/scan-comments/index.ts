@@ -487,11 +487,11 @@ serve(async (req) => {
     
     // Get I/O ratios for post-processing and safety margin from configuration
     const ioRatios = {
-      redaction_io_ratio: batchSizingData?.redaction_io_ratio || 1.7,
-      rephrase_io_ratio: batchSizingData?.rephrase_io_ratio || 2.3
+      redaction_io_ratio: batchSizingData?.redaction_io_ratio ?? 1.7,
+      rephrase_io_ratio: batchSizingData?.rephrase_io_ratio ?? 2.3
     };
     
-    const safetyMarginPercent = batchSizingData?.safety_margin_percent || 15;
+    const safetyMarginPercent = batchSizingData?.safety_margin_percent ?? 15;
     
     console.log(`[BATCH] Post-processing I/O Ratios:`, ioRatios);
     console.log(`[BATCH] Safety Margin: ${safetyMarginPercent}%`);
@@ -540,16 +540,33 @@ serve(async (req) => {
         safetyMarginPercent
       });
       
-      const safetyMultiplier = 1 - (safetyMarginPercent / 100);
-      console.log(`[BATCH_CALC] ${phase}: Safety multiplier: ${safetyMultiplier} (${safetyMarginPercent}% safety margin)`);
+      // Clamp and sanitize limits to prevent NaN/negative multipliers
+      const boundedSafetyPercent = Math.min(90, Math.max(0, Number.isFinite(safetyMarginPercent) ? safetyMarginPercent : 15));
+      if (boundedSafetyPercent !== safetyMarginPercent) {
+        console.warn(`[BATCH_CALC] ${phase}: Safety margin clamped from ${safetyMarginPercent} to ${boundedSafetyPercent}`);
+      }
+      const safetyMultiplier = 1 - (boundedSafetyPercent / 100);
+      console.log(`[BATCH_CALC] ${phase}: Safety multiplier: ${safetyMultiplier} (${boundedSafetyPercent}% safety margin)`);
       
       // Calculate maximum input tokens we can use
-      const maxInputTokens = Math.floor(tokenLimits.input_token_limit * safetyMultiplier);
-      console.log(`[BATCH_CALC] ${phase}: Max input tokens: ${tokenLimits.input_token_limit} × ${safetyMultiplier} = ${maxInputTokens}`);
+      const sanitizedInputLimit = Number.isFinite(tokenLimits.input_token_limit) && tokenLimits.input_token_limit > 0
+        ? tokenLimits.input_token_limit
+        : 128000;
+      if (sanitizedInputLimit !== tokenLimits.input_token_limit) {
+        console.warn(`[BATCH_CALC] ${phase}: input_token_limit was ${tokenLimits.input_token_limit}, defaulting to ${sanitizedInputLimit}`);
+      }
+      const maxInputTokens = Math.floor(sanitizedInputLimit * safetyMultiplier);
+      console.log(`[BATCH_CALC] ${phase}: Max input tokens: ${sanitizedInputLimit} × ${safetyMultiplier} = ${maxInputTokens}`);
       
       // Calculate maximum output tokens we can generate
-      const maxOutputTokens = Math.floor(tokenLimits.output_token_limit * safetyMultiplier);
-      console.log(`[BATCH_CALC] ${phase}: Max output tokens: ${tokenLimits.output_token_limit} × ${safetyMultiplier} = ${maxOutputTokens}`);
+      const sanitizedOutputLimit = Number.isFinite(tokenLimits.output_token_limit) && tokenLimits.output_token_limit > 0
+        ? tokenLimits.output_token_limit
+        : 8192;
+      if (sanitizedOutputLimit !== tokenLimits.output_token_limit) {
+        console.warn(`[BATCH_CALC] ${phase}: output_token_limit was ${tokenLimits.output_token_limit}, defaulting to ${sanitizedOutputLimit}`);
+      }
+      const maxOutputTokens = Math.floor(sanitizedOutputLimit * safetyMultiplier);
+      console.log(`[BATCH_CALC] ${phase}: Max output tokens: ${sanitizedOutputLimit} × ${safetyMultiplier} = ${maxOutputTokens}`);
       
       // For scan phases, use configurable tokens per comment estimation for output
       console.log(`[BATCH_CALC] ${phase}: Using ${tokensPerComment} tokens per comment estimation for output`);
