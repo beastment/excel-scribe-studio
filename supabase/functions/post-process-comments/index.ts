@@ -111,7 +111,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
   if (provider === 'azure') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below edge 120s cap
+    const timeoutId = setTimeout(() => controller.abort(), 115000); // 115s, below edge 120s cap
     
     try {
       const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -146,7 +146,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        const timeoutMessage = 'Azure OpenAI API timeout after 5 minutes';
+        const timeoutMessage = 'Azure OpenAI API timeout after 115 seconds';
         if (aiLogger && userId && scanRunId && phase) {
           await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
         }
@@ -156,7 +156,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
   } else if (provider === 'openai') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below edge 120s cap
+    const timeoutId = setTimeout(() => controller.abort(), 115000); // 115s, below edge 120s cap
     
     let response;
     try {
@@ -185,7 +185,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        const timeoutMessage = 'OpenAI API timeout after 5 minutes';
+        const timeoutMessage = 'OpenAI API timeout after 115 seconds';
         if (aiLogger && userId && scanRunId && phase) {
           await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
         }
@@ -327,6 +327,7 @@ interface PostProcessRequest {
   };
   defaultMode: 'redact' | 'rephrase';
   scanRunId?: string; // Add scanRunId to the interface
+  phase?: 'redaction' | 'rephrase' | 'both';
 }
 
 interface PostProcessResponse {
@@ -573,52 +574,67 @@ serve(async (req) => {
         
 
         
-        const settled = await Promise.allSettled([
-          callAI(
-            effectiveConfig.provider,
-            effectiveConfig.model,
-            redactPrompt,
-            sentinelInput,
-            'batch_text',
-            effectiveConfig.max_tokens,
-            user.id,
-            scanRunId,
-            'redaction',
-            aiLogger,
-            effectiveConfig.temperature
-          ),
-          callAI(
-            effectiveConfig.provider,
-            effectiveConfig.model,
-            rephrasePrompt,
-            sentinelInput,
-            'batch_text',
-            effectiveConfig.max_tokens,
-            user.id,
-            scanRunId,
-            'rephrase',
-            aiLogger,
-            effectiveConfig.temperature
-          )
-        ]);
+        const calls: Promise<string | null>[] = [];
+        if (phase === 'both' || phase === 'redaction') {
+          calls.push(
+            callAI(
+              effectiveConfig.provider,
+              effectiveConfig.model,
+              redactPrompt,
+              sentinelInput,
+              'batch_text',
+              effectiveConfig.max_tokens,
+              user.id,
+              scanRunId,
+              'redaction',
+              aiLogger,
+              effectiveConfig.temperature
+            )
+          );
+        }
+        if (phase === 'both' || phase === 'rephrase') {
+          calls.push(
+            callAI(
+              effectiveConfig.provider,
+              effectiveConfig.model,
+              rephrasePrompt,
+              sentinelInput,
+              'batch_text',
+              effectiveConfig.max_tokens,
+              user.id,
+              scanRunId,
+              'rephrase',
+              aiLogger,
+              effectiveConfig.temperature
+            )
+          );
+        }
+        const settled = await Promise.allSettled(calls);
         let rawRedacted: string | null = null;
         let rawRephrased: string | null = null;
-        if (settled[0].status === 'fulfilled') {
-          rawRedacted = settled[0].value as string;
-        } else {
-          const errMsg = settled[0].reason instanceof Error ? settled[0].reason.message : String(settled[0].reason);
-          console.error(`${logPrefix} [POSTPROCESS][REDACTION] Error: ${errMsg}`);
-          if (aiLogger && user && scanRunId) {
-            await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', effectiveConfig.provider, effectiveConfig.model, 'batch_text', 'redaction', '', errMsg, undefined);
+        let idx = 0;
+        if (phase === 'both' || phase === 'redaction') {
+          const s = settled[idx++];
+          if (s.status === 'fulfilled') {
+            rawRedacted = s.value as string;
+          } else {
+            const errMsg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+            console.error(`${logPrefix} [POSTPROCESS][REDACTION] Error: ${errMsg}`);
+            if (aiLogger && user && scanRunId) {
+              await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', effectiveConfig.provider, effectiveConfig.model, 'batch_text', 'redaction', '', errMsg, undefined);
+            }
           }
         }
-        if (settled[1].status === 'fulfilled') {
-          rawRephrased = settled[1].value as string;
-        } else {
-          const errMsg = settled[1].reason instanceof Error ? settled[1].reason.message : String(settled[1].reason);
-          console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
-          if (aiLogger && user && scanRunId) {
-            await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', effectiveConfig.provider, effectiveConfig.model, 'batch_text', 'rephrase', '', errMsg, undefined);
+        if (phase === 'both' || phase === 'rephrase') {
+          const s = settled[idx++];
+          if (s && s.status === 'fulfilled') {
+            rawRephrased = s.value as string;
+          } else if (s) {
+            const errMsg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+            console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
+            if (aiLogger && user && scanRunId) {
+              await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', effectiveConfig.provider, effectiveConfig.model, 'batch_text', 'rephrase', '', errMsg, undefined);
+            }
           }
         }
         

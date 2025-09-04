@@ -415,35 +415,69 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         
         console.log(`[BATCH] AI Config loaded for post-processing`);
         
-        const { data: postProcessData, error: postProcessError } = await supabase.functions.invoke('post-process-comments', {
-          body: {
-            comments: commentsToProcess.map((c: any) => ({
-              id: c.id,
-              originalRow: c.originalRow, // Preserve original row number for proper ID tracking
-              scannedIndex: c.scannedIndex,
-              originalText: c.originalText || c.text,
-              text: c.text,
-              concerning: c.concerning,
-              identifiable: c.identifiable,
-              mode: c.mode, // Preserve the mode set by scan-comments
-              scanAResult: c.scanAResult,
-              adjudicationResult: c.adjudicationResult
-            })),
-            scanConfig: {
-              provider: aiConfigs?.provider || 'openai',
-              model: aiConfigs?.model || 'gpt-4o-mini',
-              redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
-              rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
-            },
-            defaultMode,
-            scanRunId
-          }
-        });
-
-        if (postProcessError) {
-          console.error(`Post-processing error:`, postProcessError);
-          toast.warning(`Post-processing failed for some comments: ${postProcessError.message}`);
-        } else if (postProcessData?.processedComments) {
+        // Call post-process in parallel (separate invocations) and merge
+        const [ppRephrase, ppRedact] = await Promise.allSettled([
+          supabase.functions.invoke('post-process-comments', {
+            body: {
+              comments: commentsToProcess.map((c: any) => ({
+                id: c.id,
+                originalRow: c.originalRow,
+                scannedIndex: c.scannedIndex,
+                originalText: c.originalText || c.text,
+                text: c.text,
+                concerning: c.concerning,
+                identifiable: c.identifiable,
+                mode: c.mode,
+                scanAResult: c.scanAResult,
+                adjudicationResult: c.adjudicationResult
+              })),
+              scanConfig: {
+                provider: aiConfigs?.provider || 'openai',
+                model: aiConfigs?.model || 'gpt-4o-mini',
+                redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+              },
+              defaultMode,
+              scanRunId,
+              phase: 'rephrase'
+            }
+          }),
+          supabase.functions.invoke('post-process-comments', {
+            body: {
+              comments: commentsToProcess.map((c: any) => ({
+                id: c.id,
+                originalRow: c.originalRow,
+                scannedIndex: c.scannedIndex,
+                originalText: c.originalText || c.text,
+                text: c.text,
+                concerning: c.concerning,
+                identifiable: c.identifiable,
+                mode: c.mode,
+                scanAResult: c.scanAResult,
+                adjudicationResult: c.adjudicationResult
+              })),
+              scanConfig: {
+                provider: aiConfigs?.provider || 'openai',
+                model: aiConfigs?.model || 'gpt-4o-mini',
+                redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+              },
+              defaultMode,
+              scanRunId,
+              phase: 'redaction'
+            }
+          })
+        ]);
+        const postRephrase = ppRephrase.status === 'fulfilled' ? ppRephrase.value.data : null;
+        const postRedact = ppRedact.status === 'fulfilled' ? ppRedact.value.data : null;
+        if (ppRephrase.status === 'rejected') {
+          console.error('Post-processing (rephrase) error:', ppRephrase.reason);
+        }
+        if (ppRedact.status === 'rejected') {
+          console.error('Post-processing (redaction) error:', ppRedact.reason);
+        }
+        const postProcessData = postRephrase || postRedact;
+        if (postProcessData?.processedComments) {
           console.log(`Post-processing completed:`, postProcessData);
           
           // Create a map of processed comments by ID
