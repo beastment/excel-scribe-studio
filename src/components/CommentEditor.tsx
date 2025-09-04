@@ -366,13 +366,37 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       setScanProgress(30);
       toast.info('Phase 1 complete: Comments scanned and flagged');
 
-      // Phase 2: Adjudication (handled by backend)
+      // Phase 2: Adjudication (handled by backend). Wait briefly if not completed yet.
       const adjudicatedCount = (data.comments as any[]).filter((c: any) => c.isAdjudicated).length;
       setScanProgress(60);
+      const adjudicationCompleted = Boolean((data as any).adjudicationCompleted);
       if (adjudicatedCount > 0) {
         toast.success(`Phase 2 complete: ${adjudicatedCount} disagreements resolved`);
+      } else if (adjudicationCompleted) {
+        toast.info('Phase 2: Adjudication completed with no disagreements to resolve');
       } else {
-        toast.info('Phase 2: No adjudication needed or already resolved by backend');
+        toast.info('Phase 2: Waiting for adjudication to complete...');
+        // Poll for adjudication completion using cached analysis to avoid re-running scans
+        const maxPolls = 10;
+        for (let i = 0; i < maxPolls; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const { data: statusData } = await supabase.functions.invoke('scan-comments', {
+            body: {
+              comments,
+              defaultMode,
+              scanRunId,
+              isDemoScan: isDemoData,
+              useCachedAnalysis: true
+            }
+          });
+          if (statusData && (statusData.adjudicationCompleted || (Array.isArray(statusData.comments) && statusData.comments.some((c: any) => c.isAdjudicated)))) {
+            (data as any).adjudicationCompleted = statusData.adjudicationCompleted;
+            (data as any).comments = Array.isArray(statusData.comments) && statusData.comments.length >= (data.comments?.length || 0)
+              ? statusData.comments
+              : data.comments;
+            break;
+          }
+        }
       }
 
       // Phase 3: Post-process flagged comments
