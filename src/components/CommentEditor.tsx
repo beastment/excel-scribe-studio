@@ -571,12 +571,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               rephrasedText: item.rephrasedText ?? existing.rephrasedText,
               finalText: item.finalText ?? existing.finalText,
               mode: item.mode ?? existing.mode,
-              originalRow: item.originalRow ?? existing.originalRow,
-              scannedIndex: item.scannedIndex ?? existing.scannedIndex,
+              originalRow: typeof item.originalRow === 'string' ? parseInt(item.originalRow, 10) : (item.originalRow ?? existing.originalRow),
+              scannedIndex: typeof item.scannedIndex === 'string' ? parseInt(item.scannedIndex, 10) : (item.scannedIndex ?? existing.scannedIndex),
             };
             if (key) processedCombined[key] = merged;
-            if (typeof item.originalRow === 'number') processedByOriginalRow.set(item.originalRow, merged);
-            if (typeof item.scannedIndex === 'number') processedByScannedIndex.set(item.scannedIndex, merged);
+            if (typeof merged.originalRow === 'number') processedByOriginalRow.set(merged.originalRow, merged);
+            if (typeof merged.scannedIndex === 'number') processedByScannedIndex.set(merged.scannedIndex, merged);
           }
         };
         addResults(postRedactA?.processedComments);
@@ -644,11 +644,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             // Process comments that are identifiable OR concerning-only
             if (comment.identifiable || comment.concerning) {
               let processed = processedMap.get(comment.id) as any;
-              if (!processed && typeof comment.originalRow === 'number') {
-                processed = processedByOriginalRow.get(comment.originalRow);
+              const orow = typeof comment.originalRow === 'string' ? parseInt(comment.originalRow, 10) : comment.originalRow;
+              const sidx = typeof comment.scannedIndex === 'string' ? parseInt(comment.scannedIndex, 10) : comment.scannedIndex;
+              if (!processed && typeof orow === 'number') {
+                processed = processedByOriginalRow.get(orow);
               }
-              if (!processed && typeof comment.scannedIndex === 'number') {
-                processed = processedByScannedIndex.get(comment.scannedIndex);
+              if (!processed && typeof sidx === 'number') {
+                processed = processedByScannedIndex.get(sidx);
               }
               if (processed) {
                 console.log(`[POSTPROCESS] Raw processed comment:`, {
@@ -714,6 +716,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           
           // Update processedComments with the merged results and persist to UI state
           data.comments = finalComments;
+          // Debug: log key rows to ensure processed values reached UI state
+          const rowsToCheck = new Set([1,3,5,7,9,12,14,18]);
+          console.log('[PHASE3][VERIFY] Final rows:', finalComments
+            .filter((c: any) => typeof c.originalRow === 'number' && rowsToCheck.has(c.originalRow))
+            .map((c: any) => ({
+              originalRow: c.originalRow,
+              id: c.id,
+              mode: c.mode,
+              hasRedacted: !!c.redactedText,
+              hasRephrased: !!c.rephrasedText,
+              textPreview: (c.text || '').substring(0, 80)
+            }))
+          );
           onCommentsUpdate(finalComments);
           
           // Show success message with a computed summary based on final comments
