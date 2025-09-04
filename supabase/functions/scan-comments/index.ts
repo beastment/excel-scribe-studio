@@ -1179,6 +1179,36 @@ serve(async (req) => {
     console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}`);
     
     if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
+      // Safety gate: ensure ALL scan-comments calls have finished (no pending logs for this run)
+      try {
+        const { data: pendingScanLogs, error: pendingErr } = await supabase
+          .from('ai_logs')
+          .select('id')
+          .eq('scan_run_id', scanRunId)
+          .eq('function_name', 'scan-comments')
+          .eq('response_status', 'pending')
+          .limit(1);
+        if (pendingErr) {
+          console.warn(`[ADJUDICATION] Pending check failed, proceeding cautiously:`, pendingErr);
+        } else if (pendingScanLogs && pendingScanLogs.length > 0) {
+          console.log(`[ADJUDICATION] Deferring adjudication: found pending scan-comments logs for run ${scanRunId}`);
+          // Skip adjudication for this invocation; frontend will call again on next batch/refresh
+          return new Response(JSON.stringify({
+            comments: allScannedComments,
+            batchStart: batchStart,
+            batchSize: finalBatchSize,
+            hasMore: hasMoreBatches,
+            totalComments: inputComments.length,
+            summary: totalSummary,
+            totalRunTimeMs: totalRunTimeMs,
+            batchesProcessed: batchesProcessed,
+            nextBatchStart: hasMoreBatches ? lastProcessedIndex : inputComments.length,
+            adjudicationDeferred: true
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+      } catch (gateErr) {
+        console.warn(`[ADJUDICATION] Error during pending scan check, proceeding:`, gateErr);
+      }
       // In-memory guards to ensure adjudicator runs only once per scanRunId (per edge function instance)
       gAny.__adjudicationStarted = gAny.__adjudicationStarted || new Set<string>();
       gAny.__adjudicationCompleted = gAny.__adjudicationCompleted || new Set<string>();
