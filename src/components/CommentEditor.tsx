@@ -402,6 +402,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       // Phase 3: Post-process flagged comments
       // Process comments that are identifiable OR concerning-only (per updated logic)
       const commentsToProcess = data.comments.filter((c: any) => c.identifiable || c.concerning);
+      const phase3Counts = {
+        total: data.comments.length,
+        identifiable: data.comments.filter((c: any) => c.identifiable).length,
+        concerning: data.comments.filter((c: any) => c.concerning).length,
+        concerningOnly: data.comments.filter((c: any) => c.concerning && !c.identifiable).length,
+        toProcess: commentsToProcess.length,
+        adjudicationCompleted: Boolean((data as any).adjudicationCompleted)
+      };
+      console.log('[PHASE3] Readiness:', phase3Counts);
       
       if (commentsToProcess.length > 0) {
         setScanProgress(70);
@@ -421,6 +430,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         console.log(`[BATCH] AI Config loaded for post-processing`);
         
         // New orchestration:
+        console.log('[PHASE3] Launching redaction (scan_a, scan_b) ...');
         // 1) Run Redaction for Scan A and Scan B in parallel (separate instances via routingMode)
         const [ppRedactA, ppRedactB] = await Promise.allSettled([
           supabase.functions.invoke('post-process-comments', {
@@ -483,6 +493,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         if (ppRedactA.status === 'rejected') console.error('Post-processing (redaction A) error:', ppRedactA.reason);
         if (ppRedactB.status === 'rejected') console.error('Post-processing (redaction B) error:', ppRedactB.reason);
 
+        console.log('[PHASE3] Redaction finished. Launching rephrase (scan_a, scan_b) ...');
         // 2) After both redaction calls complete, run Rephrase for A and B in parallel
         const [ppRephraseA, ppRephraseB] = await Promise.allSettled([
           supabase.functions.invoke('post-process-comments', {
