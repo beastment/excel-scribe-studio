@@ -27,10 +27,15 @@
 - **Robust Recovery**: Better handling of partial failures
 
 ### Duplicate Prevention
+- **Global DB Log Check**: Added run-scoped identical-input check to skip duplicate adjudications
 - **Batch Key System**: Unique identifiers for each batch
 - **Database Checks**: Prevents duplicates across function restarts
 - **In-Memory Guards**: Prevents duplicates within same execution
 - **Scan Run ID Correlation**: Better tracking and correlation
+
+### Result Mapping Fix
+- **Stable ID Mapping**: Results now map by `originalRow` or `scannedIndex` (fallback to sequence) instead of array index
+- **Reasoning Propagation**: Ensures adjudication reasoning is returned when available
 
 ### Result Processing Improvements
 - **Multiple Format Support**: Handles both simple key-value and JSON formats

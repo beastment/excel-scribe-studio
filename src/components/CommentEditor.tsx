@@ -346,81 +346,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       setScanProgress(30);
       toast.info('Phase 1 complete: Comments scanned and flagged');
 
-      // Phase 2: Adjudicate any disagreements between Scan A and Scan B
-      const needsAdjudication = data.comments.filter((c: any) => c.needsAdjudication);
-      
-      if (needsAdjudication.length > 0) {
-        setScanProgress(40);
-        toast.info(`Phase 2: Adjudicating ${needsAdjudication.length} comments with disagreements...`);
-        
-        // Get adjudicator configuration
-        const { data: adjudicatorConfigs, error: configError } = await supabase
-          .from('ai_configurations')
-          .select('*')
-          .eq('scanner_type', 'adjudicator')
-          .single();
-        
-        if (configError || !adjudicatorConfigs) {
-          console.warn('Failed to fetch adjudicator configuration, using defaults');
-        }
-
-        // Prepare comments for adjudication
-        const adjudicationComments = needsAdjudication.map((c: any) => ({
-          id: c.id,
-          originalText: c.originalText || c.text,
-          originalRow: c.originalRow, // Preserve original row number for proper ID tracking
-          scannedIndex: c.scannedIndex, // Preserve scanned index for proper ID tracking
-          scanAResult: c.adjudicationData.scanAResult,
-          scanBResult: c.adjudicationData.scanBResult,
-          agreements: c.adjudicationData.agreements
-        }));
-
-        console.log(`Sending ${adjudicationComments.length} comments for adjudication...`);
-
-        const { data: adjudicationData, error: adjudicationError } = await supabase.functions.invoke('adjudicator', {
-          body: {
-            comments: adjudicationComments,
-            adjudicatorConfig: {
-              provider: adjudicatorConfigs?.provider || 'openai',
-              model: adjudicatorConfigs?.model || 'gpt-4o-mini',
-              prompt: adjudicatorConfigs?.analysis_prompt || 'You are an AI adjudicator resolving disagreements between two AI scanners.'
-            },
-            scanRunId
-          }
-        });
-
-        if (adjudicationError) {
-          console.error(`Adjudication error:`, adjudicationError);
-          toast.warning(`Adjudication failed: ${adjudicationError.message}`);
-        } else if (adjudicationData?.adjudicatedComments) {
-          console.log(`Adjudication completed:`, adjudicationData);
-          
-          // Update scan results with adjudication outcomes
-          const adjudicatedMap = new Map(adjudicationData.adjudicatedComments.map((c: any) => [c.id, c]));
-          
-          data.comments = data.comments.map((comment: any) => {
-            if (comment.needsAdjudication) {
-              const adjudicated = adjudicatedMap.get(comment.id);
-              if (adjudicated) {
-            return {
-                  ...comment,
-                  concerning: (adjudicated as any).concerning,
-                  identifiable: (adjudicated as any).identifiable,
-                  aiReasoning: (adjudicated as any).reasoning,
-                  needsAdjudication: false,
-                  isAdjudicated: true
-                };
-              }
-            }
-            return comment;
-          });
-
-          setScanProgress(60);
-          toast.success(`Phase 2 complete: ${adjudicationData.summary.resolved} disagreements resolved`);
-        }
+      // Phase 2: Adjudication (handled by backend)
+      const adjudicatedCount = (data.comments as any[]).filter((c: any) => c.isAdjudicated).length;
+      setScanProgress(60);
+      if (adjudicatedCount > 0) {
+        toast.success(`Phase 2 complete: ${adjudicatedCount} disagreements resolved`);
       } else {
-        setScanProgress(60);
-        toast.info('Phase 2: No adjudication needed - all scanners agreed');
+        toast.info('Phase 2: No adjudication needed or already resolved by backend');
       }
 
       // Phase 3: Post-process flagged comments

@@ -1204,9 +1204,12 @@ serve(async (req) => {
                 if (adjudicated) {
                   return {
                     ...comment,
-                    concerning: adjudicated.concerning,
-                    identifiable: adjudicated.identifiable,
-                    mode: adjudicated.concerning ? 'redact' : adjudicated.identifiable ? 'rephrase' : 'original'
+                    concerning: Boolean(adjudicated.concerning),
+                    identifiable: Boolean(adjudicated.identifiable),
+                    mode: adjudicated.concerning ? 'redact' : adjudicated.identifiable ? 'rephrase' : 'original',
+                    needsAdjudication: false,
+                    isAdjudicated: true,
+                    aiReasoning: adjudicated.reasoning || comment.aiReasoning
                   };
                 }
                 return comment;

@@ -411,37 +411,30 @@ serve(async (req) => {
       const rpmLimit = modelCfg?.rpm_limit;
       console.log(`${logPrefix} [RATE_LIMITS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
 
-      // Check if this batch has already been processed (additional safety check)
-      if (batchKey) {
-        const buildAdjudicationInput = (comments: any[]) => {
-          return comments.map(comment => {
-            const scanA = comment.scanAResult || {};
-            const scanB = comment.scanBResult || {};
-            return `<<<ITEM ${comment.scannedIndex || comment.id}>>>\nText: ${comment.originalText || comment.text}\nAI1:\nConcerning: ${scanA.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanA.identifiable ? 'Y' : 'N'}\nAI2:\nConcerning: ${scanB.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanB.identifiable ? 'Y' : 'N'}\n<<<END ${comment.scannedIndex || comment.id}>>>`;
-          }).join('\n\n');
-        };
-
-        const existingLog = await supabase
+      // Global duplicate guard: check database for an identical request input for this run
+      try {
+        const duplicateCheck = await supabase
           .from('ai_logs')
           .select('id')
           .eq('scan_run_id', runId)
           .eq('function_name', 'adjudicator')
           .eq('response_status', 'success')
-          .eq('request_input', buildAdjudicationInput(needsAdjudication))
+          .eq('request_input', input)
           .limit(1);
-        
-        if (existingLog.data && existingLog.data.length > 0) {
-          console.log(`${logPrefix} [DUPLICATE_CHECK] This batch has already been processed, returning early`);
+        if (duplicateCheck.data && duplicateCheck.data.length > 0) {
+          console.log(`${logPrefix} [DUPLICATE_CHECK] Identical adjudication input already processed for this run. Skipping.`);
           return new Response(
             JSON.stringify({
               success: true,
               adjudicatedComments: [],
               summary: { total: 0, resolved: 0, errors: 0 },
-              message: 'Batch already processed'
+              message: 'Duplicate adjudication skipped'
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+      } catch (dupErr) {
+        console.warn(`${logPrefix} [DUPLICATE_CHECK] Duplicate check failed, proceeding:`, dupErr);
       }
 
       // Process all comments in a single batch (rate limiting removed)
@@ -501,26 +494,31 @@ serve(async (req) => {
       const adjudicatedResults = allAdjudicatedResults;
       console.log(`${logPrefix} [ADJUDICATOR] Combined ${adjudicatedResults.length} adjudication results from ${batchedComments.length} batches`);
 
-      // Create a map of adjudicated results by index
-      const adjudicatedMap = new Map(adjudicatedResults.map((result, i) => [i, result]));
+      // Map results by the sentinel item id used in input (originalRow || scannedIndex || sequence)
+      const resultByItemId = new Map<number, { index: number; concerning: boolean; identifiable: boolean }>();
+      for (const r of adjudicatedResults) {
+        const idxNum = typeof r.index === 'string' ? parseInt(r.index) : r.index;
+        if (Number.isFinite(idxNum)) {
+          resultByItemId.set(idxNum as number, r);
+        }
+      }
 
-      // Build final response
+      // Build final response using stable ids
       const adjudicatedComments = comments.map((comment, i) => {
         const needsAdj = needsAdjudication.includes(comment);
-        
+        const itemId = (comment.originalRow as number) || (comment.scannedIndex as number) || (i + 1);
         if (needsAdj) {
-          const adjudicated = adjudicatedMap.get(i);
+          const adjudicated = resultByItemId.get(itemId);
           if (adjudicated) {
             return {
               id: comment.id,
-              concerning: adjudicated.concerning,
-              identifiable: adjudicated.identifiable,
-              reasoning: adjudicated.reasoning,
+              concerning: Boolean(adjudicated.concerning),
+              identifiable: Boolean(adjudicated.identifiable),
+              reasoning: adjudicated.reasoning || 'Resolved by adjudicator',
               model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
             };
           }
         }
-
         // For comments that don't need adjudication, use agreement results
         const agreements = comment.agreements || {};
         return {

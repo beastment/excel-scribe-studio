@@ -9,9 +9,10 @@
 - **Performance Monitoring**: Added detailed timing and performance metrics
 
 ### Improved Adjudication System
-- **Batch Processing**: Adjudication now processes comments in batches for efficiency
-- **Duplicate Prevention**: Enhanced duplicate detection across function instances
-- **Free Adjudication**: Made adjudication completely free (no credit consumption)
+- **Backend-Only Adjudication**: Removed client-side adjudicator calls; backend triggers adjudication and returns results
+- **Batch Processing**: Adjudication processes comments in batches for efficiency
+- **Duplicate Prevention**: Enhanced duplicate detection across function instances and DB log checks
+- **Free Adjudication**: Adjudication remains free (no credit consumption)
 - **Better Error Handling**: Improved error recovery and fallback mechanisms
 
 ### Enhanced AI Provider Support

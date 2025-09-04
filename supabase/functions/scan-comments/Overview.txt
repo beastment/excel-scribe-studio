@@ -13,6 +13,7 @@ The scan-comments edge function is the core AI-powered comment analysis system t
 
 ### 2. Adjudication Process
 - When Scan A and Scan B disagree on classification, a third AI (adjudicator) resolves the conflict
+- Adjudication is initiated and performed by the backend only (no client-side invocation)
 - Adjudication is free and doesn't consume user credits
 - Ensures consistent and accurate classification across all comments
 
