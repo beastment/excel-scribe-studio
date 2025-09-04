@@ -541,24 +541,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         addResults(postRephraseA?.processedComments);
         addResults(postRephraseB?.processedComments);
         const mergedProcessed = Object.values(processedCombined);
-        // Merge results from both calls by comment id
-        const processedCombined: Record<string, any> = {};
-        const addResults = (arr?: any[]) => {
-          if (!Array.isArray(arr)) return;
-          for (const item of arr) {
-            const existing = processedCombined[item.id] || { id: item.id };
-            processedCombined[item.id] = {
-              ...existing,
-              redactedText: item.redactedText ?? existing.redactedText,
-              rephrasedText: item.rephrasedText ?? existing.rephrasedText,
-              finalText: item.finalText ?? existing.finalText,
-              mode: item.mode ?? existing.mode,
-            };
-          }
-        };
-        addResults(postRephrase?.processedComments);
-        addResults(postRedact?.processedComments);
-        const mergedProcessed = Object.values(processedCombined);
         if (mergedProcessed.length > 0) {
           console.log(`Post-processing completed: merged ${mergedProcessed.length} items`);
           
@@ -639,7 +621,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           setScanProgress(95);
         } else {
           console.warn('Post-processing returned no data, using scan results with placeholders');
-          console.log('Full post-process responses:', { postRephrase, postRedact });
+          console.log('Full post-process responses:', { postRephraseA, postRedactA });
         }
       } else {
         setScanProgress(95);
