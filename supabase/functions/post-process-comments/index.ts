@@ -767,22 +767,41 @@ serve(async (req) => {
         const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt + REDACTION_POLICY, redactItems.length);
         const rephrasePrompt = buildBatchTextPrompt(scanConfig.rephrase_prompt, rephraseItems.length);
         
-        console.log(`${logPrefix} [AI REQUEST] ${group.provider}/${group.model} type=batch_text phase=redaction`);
-        console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
-          provider: group.provider,
-          model: group.model,
-          prompt_length: redactPrompt.length,
-          input_length: sentinelInputRedact.length,
-          chunk_size: chunk.length
-        }).substring(0, 500)}...`);
+        // Determine which phases to request for this chunk
+        const requestRedaction = (phase === 'both' || phase === 'redaction') && redactItems.length > 0;
+        const requestRephrase = (phase === 'both' || phase === 'rephrase') && rephraseItems.length > 0;
+
+        if (requestRedaction) {
+          console.log(`${logPrefix} [AI REQUEST] ${group.provider}/${group.model} type=batch_text phase=redaction`);
+          console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
+            provider: group.provider,
+            model: group.model,
+            prompt_length: redactPrompt.length,
+            input_length: sentinelInputRedact.length,
+            chunk_size: chunk.length
+          }).substring(0, 500)}...`);
+        }
+        if (requestRephrase) {
+          console.log(`${logPrefix} [AI REQUEST] ${group.provider}/${group.model} type=batch_text phase=rephrase`);
+          console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
+            provider: group.provider,
+            model: group.model,
+            prompt_length: rephrasePrompt.length,
+            input_length: sentinelInputRephrase.length,
+            chunk_size: chunk.length
+          }).substring(0, 500)}...`);
+        }
         
                  // Initialize AI logger
          const aiLogger = new AILogger();
          aiLogger.setFunctionStartTime(overallStartTime);
         
-        // Estimate tokens for this chunk more accurately
-        const chunkEstimatedInputTokens = Math.ceil((requestRedaction ? sentinelInputRedact.length : sentinelInputRephrase.length) / 5);
-        const chunkEstimatedOutputTokens = Math.ceil((requestRedaction ? sentinelInputRedact.length : sentinelInputRephrase.length) / 5) * 1.1; // Post-processing typically generates similar text
+        // Estimate tokens for this chunk more accurately (use the larger of the two inputs when both requested)
+        const chosenLength = requestRedaction && requestRephrase
+          ? Math.max(sentinelInputRedact.length, sentinelInputRephrase.length)
+          : (requestRedaction ? sentinelInputRedact.length : sentinelInputRephrase.length);
+        const chunkEstimatedInputTokens = Math.ceil(chosenLength / 5);
+        const chunkEstimatedOutputTokens = Math.ceil(chosenLength / 5) * 1.1; // Post-processing typically generates similar text
         const chunkTotalTokens = chunkEstimatedInputTokens + chunkEstimatedOutputTokens;
         
         console.log(`${logPrefix} [CHUNK] Estimated tokens: ${chunkTotalTokens} (${chunkEstimatedInputTokens} input + ${chunkEstimatedOutputTokens} output)`);
@@ -790,8 +809,6 @@ serve(async (req) => {
 
         
         const calls: Promise<string | null>[] = [];
-        const requestRedaction = (phase === 'both' || phase === 'redaction') && redactItems.length > 0;
-        const requestRephrase = (phase === 'both' || phase === 'rephrase') && rephraseItems.length > 0;
 
         // If nothing to do for this chunk under current phase, skip to next chunk
         if (!requestRedaction && !requestRephrase) {
