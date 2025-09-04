@@ -263,6 +263,26 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           data.hasMore = Boolean(nextData.hasMore);
           loops += 1;
         }
+        // Safety: if we still have fewer than the expected total and nextBatchStart advanced, try one final fetch
+        const expectedTotal = (data.totalComments as number) || comments.length;
+        if (accumulated.length < expectedTotal) {
+          console.log(`[AGGREGATION] Safety fetch: accumulated=${accumulated.length}, expected=${expectedTotal}, nextStart=${nextBatchStart}`);
+          const { data: finalData, error: finalErr } = await supabase.functions.invoke('scan-comments', {
+            body: {
+              comments,
+              defaultMode,
+              scanRunId,
+              isDemoScan: isDemoData,
+              batchStart: nextBatchStart,
+              useCachedAnalysis: true
+            }
+          });
+          if (!finalErr && finalData?.comments) {
+            accumulated = accumulated.concat(finalData.comments);
+            data.hasMore = Boolean(finalData.hasMore);
+            console.log(`[AGGREGATION] Safety fetch merged, new total=${accumulated.length}`);
+          }
+        }
         // Replace original comments with the full set for downstream steps
         (data as any).comments = accumulated;
       }
