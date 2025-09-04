@@ -712,8 +712,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             return comment;
           });
           
-          // Update processedComments with the merged results
+          // Update processedComments with the merged results and persist to UI state
           data.comments = finalComments;
+          onCommentsUpdate(finalComments);
           
           // Show success message with a computed summary based on final comments
           const redactedSummaryCount = finalComments.filter((c: any) => (c.identifiable || c.concerning) && c.mode === 'redact').length;
