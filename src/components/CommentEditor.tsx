@@ -665,44 +665,47 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   hasRephrased: !!processed.rephrasedText
                 });
                 
-                // Use the finalText from the backend, which should already be the correct processed text
-                let finalText = processed.finalText || comment.text; // Use backend finalText if available
-                let finalMode = processed.mode || defaultMode; // Use backend mode if available
+                // Determine the final text based on the comment's mode and available processed text
+                let finalText = comment.text; // Default to original text
+                let finalMode = processed.mode || defaultMode; // Use backend mode if available, otherwise use default mode
                 
-                console.log(`[MODE] Comment ${comment.id} - backend finalText: ${processed.finalText?.substring(0, 50)}, backend mode: ${processed.mode}, defaultMode: ${defaultMode}`);
+                console.log(`[MODE] Comment ${comment.id} - identifiable: ${comment.identifiable}, concerning: ${comment.concerning}, defaultMode: ${defaultMode}, processed mode: ${processed.mode}`);
+                console.log(`[MODE] Comment ${comment.id} - has redactedText: ${!!processed.redactedText}, has rephrasedText: ${!!processed.rephrasedText}`);
                 
-                // If the backend didn't provide finalText, determine it based on mode and available processed text
-                if (!processed.finalText) {
-                  if (finalMode === 'redact' && processed.redactedText) {
-                    finalText = processed.redactedText;
-                    console.log(`[MODE] Using redacted text for comment ${comment.id}`);
-                  } else if (finalMode === 'rephrase' && processed.rephrasedText) {
-                    finalText = processed.rephrasedText;
-                    console.log(`[MODE] Using rephrased text for comment ${comment.id}`);
-                  } else if (defaultMode === 'redact' && processed.redactedText) {
-                    // Fallback: if redacted text not available, use rephrased
+                // For identifiable comments, use the default mode preference
+                if (comment.identifiable) {
+                  if (defaultMode === 'redact' && processed.redactedText) {
                     finalText = processed.redactedText;
                     finalMode = 'redact';
-                    console.log(`[MODE] Fallback to redacted text for comment ${comment.id}`);
+                    console.log(`[MODE] Identifiable comment ${comment.id} - using redacted text (defaultMode: redact)`);
                   } else if (defaultMode === 'rephrase' && processed.rephrasedText) {
-                    // Fallback: if rephrased text not available, use redacted
                     finalText = processed.rephrasedText;
                     finalMode = 'rephrase';
-                    console.log(`[MODE] Fallback to rephrased text for comment ${comment.id}`);
-                  } else if (processed.redactedText) {
-                    // As a last resort, if any processed text exists, apply it
+                    console.log(`[MODE] Identifiable comment ${comment.id} - using rephrased text (defaultMode: rephrase)`);
+                  } else if (defaultMode === 'redact' && processed.rephrasedText) {
+                    // Fallback: if redacted not available, use rephrased
+                    finalText = processed.rephrasedText;
+                    finalMode = 'rephrase';
+                    console.log(`[MODE] Identifiable comment ${comment.id} - fallback to rephrased (redacted not available)`);
+                  } else if (defaultMode === 'rephrase' && processed.redactedText) {
+                    // Fallback: if rephrased not available, use redacted
                     finalText = processed.redactedText;
                     finalMode = 'redact';
-                    console.log(`[MODE] Last-resort apply redacted for comment ${comment.id}`);
-                  } else if (processed.rephrasedText) {
+                    console.log(`[MODE] Identifiable comment ${comment.id} - fallback to redacted (rephrased not available)`);
+                  }
+                }
+                // For concerning-only comments (not identifiable), always use rephrase
+                else if (comment.concerning && !comment.identifiable) {
+                  if (processed.rephrasedText) {
                     finalText = processed.rephrasedText;
                     finalMode = 'rephrase';
-                    console.log(`[MODE] Last-resort apply rephrased for comment ${comment.id}`);
+                    console.log(`[MODE] Concerning-only comment ${comment.id} - using rephrased text`);
                   }
                 }
                 
                  console.log(`[MODE] Final result for comment ${comment.id}: mode=${finalMode}, textLength=${finalText.length}`);
                  console.log(`[UPDATE] Setting comment.text to:`, finalText?.substring(0, 100));
+                 console.log(`[UPDATE] Comment ${comment.id} - identifiable: ${comment.identifiable}, defaultMode: ${defaultMode}, finalMode: ${finalMode}, isRedacted: ${finalText !== comment.originalText && finalText === processed.redactedText}, isRephrased: ${finalText !== comment.originalText && finalText === processed.rephrasedText}`);
                  
                  return {
                    ...comment,
@@ -1493,27 +1496,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                          {/* Always show the unified final text */}
                          <p className="text-foreground leading-relaxed text-sm sm:text-base">
                            {(() => {
-                             // Display the current text based on the comment's mode
+                             // After post-processing, comment.text should contain the correct processed text
+                             // Only override for specific modes
                              let displayText = comment.text;
                              
-                             // If the comment has a specific mode and processed text available, use that
-                             if (comment.mode === 'redact' && comment.redactedText) {
-                               displayText = comment.redactedText;
-                             } else if (comment.mode === 'rephrase' && comment.rephrasedText) {
-                               displayText = comment.rephrasedText;
-                             } else if (comment.mode === 'revert') {
+                             if (comment.mode === 'revert') {
                                displayText = comment.originalText;
                              } else if (comment.mode === 'edit') {
                                // For edit mode, use the current text (which may have been manually edited)
                                displayText = comment.text;
-                             } else if (hasScanRun && comment.identifiable) {
-                               // If scan has run and comment is identifiable but no specific mode is set,
-                               // use the default mode preference
-                               if (defaultMode === 'redact' && comment.redactedText) {
-                                 displayText = comment.redactedText;
-                               } else if (defaultMode === 'rephrase' && comment.rephrasedText) {
-                                 displayText = comment.rephrasedText;
-                               }
                              }
                              
                              console.log(`[DISPLAY] Comment ${comment.id}:`, {
