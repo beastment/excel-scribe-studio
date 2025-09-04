@@ -204,9 +204,85 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     return responseText;
   } else if (provider === 'bedrock') {
-    // For Bedrock, we'll use a simplified approach
-    // In production, you'd want to implement the full Bedrock client logic
-    throw new Error('Bedrock provider not yet implemented in post-processing function');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 115000); // 115s, below edge 120s cap
+    try {
+      const region = Deno.env.get('AWS_REGION') || 'us-east-1';
+      const accessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
+      const secretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+      if (!accessKeyId || !secretAccessKey) {
+        throw new Error('AWS credentials not configured');
+      }
+
+      // Extract model identifier (e.g., anthropic.claude-3-haiku-20240307-v1:0)
+      const modelId = model.includes('/') ? model.split('/')[1] : model;
+      const host = `bedrock-runtime.${region}.amazonaws.com`;
+      const endpoint = `https://${host}/model/${encodeURIComponent(modelId)}/invoke`;
+
+      // For Anthropic Claude via Bedrock, system message is top-level; user content goes in messages
+      const systemMessage = (payload as any).messages.find((m: any) => m.role === 'system')?.content || '';
+      const userMessage = (payload as any).messages.find((m: any) => m.role === 'user')?.content || '';
+      const bedrockPayload = {
+        anthropic_version: 'bedrock-2023-05-31',
+        max_tokens: (payload as any).max_tokens,
+        system: systemMessage,
+        messages: [
+          { role: 'user', content: userMessage }
+        ],
+        temperature: (payload as any).temperature
+      };
+
+      const date = new Date();
+      const amzDate = date.toISOString().replace(/[:\-]|\.\d{3}/g, '');
+      const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Host': host,
+          'X-Amz-Date': amzDate,
+          'Authorization': await createAWSSignature(
+            'POST',
+            rawEndpoint,
+            JSON.stringify(bedrockPayload),
+            accessKeyId,
+            secretAccessKey,
+            region,
+            amzDate
+          )
+        },
+        body: JSON.stringify(bedrockPayload),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        const errorText = await response.text();
+        const errorMessage = `Bedrock API error: ${response.status} ${response.statusText} ${errorText}`;
+        if (aiLogger && userId && scanRunId && phase) {
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      const responseText = result.content?.[0]?.text || null;
+      if (aiLogger && userId && scanRunId && phase && responseText) {
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
+      }
+      return responseText;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if ((error as any)?.name === 'AbortError') {
+        const timeoutMessage = 'Bedrock API timeout after 115 seconds';
+        if (aiLogger && userId && scanRunId && phase) {
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
+        }
+        throw new Error(timeoutMessage);
+      }
+      throw error;
+    }
   }
 
   throw new Error(`Unsupported provider: ${provider}`);
