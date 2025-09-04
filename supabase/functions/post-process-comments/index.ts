@@ -1024,7 +1024,7 @@ serve(async (req) => {
           let finalText = comment.text;
           
           // Apply the appropriate transformation based on mode
-          if (mode === 'redact' && comment.identifiable) {
+          if (mode === 'redact' && (comment.identifiable || comment.concerning)) {
             finalText = redactedText;
             redactedCount++;
             console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REDACTED: ${redactedText.substring(0, 100)}...`);
@@ -1070,7 +1070,7 @@ serve(async (req) => {
         let redactedText = comment.text;
         let rephrasedText = comment.text;
 
-        if (mode === 'redact' && comment.identifiable) {
+        if (mode === 'redact' && (comment.identifiable || comment.concerning)) {
           // Deterministic minimal redaction fallback
           redactedText = enforceRedactionPolicy(comment.text) || comment.text;
           finalText = redactedText;
