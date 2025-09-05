@@ -19,15 +19,27 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 
 function getEffectiveMaxTokens(config: any): number {
   const explicit = config?.max_tokens;
-  if (explicit && explicit > 0) return Math.floor(explicit);
+  console.log('[getEffectiveMaxTokens] Input config:', { 
+    provider: config?.provider, 
+    model: config?.model, 
+    explicit_max_tokens: explicit 
+  });
+  if (explicit && explicit > 0) {
+    console.log('[getEffectiveMaxTokens] Using explicit max_tokens:', explicit);
+    return Math.floor(explicit);
+  }
   const provider = String(config?.provider || '').toLowerCase();
   const model = String(config?.model || '').toLowerCase();
   if (provider === 'bedrock') {
-    if (model.includes('anthropic.claude')) return 4096;
+    if (model.includes('anthropic.claude')) {
+      console.log('[getEffectiveMaxTokens] Claude model detected, returning 4096');
+      return 4096;
+    }
     if (model.startsWith('mistral.')) return 4096;
     if (model.startsWith('amazon.titan')) return 2000; // Fallback only - should use output_token_limit from model config
   }
   if (provider === 'openai' || provider === 'azure') return 4096;
+  console.log('[getEffectiveMaxTokens] Using default fallback: 2000');
   return 2000; // Fallback only - should use output_token_limit from model config
 }
 
@@ -636,6 +648,7 @@ serve(async (req) => {
 
     let actualMaxTokens = getEffectiveMaxTokens(scanConfig);
     console.log(`${logPrefix} [DEBUG] Initial actualMaxTokens from getEffectiveMaxTokens: ${actualMaxTokens}`);
+    console.log(`${logPrefix} [DEBUG] scanConfig.max_tokens: ${scanConfig.max_tokens}`);
     if (modelCfgError) {
       console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations, using defaults:`, modelCfgError.message);
     } else {
