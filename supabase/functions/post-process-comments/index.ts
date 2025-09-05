@@ -1046,6 +1046,8 @@ serve(async (req) => {
             : (comment.identifiable ? (enforceRedactionPolicy(comment.text) || comment.text) : comment.text);
           const rephCandidate = rephrasedTextsAligned[i] || '';
           const rephrasedText = rephCandidate.trim().length > 0 ? rephCandidate : comment.text;
+          const hasAIRedaction = requestRedaction && redCandidate.trim().length > 0;
+          const hasAIRephrase = requestRephrase && rephCandidate.trim().length > 0;
           
           console.log(`${logPrefix} [DEBUG] Comment ${i+1} (${comment.id}):`, {
             identifiable: comment.identifiable,
@@ -1086,8 +1088,9 @@ serve(async (req) => {
             id: comment.id,
             originalRow: comment.originalRow, // Preserve originalRow for proper ID tracking
             scannedIndex: comment.scannedIndex, // Preserve scannedIndex
-            redactedText,
-            rephrasedText,
+            // Only include AI-derived fields to prevent fallback from overwriting better results later
+            redactedText: hasAIRedaction ? redactedText : undefined,
+            rephrasedText: hasAIRephrase ? rephrasedText : undefined,
             finalText,
             mode
           });

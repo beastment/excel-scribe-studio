@@ -591,8 +591,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             const existing = key ? (processedCombined[key] || { id: key }) : {};
             const merged = {
               ...existing,
-              redactedText: item.redactedText ?? existing.redactedText,
-              rephrasedText: item.rephrasedText ?? existing.rephrasedText,
+              // Prefer AI-derived results if present; otherwise keep existing
+              redactedText: item.redactedText !== undefined ? item.redactedText : existing.redactedText,
+              rephrasedText: item.rephrasedText !== undefined ? item.rephrasedText : existing.rephrasedText,
               originalRow: typeof item.originalRow === 'string' ? parseInt(item.originalRow, 10) : (item.originalRow ?? existing.originalRow),
               scannedIndex: typeof item.scannedIndex === 'string' ? parseInt(item.scannedIndex, 10) : (item.scannedIndex ?? existing.scannedIndex),
             };
