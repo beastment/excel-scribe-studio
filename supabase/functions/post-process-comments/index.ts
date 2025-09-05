@@ -603,12 +603,19 @@ serve(async (req) => {
     console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
 
     // Fetch the actual AI configuration to get correct token limits and temperature
+    console.log(`${logPrefix} [DEBUG] Looking up model config for: provider=${scanConfig.provider}, model=${scanConfig.model}`);
     const { data: modelCfg, error: modelCfgError } = await supabase
       .from('model_configurations')
       .select('*')
       .eq('provider', scanConfig.provider)
       .eq('model', scanConfig.model)
       .single();
+    
+    console.log(`${logPrefix} [DEBUG] Model config lookup result:`, { 
+      found: !!modelCfg, 
+      error: modelCfgError?.message, 
+      output_token_limit: modelCfg?.output_token_limit 
+    });
 
     const { data: aiCfg, error: aiCfgError } = await supabase
       .from('ai_configurations')
@@ -628,9 +635,11 @@ serve(async (req) => {
     console.log(`${logPrefix} [POSTPROCESS] Safety margin: ${safetyMarginPercent}%`);
 
     let actualMaxTokens = getEffectiveMaxTokens(scanConfig);
+    console.log(`${logPrefix} [DEBUG] Initial actualMaxTokens from getEffectiveMaxTokens: ${actualMaxTokens}`);
     if (modelCfgError) {
       console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations, using defaults:`, modelCfgError.message);
     } else {
+      console.log(`${logPrefix} [DEBUG] modelCfg?.output_token_limit: ${modelCfg?.output_token_limit}`);
       actualMaxTokens = modelCfg?.output_token_limit || getEffectiveMaxTokens(scanConfig);
       console.log(`${logPrefix} [POSTPROCESS] Using max_tokens from model_configurations: ${actualMaxTokens}, model_temperature=${modelCfg?.temperature}`);
     }
