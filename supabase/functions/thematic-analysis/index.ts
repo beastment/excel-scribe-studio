@@ -294,9 +294,37 @@ serve(async (req) => {
   }
 
   const overallStartTime = Date.now();
+  const runId = `thematic-${Date.now()}`;
+  const logPrefix = `[RUN ${runId}]`;
+
+  // Health check endpoint
+  if (req.method === 'GET') {
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Thematic Analysis function is running',
+        timestamp: new Date().toISOString(),
+        runId: runId
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 
   try {
-    const request: ThematicAnalysisRequest = await req.json();
+    console.log(`${logPrefix} [THEMATIC-ANALYSIS] Starting request processing`);
+    
+    // Parse request body
+    let request: ThematicAnalysisRequest;
+    try {
+      request = await req.json();
+    } catch (parseError) {
+      console.error(`${logPrefix} [ERROR] Failed to parse request body:`, parseError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid JSON in request body' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    
     const { comments, userId, analysisConfig } = request;
     
     if (!comments || !Array.isArray(comments) || comments.length === 0) {
@@ -313,9 +341,6 @@ serve(async (req) => {
       )
     }
 
-    const runId = `thematic-${Date.now()}`;
-    const logPrefix = `[RUN ${runId}]`;
-
     console.log(`${logPrefix} [THEMATIC-ANALYSIS] Processing ${comments.length} comments`);
 
     // Check user credits before processing
@@ -328,14 +353,41 @@ serve(async (req) => {
     }
     
     const token = authHeader.replace('Bearer ', '');
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') || '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-    );
     
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    // Check environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
-    if (authError || !user) {
+    if (!supabaseUrl || !supabaseKey) {
+      console.error(`${logPrefix} [ERROR] Missing Supabase environment variables`);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Server configuration error' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    let user;
+    try {
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+      if (authError) {
+        console.error(`${logPrefix} [ERROR] Authentication error:`, authError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Authentication failed' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        );
+      }
+      user = authUser;
+    } catch (authError) {
+      console.error(`${logPrefix} [ERROR] Authentication exception:`, authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Authentication failed' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+    
+    if (!user) {
       return new Response(
         JSON.stringify({ success: false, error: 'Invalid authentication token' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
@@ -343,14 +395,24 @@ serve(async (req) => {
     }
 
     // Check user credits
-    const { data: userCredits, error: creditsError } = await supabase
-      .from('user_credits')
-      .select('available_credits')
-      .eq('user_id', user.id)
-      .single();
+    let userCredits;
+    try {
+      const { data: creditsData, error: creditsError } = await supabase
+        .from('user_credits')
+        .select('available_credits')
+        .eq('user_id', user.id)
+        .single();
 
-    if (creditsError) {
-      console.error(`${logPrefix} [CREDITS] Error fetching user credits:`, creditsError);
+      if (creditsError) {
+        console.error(`${logPrefix} [CREDITS] Error fetching user credits:`, creditsError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Unable to verify user credits' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+      userCredits = creditsData;
+    } catch (creditsError) {
+      console.error(`${logPrefix} [CREDITS] Exception fetching user credits:`, creditsError);
       return new Response(
         JSON.stringify({ success: false, error: 'Unable to verify user credits' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
@@ -442,21 +504,48 @@ Ensure the response is valid JSON and focuses on themes that appear in multiple 
     aiLogger.setFunctionStartTime(overallStartTime);
 
     // Call AI for thematic analysis
-    const rawResponse = await callAI(
-      provider,
-      model,
-      prompt,
-      input,
-      maxTokens,
-      user.id,
-      aiLogger,
-      aiConfig?.temperature || 0.3
-    );
+    let rawResponse;
+    try {
+      rawResponse = await callAI(
+        provider,
+        model,
+        prompt,
+        input,
+        maxTokens,
+        user.id,
+        aiLogger,
+        aiConfig?.temperature || 0.3
+      );
+    } catch (aiError) {
+      console.error(`${logPrefix} [AI ERROR] Failed to call AI:`, aiError);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `AI processing failed: ${aiError.message}`,
+          details: 'Check your AI provider configuration and API keys'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
 
     console.log(`${logPrefix} [AI RESPONSE] Received response from ${provider}/${model}`);
 
     // Parse the response
-    const analysisResult = parseThematicAnalysisResponse(rawResponse, comments);
+    let analysisResult;
+    try {
+      analysisResult = parseThematicAnalysisResponse(rawResponse, comments);
+    } catch (parseError) {
+      console.error(`${logPrefix} [PARSE ERROR] Failed to parse AI response:`, parseError);
+      console.error(`${logPrefix} [PARSE ERROR] Raw response:`, rawResponse);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Failed to parse AI response: ${parseError.message}`,
+          details: 'The AI returned an unexpected response format'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
 
     // Deduct credits
     const { error: deductError } = await supabase.rpc('deduct_user_credits', {
