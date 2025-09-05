@@ -690,41 +690,49 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   finalTextPreview: processed.finalText?.substring(0, 50)
                 });
                 
-                // Determine the final text based on the comment's mode and available processed text
-                let finalText = comment.text; // Default to original text
+                // Determine the final text based on the backend finalText first, then fallback logic
+                let finalText = comment.text; // Default to existing text
                 let finalMode = processed.mode || defaultMode; // Use backend mode if available, otherwise use default mode
                 
                 console.log(`[MODE] Comment ${comment.id} - identifiable: ${comment.identifiable}, concerning: ${comment.concerning}, defaultMode: ${defaultMode}, processed mode: ${processed.mode}`);
                 console.log(`[MODE] Comment ${comment.id} - has redactedText: ${!!processed.redactedText}, has rephrasedText: ${!!processed.rephrasedText}`);
                 
-                // For identifiable comments, use the default mode preference
-                if (comment.identifiable) {
-                  if (defaultMode === 'redact' && processed.redactedText) {
-                    finalText = processed.redactedText;
-                    finalMode = 'redact';
-                    console.log(`[MODE] Identifiable comment ${comment.id} - using redacted text (defaultMode: redact)`);
-                  } else if (defaultMode === 'rephrase' && processed.rephrasedText) {
-                    finalText = processed.rephrasedText;
-                    finalMode = 'rephrase';
-                    console.log(`[MODE] Identifiable comment ${comment.id} - using rephrased text (defaultMode: rephrase)`);
-                  } else if (defaultMode === 'redact' && processed.rephrasedText) {
-                    // Fallback: if redacted not available, use rephrased
-                    finalText = processed.rephrasedText;
-                    finalMode = 'rephrase';
-                    console.log(`[MODE] Identifiable comment ${comment.id} - fallback to rephrased (redacted not available)`);
-                  } else if (defaultMode === 'rephrase' && processed.redactedText) {
-                    // Fallback: if rephrased not available, use redacted
-                    finalText = processed.redactedText;
-                    finalMode = 'redact';
-                    console.log(`[MODE] Identifiable comment ${comment.id} - fallback to redacted (rephrased not available)`);
+                // Prefer backend finalText if provided
+                if (typeof processed.finalText === 'string' && processed.finalText.trim().length > 0) {
+                  finalText = processed.finalText;
+                  finalMode = processed.mode || finalMode;
+                  console.log(`[MODE] Using backend finalText for comment ${comment.id}`);
+                } else {
+                  // Fallback selection based on flags and default mode
+                  // For identifiable comments, use the default mode preference
+                  if (comment.identifiable) {
+                    if (defaultMode === 'redact' && processed.redactedText) {
+                      finalText = processed.redactedText;
+                      finalMode = 'redact';
+                      console.log(`[MODE] Identifiable comment ${comment.id} - using redacted text (defaultMode: redact)`);
+                    } else if (defaultMode === 'rephrase' && processed.rephrasedText) {
+                      finalText = processed.rephrasedText;
+                      finalMode = 'rephrase';
+                      console.log(`[MODE] Identifiable comment ${comment.id} - using rephrased text (defaultMode: rephrase)`);
+                    } else if (defaultMode === 'redact' && processed.rephrasedText) {
+                      // Fallback: if redacted not available, use rephrased
+                      finalText = processed.rephrasedText;
+                      finalMode = 'rephrase';
+                      console.log(`[MODE] Identifiable comment ${comment.id} - fallback to rephrased (redacted not available)`);
+                    } else if (defaultMode === 'rephrase' && processed.redactedText) {
+                      // Fallback: if rephrased not available, use redacted
+                      finalText = processed.redactedText;
+                      finalMode = 'redact';
+                      console.log(`[MODE] Identifiable comment ${comment.id} - fallback to redacted (rephrased not available)`);
+                    }
                   }
-                }
-                // For concerning-only comments (not identifiable), always use rephrase
-                else if (comment.concerning && !comment.identifiable) {
-                  if (processed.rephrasedText) {
-                    finalText = processed.rephrasedText;
-                    finalMode = 'rephrase';
-                    console.log(`[MODE] Concerning-only comment ${comment.id} - using rephrased text`);
+                  // For concerning-only comments (not identifiable), always use rephrase
+                  else if (comment.concerning && !comment.identifiable) {
+                    if (processed.rephrasedText) {
+                      finalText = processed.rephrasedText;
+                      finalMode = 'rephrase';
+                      console.log(`[MODE] Concerning-only comment ${comment.id} - using rephrased text`);
+                    }
                   }
                 }
                 
