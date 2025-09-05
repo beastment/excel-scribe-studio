@@ -481,7 +481,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
   }
   
   // Check if this is a JSON array (the AI might return the entire array as a string)
-  if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
+  if (content.trim().startsWith('[')) {
     console.log('[NORMALIZE] Attempting JSON parse of:', content.substring(0, 200));
     try {
       const jsonArray = JSON.parse(content);
@@ -526,7 +526,44 @@ function normalizeBatchTextParsed(parsed: any): string[] {
         return result;
       }
     } catch (e) {
-      console.warn('[NORMALIZE] Failed to parse JSON array, falling back to string parsing:', e);
+      console.warn('[NORMALIZE] Failed to parse JSON array, attempting to parse incomplete JSON:', e);
+      
+      // Try to parse incomplete JSON by recognizing comment boundaries
+      // Pattern to match JSON objects with index and redacted/rephrased fields
+      // Handles cases where the JSON is truncated mid-sentence
+      const incompleteJsonPattern = /{\s*"index"\s*:\s*\d+\s*,\s*"(?:redacted|rephrased)"\s*:\s*"([^"]*(?:\\.[^"]*)*)"\s*}(?:\s*,|\s*$)/g;
+      const matches = [...content.matchAll(incompleteJsonPattern)];
+      
+      if (matches.length > 0) {
+        console.log('[NORMALIZE] Found', matches.length, 'incomplete JSON matches');
+        const result = matches.map(match => {
+          const text = match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+          const cleaned = cleanSentinels(text);
+          console.log('[NORMALIZE] Incomplete JSON match cleaned:', cleaned.substring(0, 100));
+          return cleaned;
+        }).filter(s => s.length > 0);
+        console.log('[NORMALIZE] Incomplete JSON result:', result);
+        return result;
+      }
+      
+      // Alternative pattern for cases where the JSON structure is more broken
+      // Look for patterns like: "rephrased": "text content here"
+      const alternativePattern = /"(?:redacted|rephrased)"\s*:\s*"([^"]*(?:\\.[^"]*)*)"\s*(?:,|\s*})/g;
+      const altMatches = [...content.matchAll(alternativePattern)];
+      
+      if (altMatches.length > 0) {
+        console.log('[NORMALIZE] Found', altMatches.length, 'alternative pattern matches');
+        const result = altMatches.map(match => {
+          const text = match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+          const cleaned = cleanSentinels(text);
+          console.log('[NORMALIZE] Alternative pattern match cleaned:', cleaned.substring(0, 100));
+          return cleaned;
+        }).filter(s => s.length > 0);
+        console.log('[NORMALIZE] Alternative pattern result:', result);
+        return result;
+      }
+      
+      console.warn('[NORMALIZE] No incomplete JSON patterns found, falling back to string parsing');
       console.warn('[NORMALIZE] Content that failed to parse:', content.substring(0, 500));
       console.warn('[NORMALIZE] Content length:', content.length);
     }
