@@ -1,0 +1,59 @@
+THEMATIC ANALYSIS EDGE FUNCTION
+================================
+
+This Supabase Edge Function provides AI-powered thematic analysis of employee feedback data.
+
+FUNCTIONALITY:
+- Analyzes large volumes of text comments using AI
+- Identifies key themes and patterns automatically
+- Provides sentiment analysis for each theme
+- Generates demographic breakdowns (department, gender, age, role)
+- Tags individual comments with identified themes
+- Calculates summary statistics and insights
+
+INPUT:
+- Array of comment objects with text and optional demographic data
+- User authentication token
+- Optional analysis configuration
+
+OUTPUT:
+- Structured analysis result with themes, demographics, and tagged comments
+- Summary statistics (total comments, themes found, average sentiment, top theme)
+- Demographic breakdown by various categories
+- All comments tagged with relevant themes
+
+AI INTEGRATION:
+- Supports OpenAI and Azure OpenAI providers
+- Configurable models and parameters
+- Comprehensive logging and error handling
+- Credit-based usage tracking
+
+CREDIT SYSTEM:
+- Estimates cost based on comment volume
+- Checks user credit balance before processing
+- Deducts credits upon successful completion
+- Returns detailed credit usage information
+
+ERROR HANDLING:
+- Validates input data and user authentication
+- Handles AI API errors gracefully
+- Provides detailed error messages
+- Implements proper CORS headers
+
+USAGE:
+POST /functions/v1/thematic-analysis
+Authorization: Bearer <user_token>
+Content-Type: application/json
+
+{
+  "comments": [
+    {
+      "id": "comment-1",
+      "text": "Great work environment, but need better communication",
+      "department": "Engineering",
+      "gender": "Female",
+      "age": "25-34"
+    }
+  ],
+  "userId": "user-uuid"
+}
