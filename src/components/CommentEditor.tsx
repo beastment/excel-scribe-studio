@@ -431,13 +431,35 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         
         console.log(`[BATCH] AI Config loaded for post-processing`);
         
-        // New orchestration:
-        console.log('[PHASE3] Launching redaction (scan_a, scan_b) ...');
-        // 1) Run Redaction for Scan A and Scan B in parallel (separate instances via routingMode)
+        // Build routing sets based on which scan flagged the comment
+        const getScanResult = (c: any, key: 'scanAResult' | 'scanBResult') => (c.adjudicationData?.[key] || c[key]);
+        const wasFlaggedBy = (c: any, key: 'scanAResult' | 'scanBResult') => {
+          const r = getScanResult(c, key);
+          return Boolean(r && (r.concerning || r.identifiable));
+        };
+        const flaggedByAOnly = commentsToProcess.filter((c: any) => wasFlaggedBy(c, 'scanAResult') && !wasFlaggedBy(c, 'scanBResult'));
+        const flaggedByBOnly = commentsToProcess.filter((c: any) => wasFlaggedBy(c, 'scanBResult') && !wasFlaggedBy(c, 'scanAResult'));
+        const flaggedByBoth = commentsToProcess.filter((c: any) => wasFlaggedBy(c, 'scanAResult') && wasFlaggedBy(c, 'scanBResult'));
+        const bothToA: any[] = [];
+        const bothToB: any[] = [];
+        flaggedByBoth.forEach((c: any, idx: number) => {
+          if (idx % 2 === 0) bothToA.push(c); else bothToB.push(c);
+        });
+        const commentsForA = [...flaggedByAOnly, ...bothToA];
+        const commentsForB = [...flaggedByBOnly, ...bothToB];
+
+        console.log('[PHASE3] Launching redaction (scan_a, scan_b) ...', {
+          aOnly: flaggedByAOnly.length,
+          bOnly: flaggedByBOnly.length,
+          both: flaggedByBoth.length,
+          routeA: commentsForA.length,
+          routeB: commentsForB.length
+        });
+        // 1) Run Redaction for Scan A and Scan B in parallel (route-specific)
         const [ppRedactA, ppRedactB] = await Promise.allSettled([
           supabase.functions.invoke('post-process-comments', {
             body: {
-              comments: commentsToProcess.map((c: any) => ({
+              comments: commentsForA.map((c: any) => ({
                 id: c.id,
                 originalRow: c.originalRow,
                 scannedIndex: c.scannedIndex,
@@ -464,7 +486,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           }),
           supabase.functions.invoke('post-process-comments', {
             body: {
-              comments: commentsToProcess.map((c: any) => ({
+              comments: commentsForB.map((c: any) => ({
                 id: c.id,
                 originalRow: c.originalRow,
                 scannedIndex: c.scannedIndex,
@@ -496,11 +518,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         if (ppRedactB.status === 'rejected') console.error('Post-processing (redaction B) error:', ppRedactB.reason);
 
         console.log('[PHASE3] Redaction finished. Launching rephrase (scan_a, scan_b) ...');
-        // 2) After both redaction calls complete, run Rephrase for A and B in parallel
+        // 2) After both redaction calls complete, run Rephrase for A and B in parallel (same routing)
         const [ppRephraseA, ppRephraseB] = await Promise.allSettled([
           supabase.functions.invoke('post-process-comments', {
             body: {
-              comments: commentsToProcess.map((c: any) => ({
+              comments: commentsForA.map((c: any) => ({
                 id: c.id,
                 originalRow: c.originalRow,
                 scannedIndex: c.scannedIndex,
@@ -527,7 +549,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           }),
           supabase.functions.invoke('post-process-comments', {
             body: {
-              comments: commentsToProcess.map((c: any) => ({
+              comments: commentsForB.map((c: any) => ({
                 id: c.id,
                 originalRow: c.originalRow,
                 scannedIndex: c.scannedIndex,
