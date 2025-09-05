@@ -422,6 +422,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
   const cleanSentinels = (text: string): string => {
     return text
       .replace(/<<<END\s+\d+>>>/gi, '') // Remove END markers
+      .replace(/<<<ITEM\s+\d+>>>\s*/gi, '') // Remove ITEM markers and following space
       .trim();
   };
 
