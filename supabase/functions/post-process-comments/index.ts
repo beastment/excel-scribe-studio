@@ -25,10 +25,10 @@ function getEffectiveMaxTokens(config: any): number {
   if (provider === 'bedrock') {
     if (model.includes('anthropic.claude')) return 4096;
     if (model.startsWith('mistral.')) return 4096;
-    if (model.startsWith('amazon.titan')) return 1000;
+    if (model.startsWith('amazon.titan')) return 2000; // Fallback only - should use output_token_limit from model config
   }
   if (provider === 'openai' || provider === 'azure') return 4096;
-  return 1000;
+  return 2000; // Fallback only - should use output_token_limit from model config
 }
 
 // Default batch size for post-processing - will be dynamically calculated based on model limits //
@@ -657,6 +657,7 @@ serve(async (req) => {
     };
 
     console.log(`${logPrefix} [POSTPROCESS] Effective config: max_tokens=${effectiveConfig.max_tokens}, temperature=${effectiveConfig.temperature}`);
+    console.log(`${logPrefix} [POSTPROCESS] Token limit for rephrasing: ${effectiveConfig.max_tokens} tokens (from model config: ${modelCfg?.output_token_limit || 'not set'})`);
 
     // Filter comments that need post-processing
     const flaggedComments = comments.filter(c => c.concerning || c.identifiable)
@@ -931,6 +932,7 @@ serve(async (req) => {
         console.log(`${logPrefix} [AI RESPONSE] rawRedacted=${JSON.stringify(rawRedacted).substring(0, 500)}...`);
         console.log(`${logPrefix} [AI RESPONSE] ${group.provider}/${group.model} type=batch_text phase=rephrase`);
         console.log(`${logPrefix} [AI RESPONSE] rawRephrased=${JSON.stringify(rawRephrased).substring(0, 500)}...`);
+        console.log(`${logPrefix} [AI RESPONSE] rawRephrased length: ${rawRephrased?.length || 0} characters`);
         
         // Parse and normalize the responses
         console.log(`${logPrefix} [POSTPROCESS] Parsing AI responses...`);
