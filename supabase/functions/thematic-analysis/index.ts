@@ -88,14 +88,14 @@ serve(async (req) => {
       );
     }
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceKey) {
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !anonKey) {
       return new Response(
         JSON.stringify({ success: false, error: "Server configuration error" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
       );
     }
-    const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+    const supabaseAdmin = createClient(supabaseUrl, anonKey);
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !userData?.user) {
