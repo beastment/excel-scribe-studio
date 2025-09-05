@@ -61,7 +61,17 @@ interface ThematicAnalysisRequest {
 }
 
 // AI calling function
-async function callAI(provider: string, model: string, prompt: string, input: string, maxTokens?: number, userId?: string, aiLogger?: any, temperature?: number) {
+async function callAI(
+  provider: string,
+  model: string,
+  prompt: string,
+  input: string,
+  maxTokens?: number,
+  userId?: string,
+  aiLogger?: any,
+  runId?: string,
+  temperature?: number
+) {
   const payload = {
     model: model,
     messages: [
@@ -76,7 +86,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
   if (aiLogger && userId) {
     await aiLogger.logRequest({
       userId,
-      scanRunId: `thematic-${Date.now()}`,
+      scanRunId: runId,
       functionName: 'thematic-analysis',
       provider,
       model,
@@ -102,7 +112,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
       if (aiLogger && userId) {
-        await aiLogger.logResponse(userId, `thematic-${Date.now()}`, 'thematic-analysis', provider, model, 'thematic-analysis', 'analysis', '', errorMessage, undefined);
+        await aiLogger.logResponse(userId, runId, 'thematic-analysis', provider, model, 'thematic-analysis', 'analysis', '', errorMessage, undefined);
       }
       throw new Error(errorMessage);
     }
@@ -112,7 +122,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response
     if (aiLogger && userId) {
-      await aiLogger.logResponse(userId, `thematic-${Date.now()}`, 'thematic-analysis', provider, model, 'thematic-analysis', 'analysis', responseText, undefined, undefined);
+      await aiLogger.logResponse(userId, runId, 'thematic-analysis', provider, model, 'thematic-analysis', 'analysis', responseText, undefined, undefined);
     }
 
     return responseText;
@@ -129,7 +139,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     if (!response.ok) {
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
       if (aiLogger && userId) {
-        await aiLogger.logResponse(userId, `thematic-${Date.now()}`, 'thematic-analysis', provider, model, 'thematic-analysis', 'analysis', '', errorMessage, undefined);
+        await aiLogger.logResponse(userId, runId, 'thematic-analysis', provider, model, 'thematic-analysis', 'analysis', '', errorMessage, undefined);
       }
       throw new Error(errorMessage);
     }
@@ -139,7 +149,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     // Log the AI response
     if (aiLogger && userId) {
-      await aiLogger.logResponse(userId, `thematic-${Date.now()}`, 'thematic-analysis', provider, model, 'thematic-analysis', 'analysis', responseText, undefined, undefined);
+      await aiLogger.logResponse(userId, runId, 'thematic-analysis', provider, model, 'thematic-analysis', 'analysis', responseText, undefined, undefined);
     }
 
     return responseText;
@@ -294,7 +304,7 @@ serve(async (req) => {
   }
 
   const overallStartTime = Date.now();
-  const runId = `thematic-${Date.now()}`;
+  const runId = `thematic-${overallStartTime}`;
   const logPrefix = `[RUN ${runId}]`;
 
   // Health check endpoint
@@ -357,11 +367,26 @@ serve(async (req) => {
     // Check environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const openaiKey = Deno.env.get('OPENAI_API_KEY');
+    const azureKey = Deno.env.get('AZURE_OPENAI_API_KEY');
+    const azureEndpoint = Deno.env.get('AZURE_OPENAI_ENDPOINT');
     
     if (!supabaseUrl || !supabaseKey) {
       console.error(`${logPrefix} [ERROR] Missing Supabase environment variables`);
       return new Response(
         JSON.stringify({ success: false, error: 'Server configuration error' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+
+    // Validate AI provider env if needed
+    const providerEnvOk = (analysisConfig?.provider || 'openai') === 'openai'
+      ? Boolean(openaiKey)
+      : Boolean(azureKey && azureEndpoint);
+    if (!providerEnvOk) {
+      console.error(`${logPrefix} [ERROR] Missing AI provider environment variables`);
+      return new Response(
+        JSON.stringify({ success: false, error: 'AI provider is not configured' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -514,6 +539,7 @@ Ensure the response is valid JSON and focuses on themes that appear in multiple 
         maxTokens,
         user.id,
         aiLogger,
+        runId,
         aiConfig?.temperature || 0.3
       );
     } catch (aiError) {
