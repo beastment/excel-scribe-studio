@@ -426,14 +426,14 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       .trim();
   };
 
-  // Check for the specific sequence \"\n as comment boundary FIRST - before any other processing
+  // Check for the specific sequence "\n as comment boundary FIRST - before any other processing
   const content = String(parsed || '');
-  if (content.includes('\\"\n')) {
-    console.log('[NORMALIZE] Found \\"\\n sequence, parsing as comment boundaries');
-    console.log('[NORMALIZE] Full content with \\"\\n:', content);
+  if (content.includes('"\n')) {
+    console.log('[NORMALIZE] Found "\\n sequence, parsing as comment boundaries');
+    console.log('[NORMALIZE] Full content with "\\n:', content);
     
-    // Split on \"\n to separate comments
-    const commentParts = content.split('\\"\n');
+    // Split on "\n to separate comments
+    const commentParts = content.split('"\n');
     console.log('[NORMALIZE] Split into', commentParts.length, 'parts');
     
     const result = commentParts
