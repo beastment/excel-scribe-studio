@@ -124,6 +124,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
   };
 
   console.log(`[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 4096}, temperature=${temperature || 0}`);
+  console.log(`[CALL_AI_DEBUG] Provider: ${provider}, Model: ${model}, MaxTokens: ${maxTokens}, Temperature: ${temperature}`);
 
         // Log the AI request if logger is provided
       if (aiLogger && userId && scanRunId && phase) {
@@ -497,7 +498,10 @@ function normalizeBatchTextParsed(parsed: any): string[] {
               console.log('[NORMALIZE] Found redacted field:', item.redacted.substring(0, 50));
               return cleanSentinels(item.redacted);
             }
-            if (item.rephrased) return cleanSentinels(item.rephrased);
+            if (item.rephrased) {
+              console.log('[NORMALIZE] Found rephrased field:', item.rephrased.substring(0, 50));
+              return cleanSentinels(item.rephrased);
+            }
             if (item.text) return cleanSentinels(item.text);
             // Fallback to stringifying the object
             return cleanSentinels(JSON.stringify(item));
@@ -510,11 +514,14 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       }
     } catch (e) {
       console.warn('[NORMALIZE] Failed to parse JSON array, falling back to string parsing:', e);
+      console.warn('[NORMALIZE] Content that failed to parse:', content.substring(0, 500));
+      console.warn('[NORMALIZE] Content length:', content.length);
     }
   }
 
   const result = [String(parsed || '')];
-  console.log('[NORMALIZE] Final result:', result);
+  console.log('[NORMALIZE] Final result (fallback):', result);
+  console.log('[NORMALIZE] This means JSON parsing failed or input was not JSON array');
   return result;
 }
 
@@ -890,6 +897,12 @@ serve(async (req) => {
         if (!groupModelCfgError && groupModelCfg) {
           groupMaxTokens = groupModelCfg.output_token_limit || groupMaxTokens;
           console.log(`${logPrefix} [POSTPROCESS] Group ${key} token limit from model_configurations: ${groupMaxTokens}`);
+          console.log(`${logPrefix} [DEBUG] Group ${key} modelCfg details:`, {
+            provider: groupModelCfg.provider,
+            model: groupModelCfg.model,
+            output_token_limit: groupModelCfg.output_token_limit,
+            temperature: groupModelCfg.temperature
+          });
         } else {
           console.log(`${logPrefix} [POSTPROCESS] Group ${key} using fallback token limit: ${groupMaxTokens}`);
           if (groupModelCfgError) {
@@ -964,6 +977,7 @@ serve(async (req) => {
         }
 
         if (requestRedaction) {
+          console.log(`${logPrefix} [AI_CALL_DEBUG] Redaction call: ${group.provider}/${group.model} max_tokens=${groupMaxTokens} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
           calls.push(
             callAI(
               group.provider,
@@ -981,6 +995,7 @@ serve(async (req) => {
           );
         }
         if (requestRephrase) {
+          console.log(`${logPrefix} [AI_CALL_DEBUG] Rephrase call: ${group.provider}/${group.model} max_tokens=${groupMaxTokens} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
           calls.push(
             callAI(
               group.provider,
@@ -1031,7 +1046,9 @@ serve(async (req) => {
         console.log(`${logPrefix} [AI RESPONSE] ${group.provider}/${group.model} type=batch_text phase=rephrase`);
         console.log(`${logPrefix} [AI RESPONSE] rawRephrased=${JSON.stringify(rawRephrased).substring(0, 500)}...`);
         console.log(`${logPrefix} [AI RESPONSE] rawRephrased length: ${rawRephrased?.length || 0} characters`);
-        console.log(`${logPrefix} [AI RESPONSE] rawRephrased ends with: "${rawRephrased?.slice(-50) || 'null'}"`);
+        if (rawRephrased) {
+          console.log(`${logPrefix} [AI RESPONSE] rawRephrased ends with: "${rawRephrased.substring(Math.max(0, rawRephrased.length - 100))}"`);
+        }
         
         // Parse and normalize the responses
         console.log(`${logPrefix} [POSTPROCESS] Parsing AI responses...`);
