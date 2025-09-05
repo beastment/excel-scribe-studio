@@ -426,17 +426,20 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       .trim();
   };
 
-  // Check for the specific sequence \"\n as comment boundary FIRST
+  // Check for the specific sequence \"\n as comment boundary FIRST - before any other processing
   const content = String(parsed || '');
   if (content.includes('\\"\n')) {
     console.log('[NORMALIZE] Found \\"\\n sequence, parsing as comment boundaries');
+    console.log('[NORMALIZE] Full content with \\"\\n:', content);
     
     // Split on \"\n to separate comments
     const commentParts = content.split('\\"\n');
     console.log('[NORMALIZE] Split into', commentParts.length, 'parts');
     
     const result = commentParts
-      .map(part => {
+      .map((part, index) => {
+        console.log(`[NORMALIZE] Processing part ${index}:`, part.substring(0, 100));
+        
         // Extract text content from each part
         // Look for patterns like: "rephrased": "text content here
         const textMatch = part.match(/"(?:redacted|rephrased)"\s*:\s*"([^"]*(?:\\.[^"]*)*)$/);
@@ -456,6 +459,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
           return cleaned;
         }
         
+        console.log(`[NORMALIZE] No match found for part ${index}`);
         return null;
       })
       .filter(s => s && s.length > 0);
@@ -466,6 +470,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
     }
   }
 
+  // Only proceed with other parsing if \"\n check didn't work
   if (Array.isArray(parsed)) {
     const cleaned = parsed
       .filter((v) => v != null)
