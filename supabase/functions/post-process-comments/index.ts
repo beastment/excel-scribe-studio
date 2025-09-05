@@ -418,12 +418,53 @@ function arrayBufferToHex(buffer: ArrayBuffer): string {
 function normalizeBatchTextParsed(parsed: any): string[] {
   console.log('[NORMALIZE] Input type:', typeof parsed);
   console.log('[NORMALIZE] Input content:', typeof parsed === 'string' ? parsed.substring(0, 200) : parsed);
+  
   // Helper function to clean up any remaining sentinel markers
   const cleanSentinels = (text: string): string => {
     return text
       .replace(/<<<END\s+\d+>>>/gi, '') // Remove END markers
       .trim();
   };
+
+  // Check for the specific sequence \"\n as comment boundary FIRST
+  const content = String(parsed || '');
+  if (content.includes('\\"\n')) {
+    console.log('[NORMALIZE] Found \\"\\n sequence, parsing as comment boundaries');
+    
+    // Split on \"\n to separate comments
+    const commentParts = content.split('\\"\n');
+    console.log('[NORMALIZE] Split into', commentParts.length, 'parts');
+    
+    const result = commentParts
+      .map(part => {
+        // Extract text content from each part
+        // Look for patterns like: "rephrased": "text content here
+        const textMatch = part.match(/"(?:redacted|rephrased)"\s*:\s*"([^"]*(?:\\.[^"]*)*)$/);
+        if (textMatch) {
+          const text = textMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+          const cleaned = cleanSentinels(text);
+          console.log('[NORMALIZE] Comment boundary match cleaned:', cleaned.substring(0, 100));
+          return cleaned;
+        }
+        
+        // Alternative: look for any quoted text at the end
+        const quotedMatch = part.match(/"([^"]*(?:\\.[^"]*)*)$/);
+        if (quotedMatch) {
+          const text = quotedMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+          const cleaned = cleanSentinels(text);
+          console.log('[NORMALIZE] Quoted text match cleaned:', cleaned.substring(0, 100));
+          return cleaned;
+        }
+        
+        return null;
+      })
+      .filter(s => s && s.length > 0);
+    
+    console.log('[NORMALIZE] Comment boundary parsing result:', result);
+    if (result.length > 0) {
+      return result;
+    }
+  }
 
   if (Array.isArray(parsed)) {
     const cleaned = parsed
@@ -469,8 +510,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
     return cleaned;
   }
 
-  // Fallback: try to parse as string
-  const content = String(parsed || '');
+  // Fallback: try to parse as string (content already defined above)
   
   // Check if this is the simple format with ITEM markers
   if (content.includes('<<<ITEM')) {
