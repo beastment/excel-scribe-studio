@@ -803,28 +803,52 @@ serve(async (req) => {
         const bConc = Boolean(c.scanBResult?.concerning);
         const aPM = parseProviderModel(c.scanAResult?.model);
         const bPM = parseProviderModel(c.scanBResult?.model);
+        
+        console.log(`${logPrefix} [PICK_MODEL_DEBUG] Comment ${c.id}:`, {
+          aIdent, bIdent, aConc, bConc,
+          aPM: aPM.provider ? `${aPM.provider}/${aPM.model}` : 'null',
+          bPM: bPM.provider ? `${bPM.provider}/${bPM.model}` : 'null',
+          routingMode
+        });
+        
         // If routingMode is forced, prefer that branch when possible
         if (routingMode === 'scan_a' && (aPM.provider && aPM.model)) {
+          console.log(`${logPrefix} [PICK_MODEL] Using forced scan_a routing: ${aPM.provider}/${aPM.model}`);
           return { provider: aPM.provider, model: aPM.model };
         }
         if (routingMode === 'scan_b' && (bPM.provider && bPM.model)) {
+          console.log(`${logPrefix} [PICK_MODEL] Using forced scan_b routing: ${bPM.provider}/${bPM.model}`);
           return { provider: bPM.provider, model: bPM.model };
         }
         // Prefer identifiable routing
-        if (aIdent && !bIdent && aPM.provider && aPM.model) return { provider: aPM.provider, model: aPM.model };
-        if (!aIdent && bIdent && bPM.provider && bPM.model) return { provider: bPM.provider, model: bPM.model };
+        if (aIdent && !bIdent && aPM.provider && aPM.model) {
+          console.log(`${logPrefix} [PICK_MODEL] Using scan_a (identifiable only): ${aPM.provider}/${aPM.model}`);
+          return { provider: aPM.provider, model: aPM.model };
+        }
+        if (!aIdent && bIdent && bPM.provider && bPM.model) {
+          console.log(`${logPrefix} [PICK_MODEL] Using scan_b (identifiable only): ${bPM.provider}/${bPM.model}`);
+          return { provider: bPM.provider, model: bPM.model };
+        }
         if (aIdent && bIdent) {
           const useA = Math.random() < 0.5;
           const pm = useA ? aPM : bPM;
-          if (pm.provider && pm.model) return { provider: pm.provider, model: pm.model };
+          if (pm.provider && pm.model) {
+            console.log(`${logPrefix} [PICK_MODEL] Using random choice (both identifiable): ${pm.provider}/${pm.model} (chose ${useA ? 'A' : 'B'})`);
+            return { provider: pm.provider, model: pm.model };
+          }
         }
         // Concerning-only: prefer the model that flagged concerning; else random; fallback to effective config
         if (aConc !== bConc) {
           const pm = aConc ? aPM : bPM;
-          if (pm.provider && pm.model) return { provider: pm.provider, model: pm.model };
+          if (pm.provider && pm.model) {
+            console.log(`${logPrefix} [PICK_MODEL] Using concerning-only routing: ${pm.provider}/${pm.model} (${aConc ? 'A' : 'B'} flagged concerning)`);
+            return { provider: pm.provider, model: pm.model };
+          }
         }
         const pm = Math.random() < 0.5 ? aPM : bPM;
-        return { provider: pm.provider || effectiveConfig.provider, model: pm.model || effectiveConfig.model };
+        const result = { provider: pm.provider || effectiveConfig.provider, model: pm.model || effectiveConfig.model };
+        console.log(`${logPrefix} [PICK_MODEL] Using fallback routing: ${result.provider}/${result.model}`);
+        return result;
       };
 
       const groups = new Map<GroupKey, Group>();
@@ -833,6 +857,21 @@ serve(async (req) => {
         const key = `${provider}/${model}`;
         if (!groups.has(key)) groups.set(key, { provider, model, items: [] });
         groups.get(key)!.items.push(c);
+        
+        // Debug logging for routing decisions
+        console.log(`${logPrefix} [ROUTING_DEBUG] Comment ${c.id}:`, {
+          scanAResult: c.scanAResult ? { 
+            identifiable: c.scanAResult.identifiable, 
+            concerning: c.scanAResult.concerning, 
+            model: c.scanAResult.model 
+          } : 'null',
+          scanBResult: c.scanBResult ? { 
+            identifiable: c.scanBResult.identifiable, 
+            concerning: c.scanBResult.concerning, 
+            model: c.scanBResult.model 
+          } : 'null',
+          routedTo: `${provider}/${model}`
+        });
       }
       console.log(`${logPrefix} [ROUTING] Routed ${flaggedComments.length} comments into ${groups.size} groups`);
 
