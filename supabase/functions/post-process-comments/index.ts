@@ -668,6 +668,8 @@ serve(async (req) => {
       console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations, using defaults:`, modelCfgError.message);
     } else {
       console.log(`${logPrefix} [DEBUG] modelCfg?.output_token_limit: ${modelCfg?.output_token_limit}`);
+      console.log(`${logPrefix} [DEBUG] Full modelCfg object:`, JSON.stringify(modelCfg, null, 2));
+      console.log(`${logPrefix} [DEBUG] Full scanConfig object:`, JSON.stringify(scanConfig, null, 2));
       actualMaxTokens = modelCfg?.output_token_limit || getEffectiveMaxTokens(scanConfig);
       console.log(`${logPrefix} [POSTPROCESS] Using max_tokens from model_configurations: ${actualMaxTokens}, model_temperature=${modelCfg?.temperature}`);
     }
@@ -876,6 +878,25 @@ serve(async (req) => {
       console.log(`${logPrefix} [ROUTING] Routed ${flaggedComments.length} comments into ${groups.size} groups`);
 
       for (const [key, group] of groups.entries()) {
+        // Fetch model configuration for this specific group
+        const { data: groupModelCfg, error: groupModelCfgError } = await supabase
+          .from('model_configurations')
+          .select('*')
+          .eq('provider', group.provider)
+          .eq('model', group.model)
+          .single();
+
+        let groupMaxTokens = getEffectiveMaxTokens({ provider: group.provider, model: group.model });
+        if (!groupModelCfgError && groupModelCfg) {
+          groupMaxTokens = groupModelCfg.output_token_limit || groupMaxTokens;
+          console.log(`${logPrefix} [POSTPROCESS] Group ${key} token limit from model_configurations: ${groupMaxTokens}`);
+        } else {
+          console.log(`${logPrefix} [POSTPROCESS] Group ${key} using fallback token limit: ${groupMaxTokens}`);
+          if (groupModelCfgError) {
+            console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError.message);
+          }
+        }
+
         const chunks = chunkArray(group.items, optimalBatchSize);
         console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} chunks`);
         for (const chunk of chunks) {
@@ -950,12 +971,12 @@ serve(async (req) => {
               redactPrompt,
               sentinelInputRedact,
               'batch_text',
-              effectiveConfig.max_tokens,
+              groupMaxTokens,
               user.id,
               scanRunId,
               'redaction',
               aiLogger,
-              effectiveConfig.temperature
+              groupModelCfg?.temperature ?? effectiveConfig.temperature
             )
           );
         }
@@ -967,12 +988,12 @@ serve(async (req) => {
               rephrasePrompt,
               sentinelInputRephrase,
               'batch_text',
-              effectiveConfig.max_tokens,
+              groupMaxTokens,
               user.id,
               scanRunId,
               'rephrase',
               aiLogger,
-              effectiveConfig.temperature
+              groupModelCfg?.temperature ?? effectiveConfig.temperature
             )
           );
         }
