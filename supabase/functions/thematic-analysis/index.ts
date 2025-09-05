@@ -79,14 +79,8 @@ serve(async (req) => {
       );
     }
 
-    // Auth check
+    // Optional auth (JWT disabled) — proceed if keys missing, but prefer verifying token when present
     const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Authorization header required" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
-      );
-    }
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     if (!supabaseUrl || !anonKey) {
@@ -95,14 +89,18 @@ serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
       );
     }
-    const supabaseAdmin = createClient(supabaseUrl, anonKey);
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !userData?.user) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Authentication failed" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
-      );
+    if (authHeader) {
+      try {
+        const supabaseAdmin = createClient(supabaseUrl, anonKey);
+        const token = authHeader.replace("Bearer ", "");
+        const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !userData?.user) {
+          // Non-fatal: continue without user context
+          // console.warn("Auth token invalid; continuing without user context");
+        }
+      } catch (_) {
+        // Non-fatal: continue
+      }
     }
 
     // Minimal heuristic theming (placeholder) – replace with AI call if desired

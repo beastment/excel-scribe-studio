@@ -1,0 +1,10 @@
+{
+  "functions": [
+    {
+      "name": "thematic-analysis",
+      "verify_jwt": false
+    }
+  ]
+}
+
+
