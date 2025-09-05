@@ -422,7 +422,6 @@ function normalizeBatchTextParsed(parsed: any): string[] {
   const cleanSentinels = (text: string): string => {
     return text
       .replace(/<<<END\s+\d+>>>/gi, '') // Remove END markers
-      .replace(/\s+/g, ' ') // Normalize whitespace
       .trim();
   };
 
@@ -491,22 +490,36 @@ function normalizeBatchTextParsed(parsed: any): string[] {
         const result = jsonArray.map(item => {
           console.log('[NORMALIZE] Processing item:', item);
           if (typeof item === 'string') {
-            return cleanSentinels(item.trim());
+            const cleaned = cleanSentinels(item.trim());
+            console.log('[NORMALIZE] String item cleaned:', cleaned.substring(0, 100));
+            return cleaned;
           } else if (typeof item === 'object' && item !== null) {
             // Handle JSON objects with redacted/rephrased/text fields
             if (item.redacted) {
               console.log('[NORMALIZE] Found redacted field:', item.redacted.substring(0, 50));
-              return cleanSentinels(item.redacted);
+              const cleaned = cleanSentinels(item.redacted);
+              console.log('[NORMALIZE] Redacted field cleaned:', cleaned.substring(0, 100));
+              return cleaned;
             }
             if (item.rephrased) {
               console.log('[NORMALIZE] Found rephrased field:', item.rephrased.substring(0, 50));
-              return cleanSentinels(item.rephrased);
+              const cleaned = cleanSentinels(item.rephrased);
+              console.log('[NORMALIZE] Rephrased field cleaned:', cleaned.substring(0, 100));
+              return cleaned;
             }
-            if (item.text) return cleanSentinels(item.text);
+            if (item.text) {
+              const cleaned = cleanSentinels(item.text);
+              console.log('[NORMALIZE] Text field cleaned:', cleaned.substring(0, 100));
+              return cleaned;
+            }
             // Fallback to stringifying the object
-            return cleanSentinels(JSON.stringify(item));
+            const cleaned = cleanSentinels(JSON.stringify(item));
+            console.log('[NORMALIZE] Object stringified and cleaned:', cleaned.substring(0, 100));
+            return cleaned;
           } else {
-            return cleanSentinels(String(item));
+            const cleaned = cleanSentinels(String(item));
+            console.log('[NORMALIZE] Other type cleaned:', cleaned.substring(0, 100));
+            return cleaned;
           }
         }).filter(s => s.length > 0);
         console.log('[NORMALIZE] JSON array result:', result);
@@ -1167,6 +1180,13 @@ serve(async (req) => {
           const hasAIRedaction = requestRedaction && redCandidate.trim().length > 0;
           const hasAIRephrase = requestRephrase && rephCandidate.trim().length > 0;
           
+          console.log(`${logPrefix} [DEBUG] Comment ${i+1} (${comment.id}) - Raw candidates:`, {
+            redCandidate: redCandidate,
+            rephCandidate: rephCandidate,
+            redCandidateLength: redCandidate.length,
+            rephCandidateLength: rephCandidate.length
+          });
+          
           console.log(`${logPrefix} [DEBUG] Comment ${i+1} (${comment.id}):`, {
             identifiable: comment.identifiable,
             concerning: comment.concerning,
@@ -1193,10 +1213,12 @@ serve(async (req) => {
             finalText = redactedText;
             redactedCount++;
             console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REDACTED: ${redactedText.substring(0, 100)}...`);
+            console.log(`${logPrefix} [DEBUG] Final redacted text length: ${redactedText.length}, full text: "${redactedText}"`);
           } else if (mode === 'rephrase' && (comment.identifiable || comment.concerning)) {
             finalText = rephrasedText;
             rephrasedCount++;
             console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REPHRASED: ${rephrasedText.substring(0, 100)}...`);
+            console.log(`${logPrefix} [DEBUG] Final rephrased text length: ${rephrasedText.length}, full text: "${rephrasedText}"`);
           } else {
             originalCount++;
             console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - ORIGINAL (mode: ${mode}, concerning: ${comment.concerning}, identifiable: ${comment.identifiable})`);
