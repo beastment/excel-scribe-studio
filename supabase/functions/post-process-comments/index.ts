@@ -1056,22 +1056,19 @@ serve(async (req) => {
             rephrasedText: rephrasedText?.substring(0, 50),
             originalText: comment.text?.substring(0, 50)
           });
-          let mode = comment.mode;
-
-          // Determine mode if not specified
-          if (!mode) {
-            if (comment.identifiable) {
-              mode = defaultMode; // honor user preference for identifiable
-            } else if (comment.concerning) {
-              mode = 'rephrase'; // concerning-only must be rephrase-only
-            } else {
-              mode = 'original';
-            }
+          // Enforce policy-driven mode regardless of incoming mode
+          let mode: 'redact' | 'rephrase' | 'original';
+          if (comment.identifiable) {
+            mode = defaultMode; // honor user preference for identifiable
+          } else if (comment.concerning) {
+            mode = 'rephrase'; // concerning-only must be rephrase-only
+          } else {
+            mode = 'original';
           }
 
           let finalText = comment.text;
           
-          // Apply the appropriate transformation based on mode
+          // Apply the appropriate transformation based on enforced mode
           if (mode === 'redact' && (comment.identifiable || comment.concerning)) {
             finalText = redactedText;
             redactedCount++;
