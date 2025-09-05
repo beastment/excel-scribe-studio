@@ -613,9 +613,23 @@ serve(async (req) => {
     const logPrefix = `[RUN ${runId}]`;
 
     console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
+    console.log(`${logPrefix} [DEBUG] scanConfig details:`, {
+      provider: scanConfig.provider,
+      model: scanConfig.model,
+      max_tokens: scanConfig.max_tokens,
+      full_scanConfig: scanConfig
+    });
 
-    // Fetch the actual AI configuration to get correct token limits and temperature
+    // Test database connection and verify we're hitting the right database
+    console.log(`${logPrefix} [DEBUG] Testing database connection...`);
+    const { data: testData, error: testError } = await supabase
+      .from('model_configurations')
+      .select('provider, model, output_token_limit')
+      .eq('provider', 'bedrock')
+      .limit(5);
+    console.log(`${logPrefix} [DEBUG] Test query result:`, { testData, testError });
     console.log(`${logPrefix} [DEBUG] Looking up model config for: provider=${scanConfig.provider}, model=${scanConfig.model}`);
+    console.log(`${logPrefix} [DEBUG] Query: SELECT * FROM model_configurations WHERE provider='${scanConfig.provider}' AND model='${scanConfig.model}'`);
     const { data: modelCfg, error: modelCfgError } = await supabase
       .from('model_configurations')
       .select('*')
@@ -626,7 +640,8 @@ serve(async (req) => {
     console.log(`${logPrefix} [DEBUG] Model config lookup result:`, { 
       found: !!modelCfg, 
       error: modelCfgError?.message, 
-      output_token_limit: modelCfg?.output_token_limit 
+      output_token_limit: modelCfg?.output_token_limit,
+      full_record: modelCfg
     });
 
     const { data: aiCfg, error: aiCfgError } = await supabase
