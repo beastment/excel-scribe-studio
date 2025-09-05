@@ -22,12 +22,14 @@ import {
   AlertCircle,
   Loader2,
   FileSpreadsheet,
-  FileImage
+  FileImage,
+  File
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { generateThematicAnalysisPDF } from '@/utils/pdfGenerator';
+import mammoth from 'mammoth';
 
 interface Comment {
   id: string;
@@ -87,21 +89,31 @@ const ThematicAnalysis = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== 'text/csv' && file.type !== 'application/vnd.ms-excel' && file.type !== 'text/plain') {
-      setError("Please upload a CSV or text file");
+    // Check file type
+    const isCSV = file.type === 'text/csv' || file.type === 'application/vnd.ms-excel' || file.type === 'text/plain';
+    const isWord = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+                   file.name.toLowerCase().endsWith('.docx');
+    
+    if (!isCSV && !isWord) {
+      setError("Please upload a CSV, text, or Word document (.docx) file");
       return;
     }
 
     setUploadedFile(file);
     setError(null);
     
-    // Parse CSV file
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      parseCSVData(text);
-    };
-    reader.readAsText(file);
+    if (isCSV) {
+      // Parse CSV file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        parseCSVData(text);
+      };
+      reader.readAsText(file);
+    } else if (isWord) {
+      // Parse Word document
+      parseWordDocument(file);
+    }
   }, []);
 
   const parseCSVData = (csvText: string) => {
@@ -140,6 +152,78 @@ const ThematicAnalysis = () => {
     } catch (err) {
       setError("Error parsing CSV file. Please ensure it's properly formatted.");
     }
+  };
+
+  const parseWordDocument = async (file: File) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          
+          // Use mammoth.js to extract text from Word document
+          const result = await mammoth.extractRawText({ arrayBuffer });
+          const text = result.value;
+          
+          // Parse the extracted text as comments
+          const parsedComments = parseTextAsComments(text);
+          
+          setComments(parsedComments);
+          toast({
+            title: "Word document uploaded successfully",
+            description: `Extracted ${parsedComments.length} comments from ${file.name}`,
+          });
+        } catch (err) {
+          console.error('Word parsing error:', err);
+          setError("Error parsing Word document. Please ensure it's a valid .docx file.");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (err) {
+      setError("Error reading Word document. Please try again.");
+    }
+  };
+
+  const parseTextAsComments = (text: string): Comment[] => {
+    // Parse the extracted text into individual comments
+    // Try multiple parsing strategies for different document formats
+    
+    let comments: Comment[] = [];
+    
+    // Strategy 1: Split by line breaks (most common for survey responses)
+    const lines = text.split(/\n+/).filter(line => line.trim().length > 10);
+    if (lines.length > 1) {
+      comments = lines.map((line, index) => ({
+        id: `comment-${index + 1}`,
+        text: line.trim(),
+      }));
+    }
+    
+    // Strategy 2: If no line breaks, split by sentences
+    if (comments.length <= 1) {
+      const sentences = text.split(/[.!?]+/).filter(sentence => sentence.trim().length > 20);
+      comments = sentences.map((sentence, index) => ({
+        id: `comment-${index + 1}`,
+        text: sentence.trim(),
+      }));
+    }
+    
+    // Strategy 3: If still no good splits, split by paragraphs or double spaces
+    if (comments.length <= 1) {
+      const paragraphs = text.split(/\n\s*\n|  +/).filter(para => para.trim().length > 20);
+      comments = paragraphs.map((para, index) => ({
+        id: `comment-${index + 1}`,
+        text: para.trim(),
+      }));
+    }
+    
+    // Filter out very short comments and clean up
+    return comments
+      .filter(comment => comment.text.length > 10)
+      .map(comment => ({
+        ...comment,
+        text: comment.text.replace(/\s+/g, ' ').trim()
+      }));
   };
 
   const analyzeComments = async () => {
@@ -267,15 +351,15 @@ const ThematicAnalysis = () => {
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <BrainCircuit className="w-8 h-8 text-white" />
-          </div>
+            </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             Thematic Analysis
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
             Upload your employee feedback data and discover key themes, sentiment patterns, and demographic insights automatically.
           </p>
-        </div>
-
+            </div>
+            
         {/* Upload Section */}
         <Card className="mb-8">
           <CardHeader>
@@ -287,10 +371,33 @@ const ThematicAnalysis = () => {
           <CardContent>
             <div className="space-y-4">
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <div className="flex justify-center space-x-4 mb-4">
+                  <FileText className="w-12 h-12 text-gray-400" />
+                  <File className="w-12 h-12 text-gray-400" />
+                </div>
                 <p className="text-gray-600 mb-4">
-                  Upload a CSV file with employee comments and demographic data
+                  Upload a CSV file or Word document (.docx) with employee comments
                 </p>
+                <p className="text-sm text-gray-500 mb-4">
+                  CSV files can include demographic data (department, gender, age, etc.)
+                </p>
+                <div className="text-xs text-gray-400 space-y-1">
+                  <p><strong>CSV Format:</strong> Structured data with columns for demographics</p>
+                  <p><strong>Word Format:</strong> Plain text comments, one per line or paragraph</p>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                  onClick={() => {
+                    toast({
+                      title: "File Format Help",
+                      description: "CSV: Include headers like 'text,department,gender,age'. Word: Write comments one per line or paragraph.",
+                    });
+                  }}
+                >
+                  Need help with file format?
+                </Button>
                 <Button 
                   onClick={() => fileInputRef.current?.click()}
                   variant="outline"
@@ -302,14 +409,26 @@ const ThematicAnalysis = () => {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,.txt"
+                  accept=".csv,.txt,.docx"
                   onChange={handleFileUpload}
                   className="hidden"
                 />
                 {uploadedFile && (
                   <div className="mt-4 p-3 bg-green-50 rounded-lg">
-                    <p className="text-green-800 font-medium">
-                      {uploadedFile.name} ({comments.length} comments)
+                    <div className="flex items-center space-x-2">
+                      {uploadedFile.name.toLowerCase().endsWith('.docx') ? (
+                        <File className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-green-600" />
+                      )}
+                      <p className="text-green-800 font-medium">
+                        {uploadedFile.name} ({comments.length} comments)
+                      </p>
+                    </div>
+                    <p className="text-sm text-green-600 mt-1">
+                      {uploadedFile.name.toLowerCase().endsWith('.docx') 
+                        ? 'Word document processed successfully' 
+                        : 'CSV file processed successfully'}
                     </p>
                   </div>
                 )}
@@ -369,8 +488,8 @@ const ThematicAnalysis = () => {
                     <div className="ml-4">
                       <p className="text-sm font-medium text-gray-600">Total Comments</p>
                       <p className="text-2xl font-bold">{analysisResult.summary.totalComments}</p>
-                    </div>
-                  </div>
+          </div>
+        </div>
                 </CardContent>
               </Card>
               
@@ -413,7 +532,7 @@ const ThematicAnalysis = () => {
                 </CardContent>
               </Card>
             </div>
-
+            
             {/* Download Actions */}
             <Card>
               <CardContent className="p-6">
@@ -540,7 +659,7 @@ const ThematicAnalysis = () => {
                       <h3 className="text-lg font-semibold">Comments for "{selectedTheme.name}"</h3>
                       <Button variant="outline" onClick={() => setSelectedTheme(null)}>
                         Show All Comments
-                      </Button>
+                </Button>
                     </div>
                     <div className="space-y-3">
                       {filteredComments.map((comment) => (
@@ -556,8 +675,8 @@ const ThematicAnalysis = () => {
                           </CardContent>
                         </Card>
                       ))}
-                    </div>
-                  </div>
+            </div>
+          </div>
                 ) : (
                   <div className="space-y-3">
                     {analysisResult.taggedComments.map((comment) => (
@@ -573,7 +692,7 @@ const ThematicAnalysis = () => {
                         </CardContent>
                       </Card>
                     ))}
-                  </div>
+        </div>
                 )}
               </TabsContent>
 
@@ -635,7 +754,7 @@ const ThematicAnalysis = () => {
             </Tabs>
           </div>
         )}
-      </div>
+        </div>
     </div>
   );
 };
