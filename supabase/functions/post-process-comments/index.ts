@@ -932,12 +932,6 @@ serve(async (req) => {
         console.log(`${logPrefix} [AI RESPONSE] ${group.provider}/${group.model} type=batch_text phase=rephrase`);
         console.log(`${logPrefix} [AI RESPONSE] rawRephrased=${JSON.stringify(rawRephrased).substring(0, 500)}...`);
         
-        // Debug: Log the parsed results
-        console.log(`${logPrefix} [DEBUG] Parsed redactedTexts:`, redactedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
-        console.log(`${logPrefix} [DEBUG] Parsed rephrasedTexts:`, rephrasedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
-        
-
-
         // Parse and normalize the responses
         console.log(`${logPrefix} [POSTPROCESS] Parsing AI responses...`);
         
@@ -955,6 +949,9 @@ serve(async (req) => {
         console.log(`${logPrefix} [DEBUG] rawRedacted content:`, rawRedacted?.substring(0, 200));
         let redactedTexts = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : [];
         let rephrasedTexts = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : [];
+        // Debug: Log the parsed results (after initialization to avoid ReferenceError)
+        console.log(`${logPrefix} [DEBUG] Parsed redactedTexts:`, redactedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
+        console.log(`${logPrefix} [DEBUG] Parsed rephrasedTexts:`, rephrasedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
         if (requestRedaction && redactedTexts.length === 0) {
           console.warn(`${logPrefix} [POSTPROCESS] Redaction parse returned 0 items; filling ${expectedRedactCount} blanks`);
           redactedTexts = new Array(expectedRedactCount).fill('');
