@@ -657,7 +657,8 @@ serve(async (req) => {
     };
 
     console.log(`${logPrefix} [POSTPROCESS] Effective config: max_tokens=${effectiveConfig.max_tokens}, temperature=${effectiveConfig.temperature}`);
-    console.log(`${logPrefix} [POSTPROCESS] Token limit for rephrasing: ${effectiveConfig.max_tokens} tokens (from model config: ${modelCfg?.output_token_limit || 'not set'})`);
+    console.log(`${logPrefix} [POSTPROCESS] Token limit for AI calls: ${effectiveConfig.max_tokens} tokens (from model config: ${modelCfg?.output_token_limit || 'not set'})`);
+    console.log(`${logPrefix} [POSTPROCESS] Model config output_token_limit: ${modelCfg?.output_token_limit || 'not set'}`);
 
     // Filter comments that need post-processing
     const flaggedComments = comments.filter(c => c.concerning || c.identifiable)
@@ -705,7 +706,7 @@ serve(async (req) => {
       
       // Calculate batch size based on input token limits - use proper defaults for modern models
       const inputTokenLimit = modelCfg?.input_token_limit || 128000;
-      const outputTokenLimit = modelCfg?.output_token_limit || 16384; // Default to 16k for modern models
+      const outputTokenLimit = modelCfg?.output_token_limit || getEffectiveMaxTokens(scanConfig); // Use same fallback logic as AI calls
       
       // Reserve tokens for prompt (estimate ~2000 tokens for post-processing prompts)
       const promptTokens = 2000;
@@ -933,6 +934,7 @@ serve(async (req) => {
         console.log(`${logPrefix} [AI RESPONSE] ${group.provider}/${group.model} type=batch_text phase=rephrase`);
         console.log(`${logPrefix} [AI RESPONSE] rawRephrased=${JSON.stringify(rawRephrased).substring(0, 500)}...`);
         console.log(`${logPrefix} [AI RESPONSE] rawRephrased length: ${rawRephrased?.length || 0} characters`);
+        console.log(`${logPrefix} [AI RESPONSE] rawRephrased ends with: "${rawRephrased?.slice(-50) || 'null'}"`);
         
         // Parse and normalize the responses
         console.log(`${logPrefix} [POSTPROCESS] Parsing AI responses...`);
