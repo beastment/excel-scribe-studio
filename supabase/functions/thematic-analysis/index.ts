@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { AILogger } from '../adjudicator/ai-logger.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
+import { AILogger } from './ai-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -372,16 +372,33 @@ serve(async (req) => {
       );
     }
 
-    // Get AI configuration
-    const { data: aiConfig, error: configError } = await supabase
+    // Get AI configuration - try thematic-analysis first, then fallback to scan_a
+    let aiConfig = null;
+    let configError = null;
+    
+    const { data: thematicConfig, error: thematicError } = await supabase
       .from('ai_configurations')
       .select('*')
       .eq('scanner_type', 'thematic-analysis')
       .single();
 
+    if (thematicConfig) {
+      aiConfig = thematicConfig;
+    } else {
+      // Fallback to scan_a configuration
+      const { data: scanConfig, error: scanError } = await supabase
+        .from('ai_configurations')
+        .select('*')
+        .eq('scanner_type', 'scan_a')
+        .single();
+      
+      aiConfig = scanConfig;
+      configError = scanError;
+    }
+
     if (configError || !aiConfig) {
       // Use default configuration
-      console.warn(`${logPrefix} [CONFIG] No thematic analysis config found, using defaults`);
+      console.warn(`${logPrefix} [CONFIG] No AI config found, using defaults`);
     }
 
     const provider = analysisConfig?.provider || aiConfig?.provider || 'openai';
