@@ -20,6 +20,7 @@ const ThematicAnalysis: React.FC = () => {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<TAResultExport | null>(null);
+  const [fileLabel, setFileLabel] = useState<string>("");
 
   const columns = useMemo(() => {
     const set = new Set<string>();
@@ -92,6 +93,7 @@ const ThematicAnalysis: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     setResult(null);
+    setFileLabel(file.name);
     try {
       const isCSV = file.name.toLowerCase().endsWith(".csv");
       const isXLSX = file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xls");
@@ -113,6 +115,7 @@ const ThematicAnalysis: React.FC = () => {
         toast.warning("No rows found in the file");
       }
       setRows(parsed);
+      setFileLabel(`${file.name} — ${parsed.length} rows`);
       toast.success(`Loaded ${parsed.length} rows`);
     } catch (err) {
       toast.error("Failed to parse file");
@@ -225,10 +228,16 @@ const ThematicAnalysis: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3 mb-4">
-            <Input type="file" ref={fileInputRef} onChange={handleFile} accept=".csv,.xlsx,.xls,.docx" />
+            <Input type="file" ref={fileInputRef} onChange={handleFile} accept=".csv,.xlsx,.xls,.docx" className="hidden" />
             <Button variant="outline" onClick={handlePick}>
               <Upload className="w-4 h-4 mr-2" /> Choose File
             </Button>
+            {fileLabel && (
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                <span>{fileLabel}</span>
+              </div>
+            )}
             <Button onClick={runAnalysis} disabled={loading || rows.length === 0}>
               {loading ? "Analyzing..." : "Run Analysis"}
             </Button>
