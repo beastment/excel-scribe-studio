@@ -58,8 +58,43 @@ const CommentEditorPage = () => {
     setIsLoadingNewData(true);
   };
   const handleCommentsUpdate = (updatedComments: CommentData[]) => {
-    setComments(updatedComments);
+    console.log("[PARENT] onCommentsUpdate called. Sample:", updatedComments.slice(0, 3).map(c => ({
+      id: c.id,
+      mode: c.mode,
+      hasRedacted: Boolean(c.redactedText),
+      hasRephrased: Boolean(c.rephrasedText),
+      textPreview: (c.text || "").substring(0, 80)
+    })));
+    setComments(prev => {
+      // Defensive merge by id to avoid losing fields if concurrent updates occur
+      const prevById = new Map(prev.map(c => [c.id, c]));
+      const merged = updatedComments.map(c => ({
+        ...prevById.get(c.id),
+        ...c
+      }));
+      console.log("[PARENT] Comments merged. Sample:", merged.slice(0, 3).map(c => ({
+        id: c.id,
+        mode: c.mode,
+        hasRedacted: Boolean(c.redactedText),
+        hasRephrased: Boolean(c.rephrasedText),
+        textPreview: (c.text || "").substring(0, 80)
+      })));
+      return merged;
+    });
   };
+
+  // Trace updates to comments arriving at the parent post-merge
+  useEffect(() => {
+    if (comments.length > 0) {
+      console.log("[PARENT] comments state updated. First 3:", comments.slice(0, 3).map(c => ({
+        id: c.id,
+        mode: c.mode,
+        hasRedacted: Boolean(c.redactedText),
+        hasRephrased: Boolean(c.rephrasedText),
+        textPreview: (c.text || "").substring(0, 80)
+      })));
+    }
+  }, [comments]);
 
   const handleCreditsError = (needed: number, available: number) => {
     setCreditsError({ needed, available });
