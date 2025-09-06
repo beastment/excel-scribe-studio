@@ -40,8 +40,10 @@ export const EditableText: React.FC<EditableTextProps> = ({
   const rawContent = getEditedContent(contentKey, children);
   const displayContent = DOMPurify.sanitize(rawContent, {
     ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'span', 'br'],
-    ALLOWED_ATTR: ['class', 'style'],
-    ALLOW_DATA_ATTR: false
+    ALLOWED_ATTR: ['class'],
+    FORBID_ATTR: ['style', 'onclick', 'onerror', 'onload'],
+    ALLOW_DATA_ATTR: false,
+    USE_PROFILES: { html: true }
   });
   
   const {
@@ -96,8 +98,10 @@ export const EditableText: React.FC<EditableTextProps> = ({
       // Sanitize content before saving
       const sanitizedContent = DOMPurify.sanitize(rawContent, {
         ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'span', 'br'],
-        ALLOWED_ATTR: ['class', 'style'],
-        ALLOW_DATA_ATTR: false
+        ALLOWED_ATTR: ['class'],
+        FORBID_ATTR: ['style', 'onclick', 'onerror', 'onload'],
+        ALLOW_DATA_ATTR: false,
+        USE_PROFILES: { html: true }
       });
       
       if (sanitizedContent !== displayContent && sanitizedContent.trim() !== '') {

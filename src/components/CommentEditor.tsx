@@ -18,6 +18,7 @@ import { useCommentSessions } from '@/hooks/useCommentSessions';
 import { useUserRole } from '@/hooks/useUserRole';
 import { AILogsViewer } from './AILogsViewer';
 import * as XLSX from 'xlsx';
+import { sanitizeForExport } from '@/lib/utils';
 interface CommentEditorProps {
   comments: CommentData[];
   onCommentsUpdate: (comments: CommentData[]) => void;

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Download, Upload, FileText, FileSpreadsheet, File } from "lucide-react";
 import * as XLSX from "xlsx";
 import { generateThematicAnalysisPDF, TAResultExport, TATheme, TAComment } from "@/utils/pdfGenerator";
+import { sanitizeForExport } from "@/lib/utils";
 
 type ParsedRow = Record<string, string>;
 

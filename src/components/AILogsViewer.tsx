@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
+import { sanitizeForExport } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
@@ -371,37 +372,29 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     }
     
     // Add detailed logs
-    // Helper function to sanitize CSV values against formula injection
-    const sanitizeForCSV = (value: any): string => {
-      const str = String(value || '');
-      // Check if value starts with formula characters
-      if (str.match(/^[=+\-@]/)) {
-        return `'${str}`; // Prefix with single quote to neutralize
-      }
-      return str;
-    };
+    // Use secure sanitization function
 
     csvContent += [
       ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Comments Processed', 'Batch Info', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)', 'Time Started', 'Time Finished', 'Duration', 'Total Run Time (ms)', 'Efficiency (%)'],
       ...logs.map(log => [
-        sanitizeForCSV(new Date(log.created_at).toLocaleString()),
-        sanitizeForCSV(log.scan_run_id || 'N/A'),
-        sanitizeForCSV(log.function_name),
-        sanitizeForCSV(`${log.provider}/${log.model}`),
-        sanitizeForCSV(log.request_type),
-        sanitizeForCSV(log.phase),
-        sanitizeForCSV(extractCommentsCount(log.request_input)),
-        sanitizeForCSV(extractBatchInfo(log)),
-        sanitizeForCSV(log.request_tokens || 0),
-        sanitizeForCSV(log.response_tokens || 0),
-        sanitizeForCSV((log.request_tokens || 0) + (log.response_tokens || 0)),
-        sanitizeForCSV(log.response_status),
-        sanitizeForCSV(log.processing_time_ms || 0),
-        sanitizeForCSV(log.time_started ? new Date(log.time_started).toLocaleString() : 'N/A'),
-        sanitizeForCSV(log.time_finished ? new Date(log.time_finished).toLocaleString() : 'N/A'),
-        sanitizeForCSV(formatTimeDuration(log.time_started, log.time_finished)),
-        sanitizeForCSV(log.total_run_time_ms || 0),
-        sanitizeForCSV(log.processing_time_ms && log.total_run_time_ms ? 
+        sanitizeForExport(new Date(log.created_at).toLocaleString()),
+        sanitizeForExport(log.scan_run_id || 'N/A'),
+        sanitizeForExport(log.function_name),
+        sanitizeForExport(`${log.provider}/${log.model}`),
+        sanitizeForExport(log.request_type),
+        sanitizeForExport(log.phase),
+        sanitizeForExport(extractCommentsCount(log.request_input)),
+        sanitizeForExport(extractBatchInfo(log)),
+        sanitizeForExport(log.request_tokens || 0),
+        sanitizeForExport(log.response_tokens || 0),
+        sanitizeForExport((log.request_tokens || 0) + (log.response_tokens || 0)),
+        sanitizeForExport(log.response_status),
+        sanitizeForExport(log.processing_time_ms || 0),
+        sanitizeForExport(log.time_started ? new Date(log.time_started).toLocaleString() : 'N/A'),
+        sanitizeForExport(log.time_finished ? new Date(log.time_finished).toLocaleString() : 'N/A'),
+        sanitizeForExport(formatTimeDuration(log.time_started, log.time_finished)),
+        sanitizeForExport(log.total_run_time_ms || 0),
+        sanitizeForExport(log.processing_time_ms && log.total_run_time_ms ?
           ((log.processing_time_ms / log.total_run_time_ms) * 100).toFixed(1) : 'N/A')
       ])
     ].map(row => row.join(',')).join('\n');

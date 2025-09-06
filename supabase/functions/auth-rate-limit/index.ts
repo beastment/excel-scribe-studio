@@ -20,11 +20,12 @@ interface RateLimitRecord {
 }
 
 serve(async (req) => {
-  // CORS headers
+  // Restricted CORS headers for security
   const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': 'https://13d0c9c0-7ea7-406e-82ca-eb239ce2af54.sandbox.lovable.dev',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '86400'
   };
 
   // Handle CORS preflight
@@ -33,10 +34,28 @@ serve(async (req) => {
   }
 
   try {
-    // Get client IP (considering proxies)
-    const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0] || 
-                     req.headers.get('x-real-ip') || 
-                     'unknown';
+    // Get client IP with improved validation
+    const forwardedFor = req.headers.get('x-forwarded-for');
+    const realIP = req.headers.get('x-real-ip');
+    
+    let clientIP = '127.0.0.1'; // Default fallback
+    
+    if (forwardedFor) {
+      // Take the first IP and validate it's not private/local
+      const ips = forwardedFor.split(',').map(ip => ip.trim());
+      const firstIP = ips[0];
+      
+      // Basic IP validation and reject private ranges
+      if (firstIP && !isPrivateIP(firstIP)) {
+        clientIP = firstIP;
+      }
+    } else if (realIP && !isPrivateIP(realIP)) {
+      clientIP = realIP;
+    }
+    
+    // Additional fingerprinting with user agent to prevent simple bypass
+    const userAgent = req.headers.get('user-agent') || 'unknown';
+    const fingerprint = `${clientIP}:${userAgent.substring(0, 50)}`;
 
     // Initialize Supabase client for storing rate limit data
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -46,8 +65,8 @@ serve(async (req) => {
     const { action } = await req.json();
 
     if (action === 'check') {
-      // Check if IP is rate limited
-      const isLimited = await checkRateLimit(supabase, clientIP);
+      // Check if fingerprint is rate limited
+      const isLimited = await checkRateLimit(supabase, fingerprint);
       
       return new Response(
         JSON.stringify({ 
@@ -63,7 +82,7 @@ serve(async (req) => {
 
     if (action === 'record') {
       // Record an authentication attempt
-      await recordAttempt(supabase, clientIP);
+      await recordAttempt(supabase, fingerprint);
       
       return new Response(
         JSON.stringify({ success: true }),
@@ -94,13 +113,29 @@ serve(async (req) => {
   }
 });
 
-async function checkRateLimit(supabase: any, ip: string): Promise<boolean> {
+function isPrivateIP(ip: string): boolean {
+  // Check for private IP ranges (IPv4)
+  const privateRanges = [
+    /^10\./,                    // 10.0.0.0/8
+    /^172\.(1[6-9]|2[0-9]|3[01])\./, // 172.16.0.0/12  
+    /^192\.168\./,             // 192.168.0.0/16
+    /^127\./,                  // 127.0.0.0/8 (localhost)
+    /^169\.254\./,             // 169.254.0.0/16 (link-local)
+    /^::1$/,                   // IPv6 localhost
+    /^fc00:/,                  // IPv6 private
+    /^fe80:/                   // IPv6 link-local
+  ];
+  
+  return privateRanges.some(range => range.test(ip));
+}
+
+async function checkRateLimit(supabase: any, fingerprint: string): Promise<boolean> {
   try {
-    // Get rate limit record for this IP
+    // Get rate limit record for this fingerprint
     const { data: record } = await supabase
       .from('auth_rate_limits')
       .select('*')
-      .eq('ip', ip)
+      .eq('ip', fingerprint)
       .single();
 
     if (!record) {
@@ -129,7 +164,7 @@ async function checkRateLimit(supabase: any, ip: string): Promise<boolean> {
           is_locked: false,
           lockout_until: null,
         })
-        .eq('ip', ip);
+        .eq('ip', fingerprint);
       
       return false;
     }
@@ -143,7 +178,7 @@ async function checkRateLimit(supabase: any, ip: string): Promise<boolean> {
   }
 }
 
-async function recordAttempt(supabase: any, ip: string): Promise<void> {
+async function recordAttempt(supabase: any, fingerprint: string): Promise<void> {
   try {
     const now = new Date();
 
@@ -151,7 +186,7 @@ async function recordAttempt(supabase: any, ip: string): Promise<void> {
     const { data: existingRecord } = await supabase
       .from('auth_rate_limits')
       .select('*')
-      .eq('ip', ip)
+      .eq('ip', fingerprint)
       .single();
 
     if (!existingRecord) {
@@ -159,7 +194,7 @@ async function recordAttempt(supabase: any, ip: string): Promise<void> {
       await supabase
         .from('auth_rate_limits')
         .insert({
-          ip,
+          ip: fingerprint,
           attempts: 1,
           first_attempt: now.toISOString(),
           is_locked: false,
@@ -180,7 +215,7 @@ async function recordAttempt(supabase: any, ip: string): Promise<void> {
           is_locked: false,
           lockout_until: null,
         })
-        .eq('ip', ip);
+        .eq('ip', fingerprint);
     } else {
       // Increment attempts
       const newAttempts = existingRecord.attempts + 1;
@@ -196,7 +231,7 @@ async function recordAttempt(supabase: any, ip: string): Promise<void> {
           is_locked: shouldLock,
           lockout_until: lockoutUntil,
         })
-        .eq('ip', ip);
+        .eq('ip', fingerprint);
     }
 
   } catch (error) {
