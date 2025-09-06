@@ -669,12 +669,8 @@ serve(async (req) => {
         console.log(`[BATCH_CALC] ${phase}: Output tokens within limit: ${estimatedOutputTokens} <= ${maxOutputTokens}`);
       }
       
-      // Apply configurable safety margin to prevent hitting token limits
-      const safetyBatchSize = Math.floor(batchSize * safetyMultiplier);
-      if (safetyBatchSize < batchSize) {
-        console.log(`[BATCH_CALC] ${phase}: Applying safety margin: ${batchSize} → ${safetyBatchSize} (${safetyMarginPercent}% of max)`);
-        batchSize = safetyBatchSize;
-      }
+      // Safety margin is already applied to token limits above, no need to apply it again to batch size
+      console.log(`[BATCH_CALC] ${phase}: Batch size calculated based on token-limited input: ${batchSize}`);
       
       // Note: TPM and RPM limits are enforced by waiting between requests, not by reducing batch size
       // Batch size should be determined by token limits only

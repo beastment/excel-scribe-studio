@@ -83,6 +83,13 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
       fetchLogs();
     }
   }, [user, skipInitialFetch]);
+  
+  // Fetch logs when skipInitialFetch changes from true to false
+  useEffect(() => {
+    if (user && !skipInitialFetch && logs.length === 0 && !loading) {
+      fetchLogs();
+    }
+  }, [skipInitialFetch]);
 
   // Clear logs immediately when skipInitialFetch becomes true
   useEffect(() => {
@@ -152,13 +159,24 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
   };
 
   const fetchLogs = async () => {
-    if (!user) return;
+    if (!user) {
+      console.log('AILogsViewer: No user, skipping fetch');
+      return;
+    }
     
+    console.log('AILogsViewer: Starting fetch for user:', user.id);
     setLoading(true);
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.error('AILogsViewer: Fetch timeout after 30 seconds');
+      setLoading(false);
+    }, 30000);
+    
     try {
       // First, get all logs to find the most recent run ID
       const { data: allLogs, error: allLogsError } = await supabase
-        .from('ai_logs' as any)
+        .from('ai_logs')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
@@ -166,10 +184,12 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
 
       if (allLogsError) {
         console.error('Error fetching AI logs:', allLogsError);
+        setLoading(false);
         return;
       }
 
       if (!allLogs) {
+        console.log('AILogsViewer: No logs returned from database');
         setLogs([]);
         setMostRecentRunId(null);
         setRunStats(null);
@@ -177,6 +197,7 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
       }
 
       const typedLogs = allLogs as unknown as AILog[];
+      console.log('AILogsViewer: Fetched logs:', typedLogs.length);
       
       // Find the most recent run ID (non-null scan_run_id)
       const logsWithRunId = typedLogs.filter(log => log.scan_run_id) || [];
@@ -219,6 +240,7 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     } catch (error) {
       console.error('Error fetching AI logs:', error);
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
       setLastRefresh(new Date());
     }
