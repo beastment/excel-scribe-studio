@@ -687,7 +687,7 @@ serve(async (req) => {
           tokenLimits.tpm_limit,
           tokenLimits.rpm_limit,
           `[BATCH_CALC] ${phase}`,
-          2 // Scan-comments makes 2 parallel requests per batch (Scan A + Scan B)
+          1 // Each model (Scan A, Scan B) has its own RPM limit, so requestsPerBatch = 1
         );
         
         if (optimalBatchSize < batchSize) {
@@ -857,7 +857,7 @@ serve(async (req) => {
     
     // Process comments in smaller chunks to avoid gateway timeout
     // Reduce batch limits to prevent edge function timeout
-    const MAX_BATCHES_PER_REQUEST = 1; // Process exactly one batch per invocation to stay under edge timeout
+    const MAX_BATCHES_PER_REQUEST = 10; // Process up to 10 batches per invocation to stay under edge timeout
     const MAX_EXECUTION_TIME = 120 * 1000; // Fixed 120 second limit for safety
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
