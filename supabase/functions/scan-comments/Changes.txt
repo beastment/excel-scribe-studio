@@ -33,6 +33,10 @@
 - **Performance Metrics**: Timing and efficiency measurements
 - **Error Correlation**: Better error tracking with scan run IDs
 
+### Bug Fixes
+- **Batch Calc Guardrails**: Added strict input validation to batch-size calculator to prevent mis-ordered/malformed calls from emitting misleading provider-prefixed logs (e.g., defaulting token limits when valid limits exist)
+- **Rate-limit Calc Alias**: Aliased imported rate-limit batch calculator to avoid name shadowing and ensure the correct helper is called
+
 ### Duplicate Prevention
 - **Scan Run ID System**: Unique identifiers for each scan operation
 - **Database Checks**: Prevents duplicates across function restarts

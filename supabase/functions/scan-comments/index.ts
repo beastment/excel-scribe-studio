@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { AILogger } from './ai-logger.ts';
-import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize } from './tpm-tracker.ts';
+import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize as calculateRateLimitedBatchSize } from './tpm-tracker.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -536,6 +536,27 @@ serve(async (req) => {
       model: string,
       tokensPerComment: number = 13
     ) => {
+      // Input validation guards to prevent mis-ordered/malformed calls
+      if (phase !== 'scan_a' && phase !== 'scan_b') {
+        console.warn(`[BATCH_CALC] invalid phase received: ${String(phase)}. Expected 'scan_a' | 'scan_b'. Short-circuiting with batch size 1.`);
+        return 1;
+      }
+      if (!Array.isArray(comments)) {
+        console.warn(`[BATCH_CALC] ${phase}: invalid comments array. Short-circuiting with batch size 1.`);
+        return 1;
+      }
+      if (typeof prompt !== 'string') {
+        console.warn(`[BATCH_CALC] ${phase}: invalid prompt. Short-circuiting with batch size 1.`);
+        return 1;
+      }
+      if (!tokenLimits || typeof tokenLimits !== 'object') {
+        console.warn(`[BATCH_CALC] ${phase}: missing tokenLimits. Using safe defaults.`);
+        tokenLimits = { input_token_limit: 128000, output_token_limit: 8192 } as typeof tokenLimits;
+      }
+      if (typeof provider !== 'string' || typeof model !== 'string') {
+        console.warn(`[BATCH_CALC] ${phase}: invalid provider/model. Short-circuiting with batch size 1.`);
+        return 1;
+      }
       console.log(`[BATCH_CALC] ${phase}: Starting batch size calculation`);
       console.log(`[BATCH_CALC] ${phase}: Input parameters:`, {
         commentsCount: comments.length,
@@ -658,7 +679,7 @@ serve(async (req) => {
       // Consider TPM and RPM limits when determining final batch size
       if (tokenLimits.tpm_limit || tokenLimits.rpm_limit) {
         const estimatedTokensPerComment = Math.ceil(totalTokens / batchSize) + tokensPerComment; // Average input + output per comment
-        const optimalBatchSize = calculateOptimalBatchSize(
+        const optimalBatchSize = calculateRateLimitedBatchSize(
           provider,
           model,
           estimatedTokensPerComment,
