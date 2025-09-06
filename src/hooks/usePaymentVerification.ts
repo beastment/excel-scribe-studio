@@ -14,8 +14,18 @@ export const usePaymentVerification = (onCreditsUpdated?: () => void) => {
 
       if (payment === 'success' && sessionId) {
         try {
+          // Get current session for authorization
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session?.access_token) {
+            toast.error('Authentication required for payment verification.');
+            return;
+          }
+
           const { data, error } = await supabase.functions.invoke('verify-payment', {
-            body: { sessionId }
+            body: { sessionId },
+            headers: {
+              Authorization: `Bearer ${session.access_token}`
+            }
           });
 
           if (error) throw error;

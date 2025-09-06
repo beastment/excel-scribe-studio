@@ -17,22 +17,46 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    // Create Supabase client for user authentication
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing environment variables');
-      return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+    // Get authenticated user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Authorization header required' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401,
+      });
     }
 
-    // Initialize Supabase client with service role key for admin operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid authentication token' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401,
+      });
+    }
+
+    // Check if user is admin
+    const { data: isAdmin } = await supabaseClient.rpc('is_admin', { user_uuid: user.id });
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ error: 'Admin access required' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 403,
+      });
+    }
+
+    // Create service role client for admin operations
+    const supabaseService = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { persistSession: false } }
+    );
 
     const { userId }: GenerateLoginLinkRequest = await req.json();
 
@@ -49,7 +73,7 @@ const handler = async (req: Request): Promise<Response> => {
     console.log(`Generating login link for user: ${userId}`);
 
     // Get user email from auth.users
-    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+    const { data: userData, error: userError } = await supabaseService.auth.admin.getUserById(userId);
 
     if (userError || !userData.user) {
       console.error('Error fetching user:', userError);
@@ -76,7 +100,7 @@ const handler = async (req: Request): Promise<Response> => {
     console.log(`Generating magic link for email: ${userEmail}`);
 
     // Generate a magic link
-    const { data, error } = await supabase.auth.admin.generateLink({
+    const { data, error } = await supabaseService.auth.admin.generateLink({
       type: 'magiclink',
       email: userEmail,
       options: {

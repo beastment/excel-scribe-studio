@@ -7,7 +7,13 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.verify-payment]
-verify_jwt = false
+verify_jwt = true
+
+[functions.delete-user]
+verify_jwt = true
+
+[functions.generate-login-link]
+verify_jwt = true
 
 [functions.thematic-analysis]
 verify_jwt = false

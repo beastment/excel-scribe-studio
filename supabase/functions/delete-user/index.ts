@@ -18,61 +18,90 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Create Supabase client for user authentication
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
+    );
 
+    // Get authenticated user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Authorization header required" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Invalid authentication token" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
+
+    // Get request body
     const { userId }: DeleteUserRequest = await req.json();
 
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "User ID is required" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
+      return new Response(JSON.stringify({ error: "User ID is required" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
     }
 
-    // First, delete from profiles table
-    const { error: profileError } = await supabase
+    // Check authorization: only admins or self-deletion allowed
+    const { data: isAdmin } = await supabaseClient.rpc('is_admin', { user_uuid: user.id });
+    const isSelfDelete = userId === user.id;
+
+    if (!isAdmin && !isSelfDelete) {
+      return new Response(JSON.stringify({ error: "Insufficient permissions" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403,
+      });
+    }
+
+    // Create service role client for admin operations
+    const supabaseService = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { persistSession: false } }
+    );
+
+    // Delete profile first (this will cascade to related records)
+    const { error: profileError } = await supabaseService
       .from('profiles')
       .delete()
       .eq('user_id', userId);
 
     if (profileError) {
-      console.error('Error deleting profile:', profileError);
-      return new Response(
-        JSON.stringify({ error: "Failed to delete user profile" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
+      console.error("Error deleting profile:", profileError);
+      return new Response(JSON.stringify({ error: "Failed to delete user profile" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
     }
 
-    // Then delete from auth.users using admin API
-    const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+    // Delete user from auth
+    const { error: userError } = await supabaseService.auth.admin.deleteUser(userId);
 
-    if (authError) {
-      console.error('Error deleting user from auth:', authError);
-      return new Response(
-        JSON.stringify({ error: "Failed to delete user from authentication" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
+    if (userError) {
+      console.error("Error deleting user:", userError);
+      return new Response(JSON.stringify({ error: "Failed to delete user account" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
     }
 
-    return new Response(
-      JSON.stringify({ message: "User deleted successfully" }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
-    );
+    console.log(`Successfully deleted user: ${userId}`);
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
   } catch (error: any) {
     console.error("Error in delete-user function:", error);
     return new Response(

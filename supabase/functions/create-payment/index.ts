@@ -104,8 +104,8 @@ serve(async (req) => {
       ],
       mode: "payment",
       locale: "auto",
-      success_url: `${req.headers.get("origin")}/dashboard?payment=success&credits=${creditPackage.credits}`,
-      cancel_url: `${req.headers.get("origin")}/dashboard?payment=cancelled`,
+      success_url: `https://13d0c9c0-7ea7-406e-82ca-eb239ce2af54.sandbox.lovable.dev/dashboard?payment=success&credits=${creditPackage.credits}`,
+      cancel_url: `https://13d0c9c0-7ea7-406e-82ca-eb239ce2af54.sandbox.lovable.dev/dashboard?payment=cancelled`,
       metadata: {
         user_id: user.id,
         credits: creditPackage.credits.toString(),

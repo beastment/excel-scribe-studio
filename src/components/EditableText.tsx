@@ -4,6 +4,7 @@ import { RichTextToolbar } from './RichTextToolbar';
 import { EditModeControls } from './EditModeControls';
 import { cn } from '@/lib/utils';
 import { useDraggable } from '@dnd-kit/core';
+import DOMPurify from 'dompurify';
 
 interface EditableTextProps {
   contentKey: string;
@@ -36,7 +37,12 @@ export const EditableText: React.FC<EditableTextProps> = ({
   const editRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  const displayContent = getEditedContent(contentKey, children);
+  const rawContent = getEditedContent(contentKey, children);
+  const displayContent = DOMPurify.sanitize(rawContent, {
+    ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'span', 'br'],
+    ALLOWED_ATTR: ['class', 'style'],
+    ALLOW_DATA_ATTR: false
+  });
   
   const {
     attributes,
@@ -86,10 +92,17 @@ export const EditableText: React.FC<EditableTextProps> = ({
     }
     
     if (isEditing) {
-      const newContent = editRef.current?.innerHTML || '';
-      if (newContent !== displayContent && newContent.trim() !== '') {
-        setPendingEdit(contentKey, newContent);
-        onBlur?.(newContent);
+      const rawContent = editRef.current?.innerHTML || '';
+      // Sanitize content before saving
+      const sanitizedContent = DOMPurify.sanitize(rawContent, {
+        ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'span', 'br'],
+        ALLOWED_ATTR: ['class', 'style'],
+        ALLOW_DATA_ATTR: false
+      });
+      
+      if (sanitizedContent !== displayContent && sanitizedContent.trim() !== '') {
+        setPendingEdit(contentKey, sanitizedContent);
+        onBlur?.(sanitizedContent);
       }
       setIsEditing(false);
       setShowToolbar(false);
