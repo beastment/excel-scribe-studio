@@ -81,37 +81,54 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
     try {
       setUpdating(true);
       
-      const { data, error } = await supabase.functions.invoke('admin-credits', {
-        body: {
-          userId,
-          credits: creditAmount,
-          action: operation === 'add' ? 'add' : 'subtract'
+      if (operation === 'add') {
+        // Use the add_user_credits database function
+        const { data, error } = await supabase.rpc('add_user_credits', {
+          user_uuid: userId,
+          credits_to_add: creditAmount
+        });
+
+        if (error) {
+          console.error('Error adding credits:', error);
+          toast({
+            title: "Error",
+            description: "Failed to add credits",
+            variant: "destructive",
+          });
+          return;
         }
-      });
 
-      if (error) {
-        console.error('Error updating credits:', error);
         toast({
-          title: "Error",
-          description: "Failed to update credits",
-          variant: "destructive",
+          title: "Success",
+          description: `Added ${creditAmount} credits`,
         });
-        return;
-      }
+      } else {
+        // For subtracting credits, we need to update directly since there's no subtract function
+        const newAmount = Math.max(0, userCredits.available_credits - creditAmount);
+        
+        const { error } = await supabase
+          .from('user_credits')
+          .update({ 
+            available_credits: newAmount,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId);
 
-      if (!data.success) {
+        if (error) {
+          console.error('Error subtracting credits:', error);
+          toast({
+            title: "Error",
+            description: "Failed to subtract credits",
+            variant: "destructive",
+          });
+          return;
+        }
+
         toast({
-          title: "Error",
-          description: data.error || "Failed to update credits",
-          variant: "destructive",
+          title: "Success",
+          description: `Subtracted ${creditAmount} credits`,
         });
-        return;
       }
-
-      toast({
-        title: "Success",
-        description: `${operation === 'add' ? 'Added' : 'Subtracted'} ${creditAmount} credits`,
-      });
 
       // Refresh the credits data
       await fetchUserCredits();
@@ -134,17 +151,15 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
     try {
       setUpdating(true);
       
-      // First, get current credits to calculate the difference
+      // Calculate the difference from current credits
       const currentCredits = userCredits.available_credits;
       const difference = newAmount - currentCredits;
       
-      if (difference !== 0) {
-        const { data, error } = await supabase.functions.invoke('admin-credits', {
-          body: {
-            userId,
-            credits: Math.abs(difference),
-            action: difference > 0 ? 'add' : 'subtract'
-          }
+      if (difference > 0) {
+        // Add credits using the database function
+        const { error } = await supabase.rpc('add_user_credits', {
+          user_uuid: userId,
+          credits_to_add: difference
         });
 
         if (error) {
@@ -156,11 +171,21 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
           });
           return;
         }
+      } else if (difference < 0) {
+        // Subtract credits by updating directly
+        const { error } = await supabase
+          .from('user_credits')
+          .update({ 
+            available_credits: newAmount,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId);
 
-        if (!data.success) {
+        if (error) {
+          console.error('Error setting credits:', error);
           toast({
             title: "Error",
-            description: data.error || "Failed to set credits",
+            description: "Failed to set credits",
             variant: "destructive",
           });
           return;
