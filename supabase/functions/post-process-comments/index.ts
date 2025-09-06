@@ -82,7 +82,7 @@ function enforceRedactionPolicy(text: string | null | undefined): string | null 
   out = out.replace(/\bbadge\s*#\s*\d+\b/gi, 'XXXX');
   
   // Phone numbers
-  out = out.replace(/\b\d{3}-\d{3}-\d{4}\b/g, 'XXXX);
+  out = out.replace(/\b\d{3}-\d{3}-\d{4}\b/g, 'XXXX');
   out = out.replace(/\b\d{3}-\d{4}\b/g, 'XXXX');
   
   // Social Security Numbers
