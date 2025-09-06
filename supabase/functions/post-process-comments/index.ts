@@ -72,24 +72,24 @@ function enforceRedactionPolicy(text: string | null | undefined): string | null 
   
   // Names (more comprehensive pattern to catch names that AI might miss)
   // Match common name patterns: First Last, First M. Last, etc.
-  out = out.replace(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g, '[NAME]');
-  out = out.replace(/\b[A-Z][a-z]+\s+[A-Z]\.\s+[A-Z][a-z]+\b/g, '[NAME]');
+  out = out.replace(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g, 'XXXX');
+  out = out.replace(/\b[A-Z][a-z]+\s+[A-Z]\.\s+[A-Z][a-z]+\b/g, 'XXXX');
   // Also catch single names that might be identifiable in context (simpler approach)
-  out = out.replace(/\b[A-Z][a-z]+(?=\s+(?:in|from|at|of|with|to|for|by|manager|supervisor|employee|staff|worker|operator|director|head|lead|chief|senior|junior|assistant|coordinator|specialist|analyst|engineer|developer|designer|consultant|advisor|trainer|instructor|teacher|professor|doctor|nurse|officer|agent|representative|associate|clerk|receptionist|secretary|administrator))/g, '[NAME]');
+  //out = out.replace(/\b[A-Z][a-z]+(?=\s+(?:in|from|at|of|with|to|for|by|manager|supervisor|employee|staff|worker|operator|director|head|lead|chief|senior|junior|assistant|coordinator|specialist|analyst|engineer|developer|designer|consultant|advisor|trainer|instructor|teacher|professor|doctor|nurse|officer|agent|representative|associate|clerk|receptionist|secretary|administrator))/g, '[NAME]');
   
   // Employee IDs, badge numbers, etc.
-  out = out.replace(/\b(?:employee\s+)?ID\s+\d+\b/gi, '[ID]');
-  out = out.replace(/\bbadge\s*#\s*\d+\b/gi, '[ID]');
+  out = out.replace(/\b(?:employee\s+)?ID\s+\d+\b/gi, 'XXXX');
+  out = out.replace(/\bbadge\s*#\s*\d+\b/gi, 'XXXX');
   
   // Phone numbers
-  out = out.replace(/\b\d{3}-\d{3}-\d{4}\b/g, '[PHONE]');
-  out = out.replace(/\b\d{3}-\d{4}\b/g, '[PHONE]');
+  out = out.replace(/\b\d{3}-\d{3}-\d{4}\b/g, 'XXXX);
+  out = out.replace(/\b\d{3}-\d{4}\b/g, 'XXXX');
   
   // Social Security Numbers
-  out = out.replace(/\bSSN\s*:\s*\d{3}-\d{2}-\d{4}\b/gi, '[SSN]');
+  out = out.replace(/\bSSN\s*:\s*\d{3}-\d{2}-\d{4}\b/gi, 'XXXX');
   
   // Email addresses
-  out = out.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '[EMAIL]');
+  out = out.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, 'XXXX');
   
   // Job level/grade indicators: Level 5, L5, Band 3
   out = out.replace(/\b(?:Level|Band)\s*\d+\b/gi, 'XXXX');
