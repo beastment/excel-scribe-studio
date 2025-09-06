@@ -174,7 +174,77 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     }, 30000);
     
     try {
-      // First, get all logs to find the most recent run ID
+      // Test authentication first with a simple query
+      console.log('AILogsViewer: Testing authentication...');
+      const { data: authTest, error: authError } = await supabase.auth.getUser();
+      if (authError) {
+        console.error('AILogsViewer: Auth error:', authError);
+        setLoading(false);
+        return;
+      }
+      console.log('AILogsViewer: Auth test passed, user:', authTest.user?.id);
+      console.log('AILogsViewer: Context user ID:', user.id);
+      console.log('AILogsViewer: Auth user ID matches context:', authTest.user?.id === user.id);
+      
+      // Test with a simple count query first
+      console.log('AILogsViewer: Testing simple count query...');
+      const { count, error: countError } = await supabase
+        .from('ai_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id);
+      
+      if (countError) {
+        console.error('AILogsViewer: Count query error:', countError);
+        // Try a simpler approach - just get recent logs without user filter
+        console.log('AILogsViewer: Trying fallback query without user filter...');
+        const { data: fallbackLogs, error: fallbackError } = await supabase
+          .from('ai_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(20);
+        
+        if (fallbackError) {
+          console.error('AILogsViewer: Fallback query also failed:', fallbackError);
+          setLoading(false);
+          return;
+        }
+        
+        console.log('AILogsViewer: Fallback query successful, found', fallbackLogs?.length || 0, 'logs');
+        const typedLogs = fallbackLogs as unknown as AILog[];
+        setLogs(typedLogs || []);
+        setMostRecentRunId(null);
+        calculateRunStats(typedLogs || []);
+        setLoading(false);
+        return;
+      }
+      console.log('AILogsViewer: Count query successful, found', count, 'logs');
+      
+      // If no logs for this user, try to get recent logs from all users (for debugging)
+      if (count === 0) {
+        console.log('AILogsViewer: No logs for current user, fetching recent logs from all users...');
+        const { data: recentLogs, error: recentError } = await supabase
+          .from('ai_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        
+        if (recentError) {
+          console.error('AILogsViewer: Recent logs query error:', recentError);
+          setLoading(false);
+          return;
+        }
+        
+        console.log('AILogsViewer: Found', recentLogs?.length || 0, 'recent logs from all users');
+        const typedLogs = recentLogs as unknown as AILog[];
+        setLogs(typedLogs || []);
+        setMostRecentRunId(null);
+        calculateRunStats(typedLogs || []);
+        setLoading(false);
+        return;
+      }
+      
+      // Now do the full query for the current user
+      console.log('AILogsViewer: Starting full query for user...');
       const { data: allLogs, error: allLogsError } = await supabase
         .from('ai_logs')
         .select('*')
