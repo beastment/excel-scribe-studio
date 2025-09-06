@@ -62,6 +62,11 @@ const calculateAdjudicatorBatchSize = async (
   const phase = 'adjudicator';
   console.log(`[BATCH_CALC] ${phase}: Calculating optimal batch size for ${comments.length} comments`);
   
+  if (comments.length === 0) {
+    console.log(`[BATCH_CALC] ${phase}: No comments to process, returning batch size 0`);
+    return 0;
+  }
+  
   // Get token limits from model configuration
   const maxInputTokens = Math.floor((modelConfig?.input_token_limit || 128000) * (1 - safetyMarginPercent / 100));
   const maxOutputTokens = Math.floor((modelConfig?.output_token_limit || 4000) * (1 - safetyMarginPercent / 100));
@@ -286,7 +291,7 @@ serve(async (req) => {
   }
 
   const overallStartTime = Date.now(); // Track overall process time
-      const MAX_EXECUTION_TIME = 120 * 1000; // 120 seconds max execution time (2 minutes)
+      const MAX_EXECUTION_TIME = 140 * 1000; // 140 seconds max execution time
 
   try {
     const requestBody = await req.json();
@@ -934,7 +939,7 @@ serve(async (req) => {
     // Process comments in smaller chunks to avoid gateway timeout
     // Reduce batch limits to prevent edge function timeout
     const MAX_BATCHES_PER_REQUEST = 10; // Process up to 10 batches per invocation to stay under edge timeout
-    const MAX_EXECUTION_TIME = 120 * 1000; // Fixed 120 second limit for safety
+    const MAX_EXECUTION_TIME = 140 * 1000; // Fixed 140 second limit for safety
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     
@@ -1325,13 +1330,16 @@ serve(async (req) => {
 
           console.log(`[ADJUDICATION] Found ${commentsNeedingAdjudication.length} comments that need adjudication`);
 
-          // Check for duplicate adjudication call (cross-invocation, via DB logs)
-          const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, commentsNeedingAdjudication);
-          
-          if (isDuplicate) {
-            console.log(`[ADJUDICATION] These comments have already been processed, skipping duplicate call`);
-            // Continue without calling adjudicator again
+          if (commentsNeedingAdjudication.length === 0) {
+            console.log(`[ADJUDICATION] No comments need adjudication, skipping adjudicator call`);
           } else {
+            // Check for duplicate adjudication call (cross-invocation, via DB logs)
+            const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, commentsNeedingAdjudication);
+            
+            if (isDuplicate) {
+              console.log(`[ADJUDICATION] These comments have already been processed, skipping duplicate call`);
+              // Continue without calling adjudicator again
+            } else {
             // Process adjudication with proper batching
             const adjudicatorConfig = {
               provider: adjudicator.provider,
@@ -1380,6 +1388,7 @@ serve(async (req) => {
               });
             }
           }
+          } // Close the else block for commentsNeedingAdjudication.length > 0
         } catch (adjudicationError) {
           console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
           // Continue without failing the entire scan
