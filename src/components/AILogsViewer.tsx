@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
@@ -67,6 +67,9 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     averageEfficiency: number;
     functions: { [key: string]: number };
   } | null>(null);
+  
+  // Track if we've already fetched logs to prevent unnecessary re-fetches
+  const hasFetchedRef = useRef(false);
 
   const clearLogs = () => {
     setClearingLogs(true); // Show clearing state
@@ -75,21 +78,24 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     setRunStats(null);
     setLastRefresh(null);
     setSelectedLog(null);
+    hasFetchedRef.current = false; // Reset fetch flag
     setClearingLogs(false); // Hide clearing state
   };
 
   useEffect(() => {
-    if (user && !skipInitialFetch) {
+    if (user && !skipInitialFetch && !hasFetchedRef.current && debugMode) {
+      hasFetchedRef.current = true;
       fetchLogs();
     }
-  }, [user, skipInitialFetch]);
+  }, [user, skipInitialFetch, debugMode]);
   
   // Fetch logs when skipInitialFetch changes from true to false
   useEffect(() => {
-    if (user && !skipInitialFetch && logs.length === 0 && !loading) {
+    if (user && !skipInitialFetch && logs.length === 0 && !loading && !hasFetchedRef.current && debugMode) {
+      hasFetchedRef.current = true;
       fetchLogs();
     }
-  }, [skipInitialFetch]);
+  }, [skipInitialFetch, debugMode]);
 
   // Clear logs immediately when skipInitialFetch becomes true
   useEffect(() => {
@@ -124,6 +130,29 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     let totalEfficiency = 0;
     let efficiencyCount = 0;
 
+    // Calculate actual end-to-end run time from first scan_a to last post-process-comments
+    const scanALogs = logs.filter(log => log.function_name === 'scan-comments' && log.phase === 'scan_a');
+    const postProcessLogs = logs.filter(log => log.function_name === 'post-process-comments');
+    
+    let actualRunTime = 0;
+    if (scanALogs.length > 0 && postProcessLogs.length > 0) {
+      // Find the earliest scan_a start time
+      const earliestScanStart = scanALogs
+        .filter(log => log.time_started)
+        .map(log => new Date(log.time_started!).getTime())
+        .sort((a, b) => a - b)[0];
+      
+      // Find the latest post-process-comments end time
+      const latestPostProcessEnd = postProcessLogs
+        .filter(log => log.time_finished)
+        .map(log => new Date(log.time_finished!).getTime())
+        .sort((a, b) => b - a)[0];
+      
+      if (earliestScanStart && latestPostProcessEnd) {
+        actualRunTime = latestPostProcessEnd - earliestScanStart;
+      }
+    }
+
     logs.forEach(log => {
       // Count tokens
       stats.totalTokens += (log.request_tokens || 0) + (log.response_tokens || 0);
@@ -131,11 +160,6 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
       // Count processing time
       if (log.processing_time_ms) {
         stats.totalProcessingTime += log.processing_time_ms;
-      }
-      
-      // Count total run time (use the maximum for the run)
-      if (log.total_run_time_ms) {
-        stats.totalRunTime = Math.max(stats.totalRunTime, log.total_run_time_ms);
       }
       
       // Count functions
@@ -150,6 +174,18 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
         efficiencyCount++;
       }
     });
+
+    // Use actual run time if available, otherwise fall back to max total_run_time_ms
+    if (actualRunTime > 0) {
+      stats.totalRunTime = actualRunTime;
+    } else {
+      // Fallback to the maximum total_run_time_ms from individual logs
+      logs.forEach(log => {
+        if (log.total_run_time_ms) {
+          stats.totalRunTime = Math.max(stats.totalRunTime, log.total_run_time_ms);
+        }
+      });
+    }
 
     if (efficiencyCount > 0) {
       stats.averageEfficiency = totalEfficiency / efficiencyCount;
@@ -321,8 +357,10 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     
     // Add run summary if available
     if (runStats && mostRecentRunId) {
+      const totalCommentsProcessed = logs.reduce((sum, log) => sum + extractCommentsCount(log.request_input), 0);
       csvContent += `Run Summary for ${mostRecentRunId}\n`;
       csvContent += `Total Requests,${runStats.totalRequests}\n`;
+      csvContent += `Total Comments Processed,${totalCommentsProcessed}\n`;
       csvContent += `Total Tokens,${runStats.totalTokens}\n`;
       csvContent += `Total Processing Time (ms),${runStats.totalProcessingTime}\n`;
       csvContent += `Total Run Time (ms),${runStats.totalRunTime}\n`;
@@ -344,7 +382,7 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     };
 
     csvContent += [
-      ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)', 'Time Started', 'Time Finished', 'Duration', 'Total Run Time (ms)', 'Efficiency (%)'],
+      ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Comments Processed', 'Batch Info', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)', 'Time Started', 'Time Finished', 'Duration', 'Total Run Time (ms)', 'Efficiency (%)'],
       ...logs.map(log => [
         sanitizeForCSV(new Date(log.created_at).toLocaleString()),
         sanitizeForCSV(log.scan_run_id || 'N/A'),
@@ -352,6 +390,8 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
         sanitizeForCSV(`${log.provider}/${log.model}`),
         sanitizeForCSV(log.request_type),
         sanitizeForCSV(log.phase),
+        sanitizeForCSV(extractCommentsCount(log.request_input)),
+        sanitizeForCSV(extractBatchInfo(log)),
         sanitizeForCSV(log.request_tokens || 0),
         sanitizeForCSV(log.response_tokens || 0),
         sanitizeForCSV((log.request_tokens || 0) + (log.response_tokens || 0)),
@@ -423,6 +463,39 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     return text.substring(0, maxLength) + '...';
   };
 
+  const extractCommentsCount = (requestInput: string): number => {
+    if (!requestInput) return 0;
+    const matches = requestInput.match(/<<<ITEM \d+>>>/g);
+    return matches ? matches.length : 0;
+  };
+
+  const extractBatchInfo = (log: AILog): string => {
+    if (!log.request_input) return '';
+    
+    const commentsCount = extractCommentsCount(log.request_input);
+    if (commentsCount === 0) return '';
+    
+    // Extract item numbers to determine batch range
+    const itemMatches = log.request_input.match(/<<<ITEM (\d+)>>>/g);
+    if (!itemMatches || itemMatches.length === 0) return `${commentsCount} comments`;
+    
+    const itemNumbers = itemMatches.map(match => {
+      const num = match.match(/<<<ITEM (\d+)>>>/);
+      return num ? parseInt(num[1]) : 0;
+    }).filter(num => num > 0);
+    
+    if (itemNumbers.length === 0) return `${commentsCount} comments`;
+    
+    const minItem = Math.min(...itemNumbers);
+    const maxItem = Math.max(...itemNumbers);
+    
+    if (minItem === maxItem) {
+      return `Item ${minItem}`;
+    } else {
+      return `Items ${minItem}-${maxItem}`;
+    }
+  };
+
   if (!user) {
     return (
       <Card>
@@ -478,7 +551,10 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchLogs}
+              onClick={() => {
+                hasFetchedRef.current = false; // Allow manual refresh
+                fetchLogs();
+              }}
               disabled={loading}
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -529,7 +605,7 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
                 </Card>
               )}
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-2">
@@ -549,6 +625,17 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
                       {formatTokenCount(logs.reduce((sum, log) => 
                         sum + (log.request_tokens || 0) + (log.response_tokens || 0), 0
                       ))}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-2">
+                      <Hash className="h-4 w-4 text-indigo-500" />
+                      <span className="text-sm font-medium">Comments Processed</span>
+                    </div>
+                    <p className="text-2xl font-bold">
+                      {logs.reduce((sum, log) => sum + extractCommentsCount(log.request_input), 0)}
                     </p>
                   </CardContent>
                 </Card>
@@ -660,17 +747,21 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
                         <span className="text-sm text-muted-foreground">
                           {log.phase}
                         </span>
-                        
+                        {extractBatchInfo(log) && (
+                          <Badge variant="secondary" className="text-xs">
+                            {extractBatchInfo(log)}
+                          </Badge>
+                        )}
                       </div>
-                                             <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                         <span>{formatTokenCount(log.request_tokens)} → {formatTokenCount(log.response_tokens)}</span>
-                         <Badge className={getStatusColor(log.response_status)}>
-                           {log.response_status}
-                         </Badge>
-                         <span>{formatTimeDuration(log.time_started, log.time_finished)}</span>
-                         <span>{formatProcessingTime(log.total_run_time_ms)}</span>
-                         <span>{new Date(log.created_at).toLocaleTimeString()}</span>
-                       </div>
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <span>{formatTokenCount(log.request_tokens)} → {formatTokenCount(log.response_tokens)}</span>
+                        <Badge className={getStatusColor(log.response_status)}>
+                          {log.response_status}
+                        </Badge>
+                        <span>{formatTimeDuration(log.time_started, log.time_finished)}</span>
+                        <span>{formatProcessingTime(log.total_run_time_ms)}</span>
+                        <span>{new Date(log.created_at).toLocaleTimeString()}</span>
+                      </div>
                     </div>
                   ))}
                 </ScrollArea>
@@ -687,6 +778,11 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
                           <Badge variant="outline">{log.function_name}</Badge>
                           <Badge variant="outline">{log.provider}/{log.model}</Badge>
                           <Badge variant="outline">{log.phase}</Badge>
+                          {extractBatchInfo(log) && (
+                            <Badge variant="secondary" className="text-xs">
+                              {extractBatchInfo(log)}
+                            </Badge>
+                          )}
                           <Badge className={getStatusColor(log.response_status)}>
                             {log.response_status}
                           </Badge>
