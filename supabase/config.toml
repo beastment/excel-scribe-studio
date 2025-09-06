@@ -15,5 +15,8 @@ verify_jwt = true
 [functions.generate-login-link]
 verify_jwt = true
 
+[functions.auth-rate-limit]
+verify_jwt = false
+
 [functions.thematic-analysis]
 verify_jwt = false
