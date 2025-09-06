@@ -542,6 +542,27 @@ export type Database = {
         }
         Relationships: []
       }
+      payments_processed: {
+        Row: {
+          credits_added: number
+          processed_at: string
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          credits_added: number
+          processed_at?: string
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          credits_added?: number
+          processed_at?: string
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           created_at: string
