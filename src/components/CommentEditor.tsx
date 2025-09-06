@@ -870,18 +870,28 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     await deleteAllSessions();
   };
   const exportToExcel = () => {
+    // Helper function to sanitize XLSX values against formula injection
+    const sanitizeForXLSX = (value: any): string => {
+      const str = String(value || '');
+      // Check if value starts with formula characters
+      if (str.match(/^[=+\-@]/)) {
+        return `'${str}`; // Prefix with single quote to neutralize
+      }
+      return str;
+    };
+
     const exportData = comments.map((comment, index) => ({
-      'Row': comment.originalRow || index + 1,
-      'Original Comment': comment.originalText,
-      'Final Comment': comment.text,
-      'Author': comment.author || '',
-      'Concerning': comment.concerning ? 'Yes' : 'No',
-      'Identifiable': comment.identifiable ? 'Yes' : 'No',
-      'AI Reasoning': comment.aiReasoning || '',
-      'Redacted': comment.redactedText || '',
-      'Rephrased': comment.rephrasedText || '',
-      'Approved': comment.approved ? 'Yes' : 'No',
-      'Last Modified': comment.timestamp || ''
+      'Row': sanitizeForXLSX(comment.originalRow || index + 1),
+      'Original Comment': sanitizeForXLSX(comment.originalText),
+      'Final Comment': sanitizeForXLSX(comment.text),
+      'Author': sanitizeForXLSX(comment.author || ''),
+      'Concerning': sanitizeForXLSX(comment.concerning ? 'Yes' : 'No'),
+      'Identifiable': sanitizeForXLSX(comment.identifiable ? 'Yes' : 'No'),
+      'AI Reasoning': sanitizeForXLSX(comment.aiReasoning || ''),
+      'Redacted': sanitizeForXLSX(comment.redactedText || ''),
+      'Rephrased': sanitizeForXLSX(comment.rephrasedText || ''),
+      'Approved': sanitizeForXLSX(comment.approved ? 'Yes' : 'No'),
+      'Last Modified': sanitizeForXLSX(comment.timestamp || '')
     }));
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();

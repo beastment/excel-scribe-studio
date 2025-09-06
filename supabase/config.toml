@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.thematic-analysis]
 verify_jwt = false
+
+[functions.admin-credits]
+verify_jwt = true

@@ -81,11 +81,12 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
     try {
       setUpdating(true);
       
-      const finalAmount = operation === 'add' ? creditAmount : -creditAmount;
-      
-      const { error } = await (supabase.rpc as any)('add_user_credits', {
-        user_uuid: userId,
-        credits_to_add: finalAmount
+      const { data, error } = await supabase.functions.invoke('admin-credits', {
+        body: {
+          userId,
+          credits: creditAmount,
+          action: operation === 'add' ? 'add' : 'subtract'
+        }
       });
 
       if (error) {
@@ -93,6 +94,15 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
         toast({
           title: "Error",
           description: "Failed to update credits",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!data.success) {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to update credits",
           variant: "destructive",
         });
         return;
@@ -129,9 +139,12 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       const difference = newAmount - currentCredits;
       
       if (difference !== 0) {
-        const { error } = await (supabase.rpc as any)('add_user_credits', {
-          user_uuid: userId,
-          credits_to_add: difference
+        const { data, error } = await supabase.functions.invoke('admin-credits', {
+          body: {
+            userId,
+            credits: Math.abs(difference),
+            action: difference > 0 ? 'add' : 'subtract'
+          }
         });
 
         if (error) {
@@ -139,6 +152,15 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
           toast({
             title: "Error",
             description: "Failed to set credits",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (!data.success) {
+          toast({
+            title: "Error",
+            description: data.error || "Failed to set credits",
             variant: "destructive",
           });
           return;

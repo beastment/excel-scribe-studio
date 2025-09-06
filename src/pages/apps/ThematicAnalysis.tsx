@@ -371,6 +371,11 @@ function toCSV(objRows: Array<Record<string, string>>): string {
 }
 
 function quoteCsv(v: string): string {
+  // Sanitize against formula injection
+  if (v.match(/^[=+\-@]/)) {
+    v = `'${v}`; // Prefix with single quote to neutralize
+  }
+  
   const needs = v.includes(",") || v.includes("\n") || v.includes("\r") || v.includes('"');
   if (!needs) return v;
   return '"' + v.replace(/"/g, '""') + '"';

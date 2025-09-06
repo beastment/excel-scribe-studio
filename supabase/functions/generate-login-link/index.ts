@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://13d0c9c0-7ea7-406e-82ca-eb239ce2af54.sandbox.lovable.dev',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 

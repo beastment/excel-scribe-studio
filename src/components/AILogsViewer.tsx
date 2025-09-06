@@ -241,26 +241,36 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     }
     
     // Add detailed logs
+    // Helper function to sanitize CSV values against formula injection
+    const sanitizeForCSV = (value: any): string => {
+      const str = String(value || '');
+      // Check if value starts with formula characters
+      if (str.match(/^[=+\-@]/)) {
+        return `'${str}`; // Prefix with single quote to neutralize
+      }
+      return str;
+    };
+
     csvContent += [
       ['Timestamp', 'Run ID', 'Function', 'Provider/Model', 'Type', 'Phase', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Status', 'Processing Time (ms)', 'Time Started', 'Time Finished', 'Duration', 'Total Run Time (ms)', 'Efficiency (%)'],
       ...logs.map(log => [
-        new Date(log.created_at).toLocaleString(),
-        log.scan_run_id || 'N/A',
-        log.function_name,
-        `${log.provider}/${log.model}`,
-        log.request_type,
-        log.phase,
-        log.request_tokens || 0,
-        log.response_tokens || 0,
-        (log.request_tokens || 0) + (log.response_tokens || 0),
-        log.response_status,
-        log.processing_time_ms || 0,
-        log.time_started ? new Date(log.time_started).toLocaleString() : 'N/A',
-        log.time_finished ? new Date(log.time_finished).toLocaleString() : 'N/A',
-        formatTimeDuration(log.time_started, log.time_finished),
-        log.total_run_time_ms || 0,
-        log.processing_time_ms && log.total_run_time_ms ? 
-          ((log.processing_time_ms / log.total_run_time_ms) * 100).toFixed(1) : 'N/A'
+        sanitizeForCSV(new Date(log.created_at).toLocaleString()),
+        sanitizeForCSV(log.scan_run_id || 'N/A'),
+        sanitizeForCSV(log.function_name),
+        sanitizeForCSV(`${log.provider}/${log.model}`),
+        sanitizeForCSV(log.request_type),
+        sanitizeForCSV(log.phase),
+        sanitizeForCSV(log.request_tokens || 0),
+        sanitizeForCSV(log.response_tokens || 0),
+        sanitizeForCSV((log.request_tokens || 0) + (log.response_tokens || 0)),
+        sanitizeForCSV(log.response_status),
+        sanitizeForCSV(log.processing_time_ms || 0),
+        sanitizeForCSV(log.time_started ? new Date(log.time_started).toLocaleString() : 'N/A'),
+        sanitizeForCSV(log.time_finished ? new Date(log.time_finished).toLocaleString() : 'N/A'),
+        sanitizeForCSV(formatTimeDuration(log.time_started, log.time_finished)),
+        sanitizeForCSV(log.total_run_time_ms || 0),
+        sanitizeForCSV(log.processing_time_ms && log.total_run_time_ms ? 
+          ((log.processing_time_ms / log.total_run_time_ms) * 100).toFixed(1) : 'N/A')
       ])
     ].map(row => row.join(',')).join('\n');
 
