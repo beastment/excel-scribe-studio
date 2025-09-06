@@ -345,6 +345,9 @@ serve(async (req) => {
                            typeof requestBody.batchStart === 'string' ? parseInt(requestBody.batchStart) : 0;
     const isIncrementalRequest = Number.isFinite(batchStartValue) && batchStartValue > 0;
     
+    // Create a unique key for this specific batch request to prevent duplicates
+    const batchRequestKey = `${scanRunId}-${batchStartValue}`;
+    
     if (!isCached && !isIncrementalRequest) {
       // Only block duplicate initial requests (batchStart=0 or undefined)
       if (gAny.__analysisStarted.has(scanRunId)) {
@@ -360,6 +363,19 @@ serve(async (req) => {
       }
       gAny.__analysisStarted.add(scanRunId);
     } else if (isIncrementalRequest) {
+      // Prevent duplicate incremental requests for the same batch
+      if (gAny.__analysisStarted.has(batchRequestKey)) {
+        console.log(`[DUPLICATE BATCH] batchRequestKey=${batchRequestKey} already processed. Ignoring.`);
+        return new Response(JSON.stringify({
+          comments: [],
+          batchStart: batchStartValue,
+          batchSize: 0,
+          hasMore: false,
+          totalComments: requestBody.comments?.length || 0,
+          summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      gAny.__analysisStarted.add(batchRequestKey);
       console.log(`[INCREMENTAL] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${batchStartValue}`);
     }
 
@@ -959,14 +975,14 @@ serve(async (req) => {
         
         const partialResponse = {
           comments: allScannedComments,
-          batchStart: currentBatchStart, // Next batch to process
+          batchStart: currentBatchStart + finalBatchSize, // Next batch to process
           batchSize: finalBatchSize,
           hasMore: currentBatchStart < inputComments.length,
           totalComments: inputComments.length,
           summary: totalSummary,
           totalRunTimeMs: elapsedTime,
           batchesProcessed: batchesProcessed,
-          nextBatchStart: currentBatchStart
+          nextBatchStart: currentBatchStart + finalBatchSize
         };
         
         console.log('Returning partial response due to batch limit:', `Processed ${allScannedComments.length}/${inputComments.length} comments in ${batchesProcessed} batches`);
@@ -982,7 +998,7 @@ serve(async (req) => {
         // Return partial results with timeout warning
         const partialResponse = {
           comments: allScannedComments,
-          batchStart: currentBatchStart,
+          batchStart: currentBatchStart + finalBatchSize, // Next batch to process
           batchSize: finalBatchSize,
           hasMore: currentBatchStart < inputComments.length,
           totalComments: inputComments.length,
@@ -1403,7 +1419,7 @@ serve(async (req) => {
           summary: totalSummary,
           totalRunTimeMs: totalRunTimeMs,
           batchesProcessed: batchesProcessed,
-          nextBatchStart: hasMoreBatches ? lastProcessedIndex : inputComments.length, // Next batch to process or all done
+          nextBatchStart: hasMoreBatches ? lastProcessedIndex + finalBatchSize : inputComments.length, // Next batch to process or all done
           adjudicationStarted: Boolean((globalThis as any).__adjudicationStarted && (globalThis as any).__adjudicationStarted.has(scanRunId)),
           adjudicationCompleted: Boolean((globalThis as any).__adjudicationCompleted && (globalThis as any).__adjudicationCompleted.has(scanRunId))
         };

@@ -261,7 +261,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           if (!nextData?.comments) break;
 
           accumulated = accumulated.concat(nextData.comments);
-          nextBatchStart = (nextData.nextBatchStart ?? (nextBatchStart + (nextData.batchSize || 0))) as number;
+          // Fix: Use nextBatchStart from response, or calculate next batch start correctly
+          nextBatchStart = (nextData.nextBatchStart ?? (nextData.batchStart + (nextData.batchSize || 0))) as number;
           data.hasMore = Boolean(nextData.hasMore);
           loops += 1;
         }
