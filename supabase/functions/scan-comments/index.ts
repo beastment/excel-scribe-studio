@@ -676,27 +676,9 @@ serve(async (req) => {
         batchSize = safetyBatchSize;
       }
       
-      // Consider TPM and RPM limits when determining final batch size
-      if (tokenLimits.tpm_limit || tokenLimits.rpm_limit) {
-        const estimatedTokensPerComment = Math.ceil(totalTokens / batchSize) + tokensPerComment; // Average input + output per comment
-        const optimalBatchSize = calculateRateLimitedBatchSize(
-          provider,
-          model,
-          estimatedTokensPerComment,
-          batchSize,
-          tokenLimits.tpm_limit,
-          tokenLimits.rpm_limit,
-          `[BATCH_CALC] ${phase}`,
-          1 // Each model (Scan A, Scan B) has its own RPM limit, so requestsPerBatch = 1
-        );
-        
-        if (optimalBatchSize < batchSize) {
-          console.log(`[BATCH_CALC] ${phase}: Reducing batch size from ${batchSize} to ${optimalBatchSize} due to rate limits`);
-          batchSize = optimalBatchSize;
-        }
-      } else {
-        console.log(`[BATCH_CALC] ${phase}: No rate limits configured`);
-      }
+      // Note: TPM and RPM limits are enforced by waiting between requests, not by reducing batch size
+      // Batch size should be determined by token limits only
+      console.log(`[BATCH_CALC] ${phase}: Final batch size determined by token limits: ${batchSize}`);
 
       console.log(`[BATCH_CALC] ${phase}: Token counting timing - Prompt: ${promptTime}ms, Comments: ${totalCommentTime}ms, Total: ${promptTime + totalCommentTime}ms`);
       console.log(`[BATCH_CALC] ${phase}: Calculation complete`);
