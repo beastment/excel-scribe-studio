@@ -4,6 +4,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { AILogger } from './ai-logger.ts';
 import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize as calculateRateLimitedBatchSize } from './tpm-tracker.ts';
 
+// Move getPreciseTokens to top level so it's accessible to all functions
+const getPreciseTokens = async (text: string, provider: string, model: string) => {
+  try {
+    const { getPreciseTokenCount } = await import('./token-counter.ts');
+    return await getPreciseTokenCount(provider, model, text);
+  } catch (error) {
+    console.warn(`[TOKEN_COUNT] Fallback to approximation for ${provider}/${model}:`, error);
+    return Math.ceil(text.length / 4);
+  }
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -629,15 +640,6 @@ serve(async (req) => {
     
     // Calculate dynamic batch sizes based on I/O ratios and token limits
     // Use precise token counting for more accurate batch sizing
-    const getPreciseTokens = async (text: string, provider: string, model: string) => {
-      try {
-        const { getPreciseTokenCount } = await import('./token-counter.ts');
-        return await getPreciseTokenCount(provider, model, text);
-      } catch (error) {
-        console.warn(`[TOKEN_COUNT] Fallback to approximation for ${provider}/${model}:`, error);
-        return Math.ceil(text.length / 4);
-      }
-    };
     
     const estimateBatchInputTokens = async (comments: any[], prompt: string, provider: string, model: string) => {
       const promptTokens = await getPreciseTokens(prompt, provider, model);
@@ -1379,6 +1381,16 @@ serve(async (req) => {
               tokensPerComment: adjudicator.tokens_per_comment || 13
             });
 
+            // Calculate optimal batch size for adjudicator
+            const adjudicatorBatchSize = await calculateAdjudicatorBatchSize(
+              commentsNeedingAdjudication,
+              adjudicatorConfig,
+              modelConfig,
+              safetyMarginPercent
+            );
+
+            console.log(`[ADJUDICATION] Calculated adjudicator batch size: ${adjudicatorBatchSize}`);
+
             // Use the new batching system
             const adjudicatedResults = await processAdjudicationBatches(
               supabase,
@@ -1386,7 +1398,7 @@ serve(async (req) => {
               commentsNeedingAdjudication,
               adjudicatorConfig,
               authHeader || '',
-              safetyMarginPercent // Use the same safety margin as scan-comments
+              adjudicatorBatchSize
             );
 
             // Update the comments with adjudicated results
@@ -2152,48 +2164,74 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     // Create signature using raw endpoint (without encoding) for canonical request
     const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
     
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below 120s function max
-    let response: Response;
-    try {
-      response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Host': host,
-          'X-Amz-Date': amzDate,
-          'Authorization': await createAWSSignature(
-            'POST',
-            rawEndpoint, // Use raw endpoint for signature calculation
-            JSON.stringify(bedrockPayload),
-            accessKeyId,
-            secretAccessKey,
-            region,
-            amzDate
-          ),
-        },
-        body: JSON.stringify(bedrockPayload),
-        signal: controller.signal
-      });
-    } catch (e: any) {
-      clearTimeout(timeoutId);
-      const errorMessage = e && e.name === 'AbortError' ? 'Bedrock API timeout after 5 minutes' : `Bedrock API fetch failed: ${String(e && e.message || e)}`;
-      if (aiLogger) {
-        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
-      }
-      throw new Error(errorMessage);
-    }
-    clearTimeout(timeoutId);
-    console.log(`[BEDROCK] Response status: ${response.status} ${response.statusText}`);
+    // Implement retry logic for Bedrock API calls
+    let response;
+    let lastError;
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second base delay
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[BEDROCK] Error response:`, errorText);
-      const errorMessage = `Bedrock API error: ${response.status} ${response.statusText}`;
-      if (aiLogger) {
-        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Host': host,
+            'X-Amz-Date': amzDate,
+            'Authorization': await createAWSSignature(
+              'POST',
+              rawEndpoint, // Use raw endpoint for signature calculation
+              JSON.stringify(bedrockPayload),
+              accessKeyId,
+              secretAccessKey,
+              region,
+              amzDate
+            ),
+          },
+          body: JSON.stringify(bedrockPayload)
+        });
+
+        console.log(`[BEDROCK] Response status: ${response.status} ${response.statusText} (attempt ${attempt + 1})`);
+        
+        if (response.ok) {
+          break; // Success, exit retry loop
+        }
+        
+        // Check if this is a retryable error
+        if (response.status === 429 || response.status === 500 || response.status === 502 || response.status === 503 || response.status === 504) {
+          if (attempt < maxRetries) {
+            const delay = baseDelay * Math.pow(2, attempt); // Exponential backoff
+            console.log(`[BEDROCK] Retryable error ${response.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        
+        // Non-retryable error or max retries exceeded
+        const errorText = await response.text();
+        console.error(`[BEDROCK] Error response:`, errorText);
+        const errorMessage = `Bedrock API error: ${response.status} ${response.statusText}`;
+        // Log the error response
+        if (aiLogger) {
+          await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+        }
+        throw new Error(errorMessage);
+        
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries) {
+          const delay = baseDelay * Math.pow(2, attempt);
+          console.log(`[BEDROCK] Request failed, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          console.error(`[BEDROCK] All retry attempts failed:`, error);
+          throw error;
+        }
       }
-      throw new Error(errorMessage);
+    }
+    
+    if (!response || !response.ok) {
+      throw lastError || new Error('Bedrock API request failed after all retries');
     }
 
     const result = await response.json();
