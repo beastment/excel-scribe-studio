@@ -132,6 +132,25 @@ const calculateAdjudicatorBatchSize = async (
     console.log(`[BATCH_CALC] ${phase}: Output tokens within limit: ${estimatedOutputTokens} <= ${maxOutputTokens}`);
   }
   
+  // TPM-aware cap: ensure total tokens (prompt + avg input + output) for the batch fit within TPM safety window
+  const tpmLimit = Number.isFinite(modelConfig?.tpm_limit) ? modelConfig.tpm_limit : undefined;
+  if (tpmLimit && tpmLimit > 0 && batchSize > 0) {
+    const safetyMultiplier = 1 - (safetyMarginPercent / 100);
+    const tpmAllowed = Math.floor(tpmLimit * safetyMultiplier);
+    const avgInputPerComment = Math.ceil(totalTokens / Math.max(1, batchSize));
+    const perCommentTotalTokens = avgInputPerComment + tokensPerComment;
+    const maxByTpm = perCommentTotalTokens > 0
+      ? Math.floor((tpmAllowed - promptTokens) / perCommentTotalTokens)
+      : batchSize;
+    if (Number.isFinite(maxByTpm) && maxByTpm >= 1) {
+      const originalBatchSize = batchSize;
+      batchSize = Math.max(1, Math.min(batchSize, maxByTpm));
+      if (batchSize !== originalBatchSize) {
+        console.log(`[BATCH_CALC] ${phase}: TPM cap applied. perComment≈${perCommentTotalTokens} tokens, allowed=${tpmAllowed}. Batch size ${originalBatchSize} → ${batchSize}`);
+      }
+    }
+  }
+
   console.log(`[BATCH_CALC] ${phase}: Final batch size determined by token limits: ${batchSize}`);
   
   return Math.max(1, batchSize); // Always return at least 1
@@ -236,7 +255,32 @@ const processAdjudicationBatches = async (
       }));
 
       console.log(`[ADJUDICATION] Calling adjudicator for batch ${batchIndex + 1} with ${comments.length} comments`);
-      
+
+      // Respect TPM/RPM: estimate tokens for this batch and wait if needed
+      try {
+        const promptTokensAdj = await getPreciseTokensGlobal(adjudicatorConfig.prompt || '', adjudicatorConfig.provider, adjudicatorConfig.model);
+        let inputTokenSum = 0;
+        for (const c of comments) {
+          const ct = await getPreciseTokensGlobal(c.originalText || c.text || '', adjudicatorConfig.provider, adjudicatorConfig.model);
+          inputTokenSum += ct;
+        }
+        const tokensPerCommentOut = adjudicatorConfig.tokens_per_comment || 13;
+        const estimatedTotalTokens = promptTokensAdj + inputTokenSum + (comments.length * tokensPerCommentOut);
+        const tpmLimitAdj = Number.isFinite(adjudicatorModelConfig?.tpm_limit) ? adjudicatorModelConfig.tpm_limit : undefined;
+        const rpmLimitAdj = Number.isFinite(adjudicatorModelConfig?.rpm_limit) ? adjudicatorModelConfig.rpm_limit : undefined;
+        if ((tpmLimitAdj && tpmLimitAdj > 0) || (rpmLimitAdj && rpmLimitAdj > 0)) {
+          const tpmWaitMs = calculateWaitTime(adjudicatorConfig.provider, adjudicatorConfig.model, estimatedTotalTokens, tpmLimitAdj);
+          const rpmWaitMs = calculateRPMWaitTime(adjudicatorConfig.provider, adjudicatorConfig.model, 1, rpmLimitAdj);
+          const waitMs = Math.max(tpmWaitMs || 0, rpmWaitMs || 0);
+          if (waitMs && waitMs > 0) {
+            console.log(`[ADJUDICATION][RATE_LIMIT] Waiting ${waitMs}ms before request to respect limits (TPM=${tpmLimitAdj || 'n/a'}, RPM=${rpmLimitAdj || 'n/a'}, estTokens=${estimatedTotalTokens})`);
+            await new Promise(r => setTimeout(r, waitMs));
+          }
+        }
+      } catch (rateErr) {
+        console.warn(`[ADJUDICATION][RATE_LIMIT] Failed to compute precise rate limits, proceeding without wait:`, rateErr);
+      }
+
       const adjudicationResponse = await supabase.functions.invoke('adjudicator', {
         body: {
           comments: adjudicatorComments,
@@ -261,6 +305,20 @@ const processAdjudicationBatches = async (
       }
 
       console.log(`[ADJUDICATION] Batch ${batchIndex + 1} completed successfully`);
+      // Record usage against TPM/RPM trackers if configured
+      try {
+        const tokensPerCommentOut = adjudicatorConfig.tokens_per_comment || 13;
+        const promptTokensAdj = await getPreciseTokensGlobal(adjudicatorConfig.prompt || '', adjudicatorConfig.provider, adjudicatorConfig.model);
+        let inputTokenSum = 0;
+        for (const c of comments) {
+          inputTokenSum += Math.ceil((c.originalText || c.text || '').length / 4);
+        }
+        const estimatedTotalTokens = promptTokensAdj + inputTokenSum + (comments.length * tokensPerCommentOut);
+        recordUsage(adjudicatorConfig.provider, adjudicatorConfig.model, estimatedTotalTokens);
+        recordRequest(adjudicatorConfig.provider, adjudicatorConfig.model, 1);
+      } catch (recErr) {
+        console.warn(`[ADJUDICATION][RATE_LIMIT] Failed to record usage:`, recErr);
+      }
       
       // Mark this batch as completed to prevent duplicates
       completedBatchKeys.add(batchKeyForRun);
