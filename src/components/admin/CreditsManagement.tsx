@@ -39,23 +39,54 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   const fetchUserCredits = async () => {
     try {
       setLoading(true);
-      // Use the database function to get or create user credits
-      // Type assertion since the function exists but isn't in types
-      const { data, error } = await (supabase.rpc as any)('get_or_create_user_credits', {
-        user_uuid: userId
-      });
+      
+      // Fetch credits directly from the table instead of using RPC function
+      const { data, error } = await supabase
+        .from('user_credits')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
 
       if (error) {
-        console.error('Error fetching user credits:', error);
-        toast({
-          title: "Error",
-          description: "Failed to fetch user credits",
-          variant: "destructive",
-        });
+        // If no record exists, create one using the RPC function
+        if (error.code === 'PGRST116') {
+          const { data: newData, error: createError } = await (supabase.rpc as any)('get_or_create_user_credits', {
+            user_uuid: userId
+          });
+
+          if (createError) {
+            console.error('Error creating user credits:', createError);
+            toast({
+              title: "Error",
+              description: "Failed to create user credits",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          if (newData) {
+            setUserCredits({
+              id: newData.id,
+              user_id: userId,
+              available_credits: newData.available_credits,
+              total_credits_used: newData.total_credits_used,
+              created_at: newData.created_at,
+              updated_at: newData.updated_at
+            });
+          }
+        } else {
+          console.error('Error fetching user credits:', error);
+          toast({
+            title: "Error",
+            description: "Failed to fetch user credits",
+            variant: "destructive",
+          });
+        }
         return;
       }
 
       if (data) {
+        console.log('Fetched user credits from database:', data);
         setUserCredits({
           id: data.id,
           user_id: userId,
@@ -96,6 +127,7 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       if (operation === 'add') {
         // Add credits by updating the available_credits directly
         const newAmount = userCredits.available_credits + creditAmount;
+        console.log(`Adding ${creditAmount} credits. Current: ${userCredits.available_credits}, New: ${newAmount}`);
         
         const { error } = await supabase
           .from('user_credits')
@@ -115,6 +147,7 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
           return;
         }
 
+        console.log('Successfully updated credits in database');
         toast({
           title: "Success",
           description: `Added ${creditAmount} credits`,
@@ -122,6 +155,7 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       } else {
         // For subtracting credits, we need to update directly since there's no subtract function
         const newAmount = Math.max(0, userCredits.available_credits - creditAmount);
+        console.log(`Subtracting ${creditAmount} credits. Current: ${userCredits.available_credits}, New: ${newAmount}`);
         
         const { error } = await supabase
           .from('user_credits')
@@ -141,6 +175,7 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
           return;
         }
 
+        console.log('Successfully updated credits in database');
         toast({
           title: "Success",
           description: `Subtracted ${creditAmount} credits`,
@@ -178,6 +213,8 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
     try {
       setUpdating(true);
       
+      console.log(`Setting credits directly to ${newAmount} for user ${userId}`);
+      
       // Set credits directly by updating the available_credits
       const { error } = await supabase
         .from('user_credits')
@@ -197,6 +234,7 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
         return;
       }
 
+      console.log('Successfully set credits in database');
       toast({
         title: "Success",
         description: `Set credits to ${newAmount}`,
