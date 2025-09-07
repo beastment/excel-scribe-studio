@@ -330,6 +330,12 @@ serve(async (req) => {
     const user = userData.user;
     console.log(`Processing request for user: ${user.email}`);
     
+    // Create supabase client for database operations
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+    );
+    
     // Database-based duplicate prevention (works across all function instances)
     const checkAndMarkAnalysisStarted = async (supabaseClient: any, scanRunId: string): Promise<boolean> => {
       try {
