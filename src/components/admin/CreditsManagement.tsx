@@ -8,11 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Minus, RefreshCw } from 'lucide-react';
 
 interface CreditsManagementProps {
   userId: string;
   userFullName: string;
+  onCreditsUpdated?: () => void; // Callback to refresh dashboard credits
 }
 
 interface UserCredits {
@@ -24,13 +26,14 @@ interface UserCredits {
   updated_at: string;
 }
 
-export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, userFullName }) => {
+export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, userFullName, onCreditsUpdated }) => {
   const [userCredits, setUserCredits] = useState<UserCredits | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [creditAmount, setCreditAmount] = useState<number>(0);
   const { toast } = useToast();
   const { isAdmin } = useUserRole();
+  const { user: currentUser } = useAuth();
 
   useEffect(() => {
     fetchUserCredits();
@@ -121,6 +124,10 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       return;
     }
 
+    console.log(`Updating credits for user: ${userId}, operation: ${operation}, amount: ${creditAmount}`);
+    console.log(`Current logged-in user: ${currentUser?.id}`);
+    console.log(`Are we updating credits for the same user? ${userId === currentUser?.id}`);
+
     try {
       setUpdating(true);
       
@@ -183,7 +190,16 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       }
 
       // Refresh the credits data
+      console.log('About to refresh credits data...');
       await fetchUserCredits();
+      console.log('Credits data refreshed');
+      
+      // If we updated credits for the currently logged-in user, refresh dashboard
+      if (userId === currentUser?.id && onCreditsUpdated) {
+        console.log('Updating credits for current user, triggering dashboard refresh');
+        onCreditsUpdated();
+      }
+      
       setCreditAmount(0);
     } catch (error) {
       console.error('Error:', error);
@@ -241,7 +257,15 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
       });
 
       // Refresh the credits data
+      console.log('About to refresh credits data...');
       await fetchUserCredits();
+      console.log('Credits data refreshed');
+      
+      // If we updated credits for the currently logged-in user, refresh dashboard
+      if (userId === currentUser?.id && onCreditsUpdated) {
+        console.log('Updating credits for current user, triggering dashboard refresh');
+        onCreditsUpdated();
+      }
     } catch (error) {
       console.error('Error:', error);
       toast({

@@ -48,7 +48,7 @@ interface UserProfile {
 type SortField = 'full_name' | 'created_at' | 'updated_at' | 'last_login_at';
 type SortDirection = 'asc' | 'desc';
 
-export const UserManagement: React.FC = () => {
+export const UserManagement: React.FC<{ onCreditsUpdated?: () => void }> = ({ onCreditsUpdated }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -485,7 +485,8 @@ export const UserManagement: React.FC = () => {
                         <div className="p-4 bg-gray-50 border-t space-y-4">
                           <CreditsManagement 
                             userId={user.user_id} 
-                            userFullName={user.full_name || 'Unknown User'} 
+                            userFullName={user.full_name || 'Unknown User'}
+                            onCreditsUpdated={onCreditsUpdated}
                           />
                           <SubscriptionManagement 
                             userId={user.user_id} 
