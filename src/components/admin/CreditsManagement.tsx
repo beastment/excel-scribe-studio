@@ -7,14 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { useUserRole } from '@/hooks/useUserRole';
-import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Minus, RefreshCw } from 'lucide-react';
 
 interface CreditsManagementProps {
   userId: string;
   userFullName: string;
-  onCreditsUpdated?: () => void; // Callback to refresh dashboard credits
 }
 
 interface UserCredits {
@@ -26,14 +23,12 @@ interface UserCredits {
   updated_at: string;
 }
 
-export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, userFullName, onCreditsUpdated }) => {
+export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, userFullName }) => {
   const [userCredits, setUserCredits] = useState<UserCredits | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [creditAmount, setCreditAmount] = useState<number>(0);
   const { toast } = useToast();
-  const { isAdmin } = useUserRole();
-  const { user: currentUser } = useAuth();
 
   useEffect(() => {
     fetchUserCredits();
@@ -42,54 +37,23 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   const fetchUserCredits = async () => {
     try {
       setLoading(true);
-      
-      // Fetch credits directly from the table instead of using RPC function
-      const { data, error } = await supabase
-        .from('user_credits')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+      // Use the database function to get or create user credits
+      // Type assertion since the function exists but isn't in types
+      const { data, error } = await (supabase.rpc as any)('get_or_create_user_credits', {
+        user_uuid: userId
+      });
 
       if (error) {
-        // If no record exists, create one using the RPC function
-        if (error.code === 'PGRST116') {
-          const { data: newData, error: createError } = await (supabase.rpc as any)('get_or_create_user_credits', {
-            user_uuid: userId
-          });
-
-          if (createError) {
-            console.error('Error creating user credits:', createError);
-            toast({
-              title: "Error",
-              description: "Failed to create user credits",
-              variant: "destructive",
-            });
-            return;
-          }
-
-          if (newData) {
-            setUserCredits({
-              id: newData.id,
-              user_id: userId,
-              available_credits: newData.available_credits,
-              total_credits_used: newData.total_credits_used,
-              created_at: newData.created_at,
-              updated_at: newData.updated_at
-            });
-          }
-        } else {
-          console.error('Error fetching user credits:', error);
-          toast({
-            title: "Error",
-            description: "Failed to fetch user credits",
-            variant: "destructive",
-          });
-        }
+        console.error('Error fetching user credits:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch user credits",
+          variant: "destructive",
+        });
         return;
       }
 
       if (data) {
-        console.log('Fetched user credits from database:', data);
         setUserCredits({
           id: data.id,
           user_id: userId,
@@ -114,92 +78,43 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   const updateCredits = async (operation: 'add' | 'subtract') => {
     if (!userCredits || creditAmount <= 0) return;
 
-    // Check if current user is admin
-    if (!isAdmin()) {
-      toast({
-        title: "Error",
-        description: "Only administrators can manage user credits",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    console.log(`Updating credits for user: ${userId}, operation: ${operation}, amount: ${creditAmount}`);
-    console.log(`Current logged-in user: ${currentUser?.id}`);
-    console.log(`Are we updating credits for the same user? ${userId === currentUser?.id}`);
-
     try {
       setUpdating(true);
       
-      if (operation === 'add') {
-        // Add credits by updating the available_credits directly
-        const newAmount = userCredits.available_credits + creditAmount;
-        console.log(`Adding ${creditAmount} credits. Current: ${userCredits.available_credits}, New: ${newAmount}`);
-        
-        const { error } = await supabase
-          .from('user_credits')
-          .update({ 
-            available_credits: newAmount,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userId);
-
-        if (error) {
-          console.error('Error adding credits:', error);
-          toast({
-            title: "Error",
-            description: `Failed to add credits: ${error.message}`,
-            variant: "destructive",
-          });
-          return;
+      const { data, error } = await supabase.functions.invoke('admin-credits', {
+        body: {
+          userId,
+          credits: creditAmount,
+          action: operation === 'add' ? 'add' : 'subtract'
         }
+      });
 
-        console.log('Successfully updated credits in database');
+      if (error) {
+        console.error('Error updating credits:', error);
         toast({
-          title: "Success",
-          description: `Added ${creditAmount} credits`,
+          title: "Error",
+          description: "Failed to update credits",
+          variant: "destructive",
         });
-      } else {
-        // For subtracting credits, we need to update directly since there's no subtract function
-        const newAmount = Math.max(0, userCredits.available_credits - creditAmount);
-        console.log(`Subtracting ${creditAmount} credits. Current: ${userCredits.available_credits}, New: ${newAmount}`);
-        
-        const { error } = await supabase
-          .from('user_credits')
-          .update({ 
-            available_credits: newAmount,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userId);
-
-        if (error) {
-          console.error('Error subtracting credits:', error);
-          toast({
-            title: "Error",
-            description: `Failed to subtract credits: ${error.message}`,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        console.log('Successfully updated credits in database');
-        toast({
-          title: "Success",
-          description: `Subtracted ${creditAmount} credits`,
-        });
+        return;
       }
+
+      if (!data.success) {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to update credits",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: `${operation === 'add' ? 'Added' : 'Subtracted'} ${creditAmount} credits`,
+      });
 
       // Refresh the credits data
-      console.log('About to refresh credits data...');
       await fetchUserCredits();
-      console.log('Credits data refreshed');
-      
-      // If we updated credits for the currently logged-in user, refresh dashboard
-      if (userId === currentUser?.id && onCreditsUpdated) {
-        console.log('Updating credits for current user, triggering dashboard refresh');
-        onCreditsUpdated();
-      }
-      
       setCreditAmount(0);
     } catch (error) {
       console.error('Error:', error);
@@ -216,56 +131,49 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   const setCreditsDirectly = async (newAmount: number) => {
     if (!userCredits || newAmount < 0) return;
 
-    // Check if current user is admin
-    if (!isAdmin()) {
-      toast({
-        title: "Error",
-        description: "Only administrators can manage user credits",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
       setUpdating(true);
       
-      console.log(`Setting credits directly to ${newAmount} for user ${userId}`);
+      // First, get current credits to calculate the difference
+      const currentCredits = userCredits.available_credits;
+      const difference = newAmount - currentCredits;
       
-      // Set credits directly by updating the available_credits
-      const { error } = await supabase
-        .from('user_credits')
-        .update({ 
-          available_credits: newAmount,
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error setting credits:', error);
-        toast({
-          title: "Error",
-          description: `Failed to set credits: ${error.message}`,
-          variant: "destructive",
+      if (difference !== 0) {
+        const { data, error } = await supabase.functions.invoke('admin-credits', {
+          body: {
+            userId,
+            credits: Math.abs(difference),
+            action: difference > 0 ? 'add' : 'subtract'
+          }
         });
-        return;
+
+        if (error) {
+          console.error('Error setting credits:', error);
+          toast({
+            title: "Error",
+            description: "Failed to set credits",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (!data.success) {
+          toast({
+            title: "Error",
+            description: data.error || "Failed to set credits",
+            variant: "destructive",
+          });
+          return;
+        }
       }
 
-      console.log('Successfully set credits in database');
       toast({
         title: "Success",
         description: `Set credits to ${newAmount}`,
       });
 
       // Refresh the credits data
-      console.log('About to refresh credits data...');
       await fetchUserCredits();
-      console.log('Credits data refreshed');
-      
-      // If we updated credits for the currently logged-in user, refresh dashboard
-      if (userId === currentUser?.id && onCreditsUpdated) {
-        console.log('Updating credits for current user, triggering dashboard refresh');
-        onCreditsUpdated();
-      }
     } catch (error) {
       console.error('Error:', error);
       toast({

@@ -4,17 +4,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { AILogger } from './ai-logger.ts';
 import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize as calculateRateLimitedBatchSize } from './tpm-tracker.ts';
 
-// Move getPreciseTokens to top level so it's accessible to all functions
-const getPreciseTokens = async (text: string, provider: string, model: string) => {
-  try {
-    const { getPreciseTokenCount } = await import('./token-counter.ts');
-    return await getPreciseTokenCount(provider, model, text);
-  } catch (error) {
-    console.warn(`[TOKEN_COUNT] Fallback to approximation for ${provider}/${model}:`, error);
-    return Math.ceil(text.length / 4);
-  }
-};
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -72,11 +61,6 @@ const calculateAdjudicatorBatchSize = async (
 ): Promise<number> => {
   const phase = 'adjudicator';
   console.log(`[BATCH_CALC] ${phase}: Calculating optimal batch size for ${comments.length} comments`);
-  
-  if (comments.length === 0) {
-    console.log(`[BATCH_CALC] ${phase}: No comments to process, returning batch size 0`);
-    return 0;
-  }
   
   // Get token limits from model configuration
   const maxInputTokens = Math.floor((modelConfig?.input_token_limit || 128000) * (1 - safetyMarginPercent / 100));
@@ -302,7 +286,7 @@ serve(async (req) => {
   }
 
   const overallStartTime = Date.now(); // Track overall process time
-      const MAX_EXECUTION_TIME = 140 * 1000; // 140 seconds max execution time
+      const MAX_EXECUTION_TIME = 120 * 1000; // 120 seconds max execution time (2 minutes)
 
   try {
     const requestBody = await req.json();
@@ -330,52 +314,12 @@ serve(async (req) => {
     const user = userData.user;
     console.log(`Processing request for user: ${user.email}`);
     
-    // Create supabase client for database operations
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') || '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-    );
-    
-    // Database-based duplicate prevention (works across all function instances)
-    const checkAndMarkAnalysisStarted = async (supabaseClient: any, scanRunId: string): Promise<boolean> => {
-      try {
-        // Try to insert a new analysis_started record
-        const { data, error } = await supabaseClient
-          .from('ai_logs')
-          .insert({
-            scan_run_id: scanRunId,
-            function_name: 'scan-comments',
-            user_id: user.id,
-            provider: 'duplicate-prevention',
-            model: 'analysis-started',
-            request_type: 'duplicate-check',
-            phase: 'initial',
-            request_prompt: 'Duplicate prevention marker',
-            request_input: `Analysis started for run ${scanRunId}`,
-            response_status: 'success',
-            response_content: 'Analysis started',
-            created_at: new Date().toISOString()
-          })
-          .select('id')
-          .limit(1);
-
-        if (error) {
-          // If error is due to duplicate key constraint, analysis already started
-          if (error.code === '23505' || error.message.includes('duplicate')) {
-            console.log(`[DUPLICATE PREVENTION] Analysis already started for scanRunId=${scanRunId}`);
-            return false; // Analysis already started
-          }
-          console.warn(`[DUPLICATE PREVENTION] Error checking analysis start:`, error);
-          return true; // Allow processing if we can't check
-        }
-
-        console.log(`[DUPLICATE PREVENTION] Marked analysis as started for scanRunId=${scanRunId}`);
-        return true; // Analysis not started, proceed
-      } catch (err) {
-        console.warn(`[DUPLICATE PREVENTION] Exception checking analysis start:`, err);
-        return true; // Allow processing if we can't check
-      }
-    };
+    // Global run-guards to prevent duplicate analysis batches for the same run id
+    const gAny: any = globalThis as any;
+    gAny.__runInProgress = gAny.__runInProgress || new Set<string>();
+    gAny.__runCompleted = gAny.__runCompleted || new Set<string>();
+    gAny.__analysisStarted = gAny.__analysisStarted || new Set<string>();
+    gAny.__adjudicationBatchesCompleted = gAny.__adjudicationBatchesCompleted || new Set<string>();
     
     // Prefix all logs for this request with the run id.
     const __root = globalThis as any;
@@ -388,7 +332,7 @@ serve(async (req) => {
     console.warn = (...args: any[]) => __root.__baseWarn(`[RUN ${scanRunId}]`, ...args);
     console.error = (...args: any[]) => __root.__baseError(`[RUN ${scanRunId}]`, ...args);
     
-    console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart} scanRunId=${scanRunId}`);
+    console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
 
     // Allow incremental processing: only block duplicate initial requests (batchStart=0)
     const isCached = Boolean(requestBody.useCachedAnalysis);
@@ -396,22 +340,9 @@ serve(async (req) => {
                            typeof requestBody.batchStart === 'string' ? parseInt(requestBody.batchStart) : 0;
     const isIncrementalRequest = Number.isFinite(batchStartValue) && batchStartValue > 0;
     
-    // Create a unique key for this specific batch request to prevent duplicates
-    const batchRequestKey = `${scanRunId}-${batchStartValue}`;
-    
-    // Initialize global tracking for batch requests
-    const gAny: any = globalThis as any;
-    if (!gAny.__analysisStarted) {
-      gAny.__analysisStarted = new Set<string>();
-    }
-    
-    console.log(`[REQUEST_DETAILS] isCached=${isCached}, batchStartValue=${batchStartValue}, isIncrementalRequest=${isIncrementalRequest}, batchRequestKey=${batchRequestKey}`);
-    
     if (!isCached && !isIncrementalRequest) {
       // Only block duplicate initial requests (batchStart=0 or undefined)
-      // Use database-based duplicate prevention instead of globalThis
-      const canStartAnalysis = await checkAndMarkAnalysisStarted(supabase, scanRunId);
-      if (!canStartAnalysis) {
+      if (gAny.__analysisStarted.has(scanRunId)) {
         console.log(`[DUPLICATE ANALYSIS] scanRunId=${scanRunId} received a second initial analysis request. Ignoring.`);
         return new Response(JSON.stringify({
           comments: [],
@@ -422,32 +353,44 @@ serve(async (req) => {
           summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
+      gAny.__analysisStarted.add(scanRunId);
     } else if (isIncrementalRequest) {
-      // Prevent duplicate incremental requests for the same batch
-      console.log(`[INCREMENTAL_CHECK] Checking if batchRequestKey=${batchRequestKey} is already processed...`);
-      console.log(`[INCREMENTAL_CHECK] Current __analysisStarted keys:`, Array.from(gAny.__analysisStarted));
-      
-      if (gAny.__analysisStarted.has(batchRequestKey)) {
-        console.log(`[DUPLICATE BATCH] batchRequestKey=${batchRequestKey} already processed. Ignoring.`);
-        return new Response(JSON.stringify({
-          comments: [],
-          batchStart: batchStartValue,
-          batchSize: 0,
-          hasMore: false,
-          totalComments: requestBody.comments?.length || 0,
-          summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-      gAny.__analysisStarted.add(batchRequestKey);
       console.log(`[INCREMENTAL] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${batchStartValue}`);
-      console.log(`[INCREMENTAL] Added batchRequestKey=${batchRequestKey} to __analysisStarted`);
     }
 
-    // Database-based duplicate prevention already handled above
+    // If this run id has already completed, short-circuit to avoid duplicate model calls
+    if (gAny.__runCompleted.has(scanRunId)) {
+      console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed. Skipping.`);
+      return new Response(JSON.stringify({
+        comments: [],
+        batchStart: batchStartValue,
+        batchSize: 0,
+        hasMore: false,
+        totalComments: requestBody.comments?.length || 0,
+        summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
     
 
     
-    // Database-based duplicate prevention already handled above
+    // Allow incremental processing: only block if this is a duplicate initial request
+    if (gAny.__runInProgress.has(scanRunId) && !isIncrementalRequest) {
+      console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already in progress. Skipping duplicate call.`);
+      return new Response(JSON.stringify({
+        comments: [],
+        batchStart: batchStartValue,
+        batchSize: 0,
+        hasMore: false,
+        totalComments: requestBody.comments?.length || 0,
+        summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    
+    console.log(`[RUN STATUS] scanRunId=${scanRunId}, isIncrementalRequest=${isIncrementalRequest}, runInProgress=${gAny.__runInProgress.has(scanRunId)}`);
+    
+    // Mark run as in progress
+    gAny.__runInProgress.add(scanRunId);
+    console.log(`[RUN STATUS] scanRunId=${scanRunId} marked as in progress`);
     
     const { 
       comments: inputComments, 
@@ -659,6 +602,15 @@ serve(async (req) => {
     
     // Calculate dynamic batch sizes based on I/O ratios and token limits
     // Use precise token counting for more accurate batch sizing
+    const getPreciseTokens = async (text: string, provider: string, model: string) => {
+      try {
+        const { getPreciseTokenCount } = await import('./token-counter.ts');
+        return await getPreciseTokenCount(provider, model, text);
+      } catch (error) {
+        console.warn(`[TOKEN_COUNT] Fallback to approximation for ${provider}/${model}:`, error);
+        return Math.ceil(text.length / 4);
+      }
+    };
     
     const estimateBatchInputTokens = async (comments: any[], prompt: string, provider: string, model: string) => {
       const promptTokens = await getPreciseTokens(prompt, provider, model);
@@ -982,7 +934,7 @@ serve(async (req) => {
     // Process comments in smaller chunks to avoid gateway timeout
     // Reduce batch limits to prevent edge function timeout
     const MAX_BATCHES_PER_REQUEST = 10; // Process up to 10 batches per invocation to stay under edge timeout
-    const MAX_EXECUTION_TIME = 140 * 1000; // Fixed 140 second limit for safety
+    const MAX_EXECUTION_TIME = 120 * 1000; // Fixed 120 second limit for safety
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     
@@ -1002,14 +954,14 @@ serve(async (req) => {
         
         const partialResponse = {
           comments: allScannedComments,
-          batchStart: currentBatchStart + finalBatchSize, // Next batch to process
+          batchStart: currentBatchStart, // Next batch to process
           batchSize: finalBatchSize,
           hasMore: currentBatchStart < inputComments.length,
           totalComments: inputComments.length,
           summary: totalSummary,
           totalRunTimeMs: elapsedTime,
           batchesProcessed: batchesProcessed,
-          nextBatchStart: currentBatchStart + finalBatchSize
+          nextBatchStart: currentBatchStart
         };
         
         console.log('Returning partial response due to batch limit:', `Processed ${allScannedComments.length}/${inputComments.length} comments in ${batchesProcessed} batches`);
@@ -1025,7 +977,7 @@ serve(async (req) => {
         // Return partial results with timeout warning
         const partialResponse = {
           comments: allScannedComments,
-          batchStart: currentBatchStart + finalBatchSize, // Next batch to process
+          batchStart: currentBatchStart,
           batchSize: finalBatchSize,
           hasMore: currentBatchStart < inputComments.length,
           totalComments: inputComments.length,
@@ -1373,16 +1325,13 @@ serve(async (req) => {
 
           console.log(`[ADJUDICATION] Found ${commentsNeedingAdjudication.length} comments that need adjudication`);
 
-          if (commentsNeedingAdjudication.length === 0) {
-            console.log(`[ADJUDICATION] No comments need adjudication, skipping adjudicator call`);
+          // Check for duplicate adjudication call (cross-invocation, via DB logs)
+          const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, commentsNeedingAdjudication);
+          
+          if (isDuplicate) {
+            console.log(`[ADJUDICATION] These comments have already been processed, skipping duplicate call`);
+            // Continue without calling adjudicator again
           } else {
-            // Check for duplicate adjudication call (cross-invocation, via DB logs)
-            const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, commentsNeedingAdjudication);
-            
-            if (isDuplicate) {
-              console.log(`[ADJUDICATION] These comments have already been processed, skipping duplicate call`);
-              // Continue without calling adjudicator again
-            } else {
             // Process adjudication with proper batching
             const adjudicatorConfig = {
               provider: adjudicator.provider,
@@ -1400,16 +1349,6 @@ serve(async (req) => {
               tokensPerComment: adjudicator.tokens_per_comment || 13
             });
 
-            // Calculate optimal batch size for adjudicator
-            const adjudicatorBatchSize = await calculateAdjudicatorBatchSize(
-              commentsNeedingAdjudication,
-              adjudicatorConfig,
-              modelConfig,
-              safetyMarginPercent
-            );
-
-            console.log(`[ADJUDICATION] Calculated adjudicator batch size: ${adjudicatorBatchSize}`);
-
             // Use the new batching system
             const adjudicatedResults = await processAdjudicationBatches(
               supabase,
@@ -1417,7 +1356,7 @@ serve(async (req) => {
               commentsNeedingAdjudication,
               adjudicatorConfig,
               authHeader || '',
-              adjudicatorBatchSize
+              safetyMarginPercent // Use the same safety margin as scan-comments
             );
 
             // Update the comments with adjudicated results
@@ -1441,7 +1380,6 @@ serve(async (req) => {
               });
             }
           }
-          } // Close the else block for commentsNeedingAdjudication.length > 0
         } catch (adjudicationError) {
           console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
           // Continue without failing the entire scan
@@ -1456,7 +1394,7 @@ serve(async (req) => {
           summary: totalSummary,
           totalRunTimeMs: totalRunTimeMs,
           batchesProcessed: batchesProcessed,
-          nextBatchStart: hasMoreBatches ? lastProcessedIndex + finalBatchSize : inputComments.length, // Next batch to process or all done
+          nextBatchStart: hasMoreBatches ? lastProcessedIndex : inputComments.length, // Next batch to process or all done
           adjudicationStarted: Boolean((globalThis as any).__adjudicationStarted && (globalThis as any).__adjudicationStarted.has(scanRunId)),
           adjudicationCompleted: Boolean((globalThis as any).__adjudicationCompleted && (globalThis as any).__adjudicationCompleted.has(scanRunId))
         };
@@ -2183,74 +2121,48 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     // Create signature using raw endpoint (without encoding) for canonical request
     const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
     
-    // Implement retry logic for Bedrock API calls
-    let response;
-    let lastError;
-    const maxRetries = 3;
-    const baseDelay = 1000; // 1 second base delay
-    
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Host': host,
-            'X-Amz-Date': amzDate,
-            'Authorization': await createAWSSignature(
-              'POST',
-              rawEndpoint, // Use raw endpoint for signature calculation
-              JSON.stringify(bedrockPayload),
-              accessKeyId,
-              secretAccessKey,
-              region,
-              amzDate
-            ),
-          },
-          body: JSON.stringify(bedrockPayload)
-        });
-
-        console.log(`[BEDROCK] Response status: ${response.status} ${response.statusText} (attempt ${attempt + 1})`);
-        
-        if (response.ok) {
-          break; // Success, exit retry loop
-        }
-        
-        // Check if this is a retryable error
-        if (response.status === 429 || response.status === 500 || response.status === 502 || response.status === 503 || response.status === 504) {
-          if (attempt < maxRetries) {
-            const delay = baseDelay * Math.pow(2, attempt); // Exponential backoff
-            console.log(`[BEDROCK] Retryable error ${response.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
-          }
-        }
-        
-        // Non-retryable error or max retries exceeded
-        const errorText = await response.text();
-        console.error(`[BEDROCK] Error response:`, errorText);
-        const errorMessage = `Bedrock API error: ${response.status} ${response.statusText}`;
-        // Log the error response
-        if (aiLogger) {
-          await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
-        }
-        throw new Error(errorMessage);
-        
-      } catch (error) {
-        lastError = error;
-        if (attempt < maxRetries) {
-          const delay = baseDelay * Math.pow(2, attempt);
-          console.log(`[BEDROCK] Request failed, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          console.error(`[BEDROCK] All retry attempts failed:`, error);
-          throw error;
-        }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below 120s function max
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Host': host,
+          'X-Amz-Date': amzDate,
+          'Authorization': await createAWSSignature(
+            'POST',
+            rawEndpoint, // Use raw endpoint for signature calculation
+            JSON.stringify(bedrockPayload),
+            accessKeyId,
+            secretAccessKey,
+            region,
+            amzDate
+          ),
+        },
+        body: JSON.stringify(bedrockPayload),
+        signal: controller.signal
+      });
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      const errorMessage = e && e.name === 'AbortError' ? 'Bedrock API timeout after 5 minutes' : `Bedrock API fetch failed: ${String(e && e.message || e)}`;
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
+      throw new Error(errorMessage);
     }
+    clearTimeout(timeoutId);
+    console.log(`[BEDROCK] Response status: ${response.status} ${response.statusText}`);
     
-    if (!response || !response.ok) {
-      throw lastError || new Error('Bedrock API request failed after all retries');
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[BEDROCK] Error response:`, errorText);
+      const errorMessage = `Bedrock API error: ${response.status} ${response.statusText}`;
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();

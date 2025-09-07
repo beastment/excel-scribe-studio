@@ -14,7 +14,6 @@ import {
   Crown
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserCredits } from '@/hooks/useUserCredits';
 import { supabase } from '@/integrations/supabase/client';
 import { MaintenanceToggle } from '@/components/admin/MaintenanceToggle';
 import { UserManagement } from '@/components/admin/UserManagement';
@@ -34,7 +33,6 @@ interface UserProfile {
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const { refreshCredits } = useUserCredits();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -307,7 +305,7 @@ const Dashboard = () => {
         {/* User Management - moved to bottom */}
         {profile?.role === 'admin' && (
           <div className="mt-8">
-            <UserManagement onCreditsUpdated={refreshCredits} />
+            <UserManagement />
             <ConsultingServicesManagement />
           </div>
         )}

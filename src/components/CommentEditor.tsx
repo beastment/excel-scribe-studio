@@ -243,7 +243,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         let nextBatchStart = (data.nextBatchStart ?? data.batchStart ?? accumulated.length) as number;
         let loops = 0;
         while (data.hasMore && loops < 10) {
-          console.log(`[BATCH_CONTINUATION] Loop ${loops + 1}: Requesting batch starting at ${nextBatchStart}`);
           const { data: nextData, error: nextError } = await supabase.functions.invoke('scan-comments', {
             body: {
               comments,
@@ -261,10 +260,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           }
           if (!nextData?.comments) break;
 
-          console.log(`[BATCH_CONTINUATION] Received ${nextData.comments.length} comments, hasMore: ${nextData.hasMore}, nextBatchStart: ${nextData.nextBatchStart}`);
           accumulated = accumulated.concat(nextData.comments);
-          // Fix: Use nextBatchStart from response, or calculate next batch start correctly
-          nextBatchStart = (nextData.nextBatchStart ?? (nextData.batchStart + (nextData.batchSize || 0))) as number;
+          nextBatchStart = (nextData.nextBatchStart ?? (nextBatchStart + (nextData.batchSize || 0))) as number;
           data.hasMore = Boolean(nextData.hasMore);
           loops += 1;
         }
