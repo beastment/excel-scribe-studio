@@ -356,8 +356,23 @@ serve(async (req) => {
       gAny.__analysisStarted.add(scanRunId);
     } else if (isIncrementalRequest) {
       console.log(`[INCREMENTAL] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${batchStartValue}`);
+      // Deduplicate incremental batch processing per (runId,batchStart) within this function's lifecycle
+      gAny.__processedBatchStarts = gAny.__processedBatchStarts || new Set<string>();
+      const batchKey = `${scanRunId}:${batchStartValue}`;
+      if (gAny.__processedBatchStarts.has(batchKey)) {
+        console.log(`[DEDUP] Incremental batch already processed in this execution for key=${batchKey}. Skipping.`);
+        return new Response(JSON.stringify({
+          comments: [],
+          batchStart: batchStartValue,
+          batchSize: 0,
+          hasMore: batchStartValue < (requestBody.comments?.length || 0),
+          totalComments: requestBody.comments?.length || 0,
+          summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      // Mark as processed early to prevent double-submission if concurrent calls arrive
+      gAny.__processedBatchStarts.add(batchKey);
     }
-
     // If this run id has already completed, short-circuit to avoid duplicate model calls
     if (gAny.__runCompleted.has(scanRunId)) {
       console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed. Skipping.`);

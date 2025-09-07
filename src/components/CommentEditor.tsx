@@ -79,8 +79,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [debugMode, setDebugMode] = useState(false);
   const scanInFlightRef = useRef(false);
   const lastScanTsRef = useRef<number>(0);
+  const requestedBatchesRef = useRef<Set<number>>(new Set());
   // Remove duplicate aiLogsViewerRef - using the one from props
-
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
@@ -218,6 +218,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
     // Generate a short 4-digit scanRunId so backend logs can be filtered to this click
     const scanRunId = String(Math.floor(1000 + Math.random() * 9000));
+    // Reset requested batches tracker for this run
+    requestedBatchesRef.current = new Set<number>();
 
     try {
       // Phase 1: Scan comments with Scan A and Scan B
@@ -248,6 +250,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         
         while (data.hasMore && loops < 10 && accumulated.length < expectedTotal) {
           console.log(`[BATCH_CLIENT] Loop ${loops + 1}: requesting batch starting at ${nextBatchStart}`);
+          if (requestedBatchesRef.current.has(nextBatchStart)) {
+            console.warn(`[BATCH_CLIENT] Suppressing duplicate request for batchStart=${nextBatchStart}`);
+            break;
+          }
+          requestedBatchesRef.current.add(nextBatchStart);
           
           const { data: nextData, error: nextError } = await supabase.functions.invoke('scan-comments', {
             body: {
@@ -273,8 +280,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const newCommentsCount = nextData.comments.length;
           accumulated = accumulated.concat(nextData.comments);
           
-          // Calculate next batch start based on actual comments received
-          nextBatchStart = nextBatchStart + newCommentsCount;
+          // Calculate next batch start based on server hint or actual items
+          nextBatchStart = typeof nextData.nextBatchStart === 'number'
+            ? nextData.nextBatchStart
+            : nextBatchStart + newCommentsCount;
           data.hasMore = Boolean(nextData.hasMore) && accumulated.length < expectedTotal;
           
           console.log(`[BATCH_CLIENT] Batch ${loops + 1} complete: received=${newCommentsCount}, accumulated=${accumulated.length}, nextStart=${nextBatchStart}, hasMore=${data.hasMore}`);
