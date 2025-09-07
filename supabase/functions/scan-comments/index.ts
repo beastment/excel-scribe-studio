@@ -229,11 +229,14 @@ const processAdjudicationBatches = async (
     }
     
     // Check for duplicate batch in database (previous executions)
-    const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, comments);
-    
-    if (isDuplicate) {
-      console.log(`[ADJUDICATION] Batch ${batchIndex + 1} already processed in database, skipping duplicate call`);
-      continue;
+    // NOTE: Disabled skip due to false positives across different batches. We rely on in-memory keys per run.
+    try {
+      const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, comments);
+      if (isDuplicate) {
+        console.log(`[ADJUDICATION] Duplicate-like log found for batch ${batchIndex + 1}, but proceeding to ensure all batches are processed`);
+      }
+    } catch (dupErr) {
+      console.warn(`[ADJUDICATION] Duplicate check failed (non-fatal):`, dupErr);
     }
     
     try {
