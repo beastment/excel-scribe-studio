@@ -337,7 +337,7 @@ serve(async (req) => {
     console.warn = (...args: any[]) => __root.__baseWarn(`[RUN ${scanRunId}]`, ...args);
     console.error = (...args: any[]) => __root.__baseError(`[RUN ${scanRunId}]`, ...args);
     
-    console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
+    console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart} scanRunId=${scanRunId}`);
 
     // Allow incremental processing: only block duplicate initial requests (batchStart=0)
     const isCached = Boolean(requestBody.useCachedAnalysis);
@@ -347,6 +347,8 @@ serve(async (req) => {
     
     // Create a unique key for this specific batch request to prevent duplicates
     const batchRequestKey = `${scanRunId}-${batchStartValue}`;
+    
+    console.log(`[REQUEST_DETAILS] isCached=${isCached}, batchStartValue=${batchStartValue}, isIncrementalRequest=${isIncrementalRequest}, batchRequestKey=${batchRequestKey}`);
     
     if (!isCached && !isIncrementalRequest) {
       // Only block duplicate initial requests (batchStart=0 or undefined)
@@ -364,6 +366,9 @@ serve(async (req) => {
       gAny.__analysisStarted.add(scanRunId);
     } else if (isIncrementalRequest) {
       // Prevent duplicate incremental requests for the same batch
+      console.log(`[INCREMENTAL_CHECK] Checking if batchRequestKey=${batchRequestKey} is already processed...`);
+      console.log(`[INCREMENTAL_CHECK] Current __analysisStarted keys:`, Array.from(gAny.__analysisStarted));
+      
       if (gAny.__analysisStarted.has(batchRequestKey)) {
         console.log(`[DUPLICATE BATCH] batchRequestKey=${batchRequestKey} already processed. Ignoring.`);
         return new Response(JSON.stringify({
@@ -377,6 +382,7 @@ serve(async (req) => {
       }
       gAny.__analysisStarted.add(batchRequestKey);
       console.log(`[INCREMENTAL] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${batchStartValue}`);
+      console.log(`[INCREMENTAL] Added batchRequestKey=${batchRequestKey} to __analysisStarted`);
     }
 
     // If this run id has already completed, short-circuit to avoid duplicate model calls
