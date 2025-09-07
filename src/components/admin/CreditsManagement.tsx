@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { useUserRole } from '@/hooks/useUserRole';
 import { Plus, Minus, RefreshCw } from 'lucide-react';
 
 interface CreditsManagementProps {
@@ -29,6 +30,7 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   const [updating, setUpdating] = useState(false);
   const [creditAmount, setCreditAmount] = useState<number>(0);
   const { toast } = useToast();
+  const { isAdmin } = useUserRole();
 
   useEffect(() => {
     fetchUserCredits();
@@ -78,21 +80,36 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   const updateCredits = async (operation: 'add' | 'subtract') => {
     if (!userCredits || creditAmount <= 0) return;
 
+    // Check if current user is admin
+    if (!isAdmin()) {
+      toast({
+        title: "Error",
+        description: "Only administrators can manage user credits",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setUpdating(true);
       
       if (operation === 'add') {
-        // Use the add_user_credits database function
-        const { data, error } = await supabase.rpc('add_user_credits', {
-          user_uuid: userId,
-          credits_to_add: creditAmount
-        });
+        // Add credits by updating the available_credits directly
+        const newAmount = userCredits.available_credits + creditAmount;
+        
+        const { error } = await supabase
+          .from('user_credits')
+          .update({ 
+            available_credits: newAmount,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId);
 
         if (error) {
           console.error('Error adding credits:', error);
           toast({
             title: "Error",
-            description: "Failed to add credits",
+            description: `Failed to add credits: ${error.message}`,
             variant: "destructive",
           });
           return;
@@ -118,7 +135,7 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
           console.error('Error subtracting credits:', error);
           toast({
             title: "Error",
-            description: "Failed to subtract credits",
+            description: `Failed to subtract credits: ${error.message}`,
             variant: "destructive",
           });
           return;
@@ -148,48 +165,36 @@ export const CreditsManagement: React.FC<CreditsManagementProps> = ({ userId, us
   const setCreditsDirectly = async (newAmount: number) => {
     if (!userCredits || newAmount < 0) return;
 
+    // Check if current user is admin
+    if (!isAdmin()) {
+      toast({
+        title: "Error",
+        description: "Only administrators can manage user credits",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setUpdating(true);
       
-      // Calculate the difference from current credits
-      const currentCredits = userCredits.available_credits;
-      const difference = newAmount - currentCredits;
-      
-      if (difference > 0) {
-        // Add credits using the database function
-        const { error } = await supabase.rpc('add_user_credits', {
-          user_uuid: userId,
-          credits_to_add: difference
+      // Set credits directly by updating the available_credits
+      const { error } = await supabase
+        .from('user_credits')
+        .update({ 
+          available_credits: newAmount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error setting credits:', error);
+        toast({
+          title: "Error",
+          description: `Failed to set credits: ${error.message}`,
+          variant: "destructive",
         });
-
-        if (error) {
-          console.error('Error setting credits:', error);
-          toast({
-            title: "Error",
-            description: "Failed to set credits",
-            variant: "destructive",
-          });
-          return;
-        }
-      } else if (difference < 0) {
-        // Subtract credits by updating directly
-        const { error } = await supabase
-          .from('user_credits')
-          .update({ 
-            available_credits: newAmount,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userId);
-
-        if (error) {
-          console.error('Error setting credits:', error);
-          toast({
-            title: "Error",
-            description: "Failed to set credits",
-            variant: "destructive",
-          });
-          return;
-        }
+        return;
       }
 
       toast({
