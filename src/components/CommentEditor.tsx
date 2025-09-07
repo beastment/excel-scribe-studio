@@ -390,7 +390,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         toast.info('Phase 2: Adjudication completed with no disagreements to resolve');
       } else {
         toast.info('Phase 2: Waiting for adjudication to complete...');
-        // Poll for adjudication completion using cached analysis to avoid re-running scans
+        // Poll for adjudication completion without re-running scans
         const maxPolls = 10;
         for (let i = 0; i < maxPolls; i++) {
           await new Promise(r => setTimeout(r, 1000));
@@ -400,7 +400,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               defaultMode,
               scanRunId,
               isDemoScan: isDemoData,
-              useCachedAnalysis: true
+              useCachedAnalysis: true,
+              checkStatusOnly: true
             }
           });
           if (statusData && (statusData.adjudicationCompleted || (Array.isArray(statusData.comments) && statusData.comments.some((c: any) => c.isAdjudicated)))) {

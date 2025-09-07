@@ -1,5 +1,10 @@
 # Scan Comments Edge Function - Recent Changes
 
+- 2025-09-07: Prevent duplicate submissions during adjudication polling
+  - Added `checkStatusOnly` request flag to enable status polling without re-running scans or re-emitting batches.
+  - Frontend now sets `checkStatusOnly: true` during Phase 2 polling to avoid duplicate batch submissions.
+  - Response normalization: ensured batch hints (`batchStart`, `hasMore`) remain consistent for status-only responses.
+
 ## Latest Updates
 
 ### Enhanced Token Counting and Batch Sizing

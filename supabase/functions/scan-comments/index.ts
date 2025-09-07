@@ -339,6 +339,47 @@ serve(async (req) => {
     const batchStartValue = typeof requestBody.batchStart === 'number' ? requestBody.batchStart : 
                            typeof requestBody.batchStart === 'string' ? parseInt(requestBody.batchStart) : 0;
     const isIncrementalRequest = Number.isFinite(batchStartValue) && batchStartValue > 0;
+    const checkStatusOnly = Boolean(requestBody.checkStatusOnly);
+
+    // Fast-path: status-only polling should not re-run scans
+    if (checkStatusOnly) {
+      try {
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') || '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+        );
+        // Consider adjudication complete if we have a successful adjudicator log for this run
+        const { data: adjLogs } = await supabase
+          .from('ai_logs')
+          .select('id')
+          .eq('scan_run_id', scanRunId)
+          .eq('function_name', 'adjudicator')
+          .eq('response_status', 'success')
+          .limit(1);
+
+        const adjudicationCompleted = Array.isArray(adjLogs) && adjLogs.length > 0;
+        const statusResponse = {
+          comments: [],
+          batchStart: batchStartValue,
+          batchSize: 0,
+          hasMore: false,
+          totalComments: requestBody.comments?.length || 0,
+          adjudicationCompleted
+        };
+        return new Response(JSON.stringify(statusResponse), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      } catch (_e) {
+        // On any error, return a minimal status without re-running scans
+        const statusResponse = {
+          comments: [],
+          batchStart: batchStartValue,
+          batchSize: 0,
+          hasMore: false,
+          totalComments: requestBody.comments?.length || 0,
+          adjudicationCompleted: false
+        };
+        return new Response(JSON.stringify(statusResponse), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
     
     if (!isCached && !isIncrementalRequest) {
       // Only block duplicate initial requests (batchStart=0 or undefined)
