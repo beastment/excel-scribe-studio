@@ -103,9 +103,10 @@ export class AILogger {
         .select('id')
         .eq('user_id', userId)
         .eq('function_name', functionName)
+        .eq('request_type', requestType)
         .eq('phase', phase)
         .eq('response_status', 'pending')
-        .order('time_started', { ascending: false })
+        .order('time_started', { ascending: true })
         .limit(1);
 
       selectQuery = scanRunId
