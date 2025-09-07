@@ -242,7 +242,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         let accumulated = Array.isArray(data.comments) ? [...data.comments] : [];
         let nextBatchStart = (data.nextBatchStart ?? data.batchStart ?? accumulated.length) as number;
         let loops = 0;
-        while (data.hasMore && loops < 10) {
+        const expectedTotal = (data.totalComments as number) || comments.length;
+        
+        console.log(`[BATCH_CLIENT] Starting batch aggregation: accumulated=${accumulated.length}, nextStart=${nextBatchStart}, expectedTotal=${expectedTotal}`);
+        
+        while (data.hasMore && loops < 10 && accumulated.length < expectedTotal) {
+          console.log(`[BATCH_CLIENT] Loop ${loops + 1}: requesting batch starting at ${nextBatchStart}`);
+          
           const { data: nextData, error: nextError } = await supabase.functions.invoke('scan-comments', {
             body: {
               comments,
@@ -258,33 +264,30 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             console.error('Scan follow-up error:', nextError);
             break;
           }
-          if (!nextData?.comments) break;
+          
+          if (!nextData?.comments || nextData.comments.length === 0) {
+            console.log(`[BATCH_CLIENT] No more comments in batch ${loops + 1}, stopping`);
+            break;
+          }
 
+          const newCommentsCount = nextData.comments.length;
           accumulated = accumulated.concat(nextData.comments);
-          nextBatchStart = (nextData.nextBatchStart ?? (nextBatchStart + (nextData.batchSize || 0))) as number;
-          data.hasMore = Boolean(nextData.hasMore);
+          
+          // Calculate next batch start based on actual comments received
+          nextBatchStart = nextBatchStart + newCommentsCount;
+          data.hasMore = Boolean(nextData.hasMore) && accumulated.length < expectedTotal;
+          
+          console.log(`[BATCH_CLIENT] Batch ${loops + 1} complete: received=${newCommentsCount}, accumulated=${accumulated.length}, nextStart=${nextBatchStart}, hasMore=${data.hasMore}`);
+          
           loops += 1;
-        }
-        // Safety: if we still have fewer than the expected total and nextBatchStart advanced, try one final fetch
-        const expectedTotal = (data.totalComments as number) || comments.length;
-        if (accumulated.length < expectedTotal) {
-          console.log(`[AGGREGATION] Safety fetch: accumulated=${accumulated.length}, expected=${expectedTotal}, nextStart=${nextBatchStart}`);
-          const { data: finalData, error: finalErr } = await supabase.functions.invoke('scan-comments', {
-            body: {
-              comments,
-              defaultMode,
-              scanRunId,
-              isDemoScan: isDemoData,
-              batchStart: nextBatchStart,
-              useCachedAnalysis: true
-            }
-          });
-          if (!finalErr && finalData?.comments) {
-            accumulated = accumulated.concat(finalData.comments);
-            data.hasMore = Boolean(finalData.hasMore);
-            console.log(`[AGGREGATION] Safety fetch merged, new total=${accumulated.length}`);
+          
+          // Small delay to prevent overwhelming the server
+          if (data.hasMore) {
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
+        
+        console.log(`[BATCH_CLIENT] Batch aggregation complete: total=${accumulated.length}, expected=${expectedTotal}`);
         // Replace original comments with the full set for downstream steps
         (data as any).comments = accumulated;
       }
