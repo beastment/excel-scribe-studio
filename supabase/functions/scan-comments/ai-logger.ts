@@ -83,7 +83,7 @@ export class AILogger {
     requestType: string,
     phase: string,
     responseText: string,
-    error?: string,
+    responseError?: string,
     totalRunTimeMs?: number
   ): Promise<void> {
     try {
@@ -92,7 +92,7 @@ export class AILogger {
       // Count output tokens
       const tokenCounts = await countTokens(provider, model, '', responseText);
       
-      const responseStatus: 'success' | 'error' = error ? 'error' : 'success';
+      const responseStatus: 'success' | 'error' = responseError ? 'error' : 'success';
       
       // Calculate total run time if not provided
       const calculatedTotalRunTimeMs = totalRunTimeMs || (Date.now() - this.functionStartTime);
@@ -121,19 +121,19 @@ export class AILogger {
       let updateError: any = null;
       if (pendingRows && pendingRows.length > 0) {
         const targetId = pendingRows[0].id;
-        const { error } = await this.supabase
+        const { error: updateErr } = await this.supabase
           .from('ai_logs')
           .update({
             response_text: responseText,
             response_tokens: tokenCounts.outputTokens,
             response_status: responseStatus,
-            response_error: error,
+            response_error: responseError,
             processing_time_ms: processingTimeMs,
             time_finished: new Date().toISOString(),
             total_run_time_ms: calculatedTotalRunTimeMs
           })
           .eq('id', targetId);
-        updateError = error;
+        updateError = updateErr;
       } else {
         // Fallback: attempt a best-effort update using the broader filter
         const baseQuery = this.supabase
@@ -142,7 +142,7 @@ export class AILogger {
             response_text: responseText,
             response_tokens: tokenCounts.outputTokens,
             response_status: responseStatus,
-            response_error: error,
+            response_error: responseError,
             processing_time_ms: processingTimeMs,
             time_finished: new Date().toISOString(),
             total_run_time_ms: calculatedTotalRunTimeMs
@@ -155,8 +155,8 @@ export class AILogger {
         const finalQuery = scanRunId
           ? baseQuery.eq('scan_run_id', scanRunId)
           : baseQuery.is('scan_run_id', null);
-        const { error } = await finalQuery;
-        updateError = error;
+        const { error: updateErr } = await finalQuery;
+        updateError = updateErr;
       }
         
       if (updateError) {
