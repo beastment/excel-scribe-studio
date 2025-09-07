@@ -96,29 +96,67 @@ export class AILogger {
       
       // Calculate total run time if not provided
       const calculatedTotalRunTimeMs = totalRunTimeMs || (Date.now() - this.functionStartTime);
-      
-      // Update the existing log entry - find the most recent pending log for this user/function/phase
-      const baseQuery = this.supabase
+      // Robust update: select the most recent pending row first, then update by id
+      // This avoids missing the row when multiple pending entries exist or phases overlap
+      let selectQuery = this.supabase
         .from('ai_logs')
-        .update({
-          response_text: responseText,
-          response_tokens: tokenCounts.outputTokens,
-          response_status: responseStatus,
-          response_error: error,
-          processing_time_ms: processingTimeMs,
-          time_finished: new Date().toISOString(),
-          total_run_time_ms: calculatedTotalRunTimeMs
-        })
+        .select('id')
         .eq('user_id', userId)
         .eq('function_name', functionName)
         .eq('phase', phase)
-        .eq('response_status', 'pending');
+        .eq('response_status', 'pending')
+        .order('time_started', { ascending: false })
+        .limit(1);
 
-      const finalQuery = scanRunId
-        ? baseQuery.eq('scan_run_id', scanRunId)
-        : baseQuery.is('scan_run_id', null);
+      selectQuery = scanRunId
+        ? selectQuery.eq('scan_run_id', scanRunId)
+        : selectQuery.is('scan_run_id', null);
 
-      const { error: updateError } = await finalQuery;
+      const { data: pendingRows, error: selectError } = await selectQuery;
+      if (selectError) {
+        console.error('[AI LOGGER] Error selecting pending log to update:', selectError);
+      }
+
+      let updateError: any = null;
+      if (pendingRows && pendingRows.length > 0) {
+        const targetId = pendingRows[0].id;
+        const { error } = await this.supabase
+          .from('ai_logs')
+          .update({
+            response_text: responseText,
+            response_tokens: tokenCounts.outputTokens,
+            response_status: responseStatus,
+            response_error: error,
+            processing_time_ms: processingTimeMs,
+            time_finished: new Date().toISOString(),
+            total_run_time_ms: calculatedTotalRunTimeMs
+          })
+          .eq('id', targetId);
+        updateError = error;
+      } else {
+        // Fallback: attempt a best-effort update using the broader filter
+        const baseQuery = this.supabase
+          .from('ai_logs')
+          .update({
+            response_text: responseText,
+            response_tokens: tokenCounts.outputTokens,
+            response_status: responseStatus,
+            response_error: error,
+            processing_time_ms: processingTimeMs,
+            time_finished: new Date().toISOString(),
+            total_run_time_ms: calculatedTotalRunTimeMs
+          })
+          .eq('user_id', userId)
+          .eq('function_name', functionName)
+          .eq('phase', phase)
+          .eq('response_status', 'pending');
+
+        const finalQuery = scanRunId
+          ? baseQuery.eq('scan_run_id', scanRunId)
+          : baseQuery.is('scan_run_id', null);
+        const { error } = await finalQuery;
+        updateError = error;
+      }
         
       if (updateError) {
         console.error('[AI LOGGER] Error updating response log:', updateError);
