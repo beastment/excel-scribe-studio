@@ -1,0 +1,1 @@
+UPDATE maintenance_mode SET is_enabled = true, updated_at = now() WHERE id IN (SELECT id FROM maintenance_mode ORDER BY updated_at DESC LIMIT 1);

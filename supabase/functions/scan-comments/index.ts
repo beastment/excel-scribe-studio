@@ -399,6 +399,12 @@ serve(async (req) => {
     // Create a unique key for this specific batch request to prevent duplicates
     const batchRequestKey = `${scanRunId}-${batchStartValue}`;
     
+    // Initialize global tracking for batch requests
+    const gAny: any = globalThis as any;
+    if (!gAny.__analysisStarted) {
+      gAny.__analysisStarted = new Set<string>();
+    }
+    
     console.log(`[REQUEST_DETAILS] isCached=${isCached}, batchStartValue=${batchStartValue}, isIncrementalRequest=${isIncrementalRequest}, batchRequestKey=${batchRequestKey}`);
     
     if (!isCached && !isIncrementalRequest) {
