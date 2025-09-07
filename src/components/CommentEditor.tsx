@@ -391,9 +391,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       } else {
         toast.info('Phase 2: Waiting for adjudication to complete...');
         // Poll for adjudication completion without re-running scans
-        const maxPolls = 10;
-        for (let i = 0; i < maxPolls; i++) {
-          await new Promise(r => setTimeout(r, 1000));
+        // Increase wait window and, upon completion, fetch full comments via a non-status cached call
+        let adjudicationDone = Boolean((data as any).adjudicationCompleted);
+        const maxPolls = 30;
+        for (let i = 0; i < maxPolls && !adjudicationDone; i++) {
+          await new Promise(r => setTimeout(r, 1500));
           const { data: statusData } = await supabase.functions.invoke('scan-comments', {
             body: {
               comments,
@@ -405,11 +407,34 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             }
           });
           if (statusData && (statusData.adjudicationCompleted || (Array.isArray(statusData.comments) && statusData.comments.some((c: any) => c.isAdjudicated)))) {
-            (data as any).adjudicationCompleted = statusData.adjudicationCompleted;
-            (data as any).comments = Array.isArray(statusData.comments) && statusData.comments.length >= (data.comments?.length || 0)
-              ? statusData.comments
-              : data.comments;
+            (data as any).adjudicationCompleted = Boolean(statusData.adjudicationCompleted);
+            adjudicationDone = true;
+            // Fetch full adjudicated comments (status-only returns empty comments)
+            const { data: fullAfterAdj } = await supabase.functions.invoke('scan-comments', {
+              body: {
+                comments,
+                defaultMode,
+                scanRunId,
+                isDemoScan: isDemoData,
+                useCachedAnalysis: true
+              }
+            });
+            if (fullAfterAdj && Array.isArray(fullAfterAdj.comments) && fullAfterAdj.comments.length >= (data.comments?.length || 0)) {
+              (data as any).comments = fullAfterAdj.comments;
+            }
             break;
+          }
+          // Nudge backend to resume adjudication if deferred and near the end of polling
+          if (i === maxPolls - 1) {
+            await supabase.functions.invoke('scan-comments', {
+              body: {
+                comments,
+                defaultMode,
+                scanRunId,
+                isDemoScan: isDemoData,
+                useCachedAnalysis: true
+              }
+            });
           }
         }
       }
