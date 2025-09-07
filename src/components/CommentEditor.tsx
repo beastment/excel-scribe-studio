@@ -417,12 +417,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       // Phase 3: Post-process flagged comments
       let didPostProcessUpdate = false;
       // Process comments that are identifiable OR concerning-only (per updated logic)
-      const commentsToProcess = data.comments.filter((c: any) => c.identifiable || c.concerning);
+      // Also consider pre-adjudication flags from scanA/scanB to avoid skipping Phase 3 when adjudication logs are delayed
+      const commentsToProcess = data.comments.filter((c: any) => {
+        const identifiable = Boolean(c.identifiable);
+        const concerning = Boolean(c.concerning);
+        const preA = Boolean(c.scanAResult?.identifiable || c.scanAResult?.concerning || c.adjudicationData?.scanAResult?.identifiable || c.adjudicationData?.scanAResult?.concerning);
+        const preB = Boolean(c.scanBResult?.identifiable || c.scanBResult?.concerning || c.adjudicationData?.scanBResult?.identifiable || c.adjudicationData?.scanBResult?.concerning);
+        return identifiable || concerning || preA || preB;
+      });
       const phase3Counts = {
         total: data.comments.length,
         identifiable: data.comments.filter((c: any) => c.identifiable).length,
         concerning: data.comments.filter((c: any) => c.concerning).length,
         concerningOnly: data.comments.filter((c: any) => c.concerning && !c.identifiable).length,
+        preScanFlagged: data.comments.filter((c: any) => (c.scanAResult?.identifiable || c.scanAResult?.concerning || c.adjudicationData?.scanAResult?.identifiable || c.adjudicationData?.scanAResult?.concerning || c.scanBResult?.identifiable || c.scanBResult?.concerning || c.adjudicationData?.scanBResult?.identifiable || c.adjudicationData?.scanBResult?.concerning)).length,
         toProcess: commentsToProcess.length,
         adjudicationCompleted: Boolean((data as any).adjudicationCompleted)
       };
