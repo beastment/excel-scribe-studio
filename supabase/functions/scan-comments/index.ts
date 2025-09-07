@@ -330,12 +330,46 @@ serve(async (req) => {
     const user = userData.user;
     console.log(`Processing request for user: ${user.email}`);
     
-    // Global run-guards to prevent duplicate analysis batches for the same run id
-    const gAny: any = globalThis as any;
-    gAny.__runInProgress = gAny.__runInProgress || new Set<string>();
-    gAny.__runCompleted = gAny.__runCompleted || new Set<string>();
-    gAny.__analysisStarted = gAny.__analysisStarted || new Set<string>();
-    gAny.__adjudicationBatchesCompleted = gAny.__adjudicationBatchesCompleted || new Set<string>();
+    // Database-based duplicate prevention (works across all function instances)
+    const checkAndMarkAnalysisStarted = async (supabaseClient: any, scanRunId: string): Promise<boolean> => {
+      try {
+        // Try to insert a new analysis_started record
+        const { data, error } = await supabaseClient
+          .from('ai_logs')
+          .insert({
+            scan_run_id: scanRunId,
+            function_name: 'scan-comments',
+            user_id: user.id,
+            provider: 'duplicate-prevention',
+            model: 'analysis-started',
+            request_type: 'duplicate-check',
+            phase: 'initial',
+            request_prompt: 'Duplicate prevention marker',
+            request_input: `Analysis started for run ${scanRunId}`,
+            response_status: 'success',
+            response_content: 'Analysis started',
+            created_at: new Date().toISOString()
+          })
+          .select('id')
+          .limit(1);
+
+        if (error) {
+          // If error is due to duplicate key constraint, analysis already started
+          if (error.code === '23505' || error.message.includes('duplicate')) {
+            console.log(`[DUPLICATE PREVENTION] Analysis already started for scanRunId=${scanRunId}`);
+            return false; // Analysis already started
+          }
+          console.warn(`[DUPLICATE PREVENTION] Error checking analysis start:`, error);
+          return true; // Allow processing if we can't check
+        }
+
+        console.log(`[DUPLICATE PREVENTION] Marked analysis as started for scanRunId=${scanRunId}`);
+        return true; // Analysis not started, proceed
+      } catch (err) {
+        console.warn(`[DUPLICATE PREVENTION] Exception checking analysis start:`, err);
+        return true; // Allow processing if we can't check
+      }
+    };
     
     // Prefix all logs for this request with the run id.
     const __root = globalThis as any;
@@ -363,7 +397,9 @@ serve(async (req) => {
     
     if (!isCached && !isIncrementalRequest) {
       // Only block duplicate initial requests (batchStart=0 or undefined)
-      if (gAny.__analysisStarted.has(scanRunId)) {
+      // Use database-based duplicate prevention instead of globalThis
+      const canStartAnalysis = await checkAndMarkAnalysisStarted(supabase, scanRunId);
+      if (!canStartAnalysis) {
         console.log(`[DUPLICATE ANALYSIS] scanRunId=${scanRunId} received a second initial analysis request. Ignoring.`);
         return new Response(JSON.stringify({
           comments: [],
@@ -374,7 +410,6 @@ serve(async (req) => {
           summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
-      gAny.__analysisStarted.add(scanRunId);
     } else if (isIncrementalRequest) {
       // Prevent duplicate incremental requests for the same batch
       console.log(`[INCREMENTAL_CHECK] Checking if batchRequestKey=${batchRequestKey} is already processed...`);
@@ -396,39 +431,11 @@ serve(async (req) => {
       console.log(`[INCREMENTAL] Added batchRequestKey=${batchRequestKey} to __analysisStarted`);
     }
 
-    // If this run id has already completed, short-circuit to avoid duplicate model calls
-    if (gAny.__runCompleted.has(scanRunId)) {
-      console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed. Skipping.`);
-      return new Response(JSON.stringify({
-        comments: [],
-        batchStart: batchStartValue,
-        batchSize: 0,
-        hasMore: false,
-        totalComments: requestBody.comments?.length || 0,
-        summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
+    // Database-based duplicate prevention already handled above
     
 
     
-    // Allow incremental processing: only block if this is a duplicate initial request
-    if (gAny.__runInProgress.has(scanRunId) && !isIncrementalRequest) {
-      console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already in progress. Skipping duplicate call.`);
-      return new Response(JSON.stringify({
-        comments: [],
-        batchStart: batchStartValue,
-        batchSize: 0,
-        hasMore: false,
-        totalComments: requestBody.comments?.length || 0,
-        summary: { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 }
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    
-    console.log(`[RUN STATUS] scanRunId=${scanRunId}, isIncrementalRequest=${isIncrementalRequest}, runInProgress=${gAny.__runInProgress.has(scanRunId)}`);
-    
-    // Mark run as in progress
-    gAny.__runInProgress.add(scanRunId);
-    console.log(`[RUN STATUS] scanRunId=${scanRunId} marked as in progress`);
+    // Database-based duplicate prevention already handled above
     
     const { 
       comments: inputComments, 
