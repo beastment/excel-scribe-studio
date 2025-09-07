@@ -11,6 +11,17 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
+// Global precise token counter for use in top-level helpers (e.g., adjudicator sizing)
+const getPreciseTokensGlobal = async (text: string, provider: string, model: string): Promise<number> => {
+  try {
+    const { getPreciseTokenCount } = await import('./token-counter.ts');
+    return await getPreciseTokenCount(provider, model, text);
+  } catch (error) {
+    console.warn(`[TOKEN_COUNT] Global fallback to approximation for ${provider}/${model}:`, error);
+    return Math.ceil(text.length / 4);
+  }
+};
+
 // Adjudication deduplication and batching utilities//
 interface AdjudicationBatch {
   comments: any[];
@@ -75,7 +86,7 @@ const calculateAdjudicatorBatchSize = async (
   
   // Estimate tokens for prompt
   const prompt = adjudicatorConfig.prompt || '';
-  const promptTokens = await getPreciseTokens(prompt, adjudicatorConfig.provider, adjudicatorConfig.model);
+  const promptTokens = await getPreciseTokensGlobal(prompt, adjudicatorConfig.provider, adjudicatorConfig.model);
   console.log(`[BATCH_CALC] ${phase}: Prompt tokens: ${prompt.length} chars, precise count: ${promptTokens}`);
   
   const availableTokensForComments = maxInputTokens - promptTokens;
@@ -95,7 +106,7 @@ const calculateAdjudicatorBatchSize = async (
   for (let i = 0; i < comments.length; i++) {
     const comment = comments[i];
     const commentText = comment.originalText || comment.text || '';
-    const commentTokens = await getPreciseTokens(commentText, adjudicatorConfig.provider, adjudicatorConfig.model);
+    const commentTokens = await getPreciseTokensGlobal(commentText, adjudicatorConfig.provider, adjudicatorConfig.model);
     
     if (totalTokens + commentTokens <= availableTokensForComments) {
       totalTokens += commentTokens;
