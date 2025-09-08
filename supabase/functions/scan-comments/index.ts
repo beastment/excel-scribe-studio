@@ -461,6 +461,7 @@ serve(async (req) => {
                            typeof requestBody.batchStart === 'string' ? parseInt(requestBody.batchStart) : 0;
     const isIncrementalRequest = Number.isFinite(batchStartValue) && batchStartValue > 0;
     const checkStatusOnly = Boolean(requestBody.checkStatusOnly);
+    const skipAdjudication = Boolean(requestBody.skipAdjudication);
     // Optional runtime controls to ensure timely partial responses for large datasets
     const requestedMaxBatchesPerRequest = Number.isFinite(requestBody.maxBatchesPerRequest) ? Math.max(1, Math.min(50, Number(requestBody.maxBatchesPerRequest))) : undefined;
     const requestedMaxRunMs = Number.isFinite(requestBody.maxRunMs) ? Math.max(10000, Math.min(110000, Number(requestBody.maxRunMs))) : undefined;
@@ -588,6 +589,7 @@ serve(async (req) => {
       batchStart,
       useCachedAnalysis,
       isDemoScan,
+      skipAdjudication,
       maxBatchesPerRequest: requestedMaxBatchesPerRequest,
       maxRunMs: requestedMaxRunMs
     });
@@ -1478,9 +1480,9 @@ serve(async (req) => {
     }
     
     // Call adjudicator if there are comments that need adjudication and no more batches
-    console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}`);
+    console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}, skip=${skipAdjudication}`);
     
-    if (!hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
+    if (!skipAdjudication && !hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
       // Safety gate: ensure ALL scan-comments calls have finished (no pending logs for this run)
       try {
         const { data: pendingScanLogs, error: pendingErr } = await supabase

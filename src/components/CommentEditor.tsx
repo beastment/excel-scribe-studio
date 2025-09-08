@@ -237,6 +237,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           defaultMode,
           scanRunId,
           isDemoScan: isDemoData,
+          skipAdjudication: true,
           maxBatchesPerRequest: 2,
           maxRunMs: 70000
         }
@@ -271,6 +272,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               isDemoScan: isDemoData,
               batchStart: nextBatchStart,
               useCachedAnalysis: true,
+              skipAdjudication: true,
               maxBatchesPerRequest: 2,
               maxRunMs: 70000
             }
@@ -390,82 +392,54 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       toast.info('Phase 1 complete: Comments scanned and flagged');
       console.log('[PHASE1] Completed initial scanning.');
 
-      // Phase 2: Adjudication (handled by backend). Wait briefly if not completed yet.
-      const adjudicatedCount = (data.comments as any[]).filter((c: any) => c.isAdjudicated).length;
+      // Phase 2: Adjudication (client-orchestrated)
       setScanProgress(60);
-      console.log('[PHASE2] Adjudication phase beginning.');
-      const adjudicationCompleted = Boolean((data as any).adjudicationCompleted);
-      if (adjudicatedCount > 0) {
-        toast.success(`Phase 2 complete: ${adjudicatedCount} disagreements resolved`);
-        console.log(`[PHASE2] Completed with ${adjudicatedCount} resolved.`);
-      } else if (adjudicationCompleted) {
-        toast.info('Phase 2: Adjudication completed with no disagreements to resolve');
-        console.log('[PHASE2] Completed with no disagreements.');
-      } else {
-        toast.info('Phase 2: Waiting for adjudication to complete...');
-        console.log('[PHASE2] Waiting for adjudication to complete...');
-        // Poll for adjudication completion without aborting Phase 3 on transient errors
-        try {
-          let adjudicationDone = Boolean((data as any).adjudicationCompleted);
-          const maxPolls = 40;
-          for (let i = 0; i < maxPolls && !adjudicationDone; i++) {
-            await new Promise(r => setTimeout(r, 1500));
-            try {
-              const { data: statusData } = await supabase.functions.invoke('scan-comments', {
-                body: {
-                  comments,
-                  defaultMode,
-                  scanRunId,
-                  isDemoScan: isDemoData,
-                  useCachedAnalysis: true,
-                  checkStatusOnly: true
-                }
+      console.log('[PHASE2] Client-side adjudication starting...');
+      try {
+        const needsAdj = (data.comments as any[]).filter((c: any) => {
+          const a = c.adjudicationData?.scanAResult || c.scanAResult;
+          const b = c.adjudicationData?.scanBResult || c.scanBResult;
+          if (!a || !b) return false;
+          return Boolean(a.concerning !== b.concerning || a.identifiable !== b.identifiable);
+        });
+        if (needsAdj.length > 0) {
+          const perBatch = 50;
+          for (let i = 0; i < needsAdj.length; i += perBatch) {
+            const batch = needsAdj.slice(i, i + perBatch);
+            const { data: adjData, error: adjErr } = await supabase.functions.invoke('adjudicator', {
+              body: {
+                comments: batch.map((c: any) => ({
+                  id: c.id,
+                  originalText: c.originalText || c.text,
+                  originalRow: c.originalRow,
+                  scannedIndex: c.scannedIndex,
+                  scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                  scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
+                  agreements: c.adjudicationData?.agreements || c.agreements
+                })),
+                adjudicatorConfig: {
+                  provider: 'openai',
+                  model: 'gpt-4o-mini'
+                },
+                scanRunId
+              }
+            });
+            if (adjErr) {
+              console.error('[PHASE2] Adjudicator error:', adjErr);
+              break;
+            }
+            if (adjData?.adjudicatedComments) {
+              const adjMap = new Map(adjData.adjudicatedComments.map((r: any) => [r.id, r]));
+              (data as any).comments = (data.comments as any[]).map((c: any) => {
+                const r = adjMap.get(c.id);
+                return r ? { ...c, concerning: r.concerning, identifiable: r.identifiable, isAdjudicated: true, aiReasoning: r.reasoning || c.aiReasoning } : c;
               });
-              if (statusData && (statusData.adjudicationCompleted || (Array.isArray(statusData.comments) && statusData.comments.some((c: any) => c.isAdjudicated)))) {
-                (data as any).adjudicationCompleted = Boolean(statusData.adjudicationCompleted);
-                adjudicationDone = true;
-                // Fetch full adjudicated comments (status-only returns empty comments)
-                try {
-                  const { data: fullAfterAdj } = await supabase.functions.invoke('scan-comments', {
-                    body: {
-                      comments,
-                      defaultMode,
-                      scanRunId,
-                      isDemoScan: isDemoData,
-                      useCachedAnalysis: true
-                    }
-                  });
-                  if (fullAfterAdj && Array.isArray(fullAfterAdj.comments) && fullAfterAdj.comments.length >= (data.comments?.length || 0)) {
-                    (data as any).comments = fullAfterAdj.comments;
-                  }
-                } catch {
-                  // ignore
-                }
-                break;
-              }
-              // Nudge backend to resume adjudication if deferred and near the end of polling
-              if (i === maxPolls - 1) {
-                try {
-                  await supabase.functions.invoke('scan-comments', {
-                    body: {
-                      comments,
-                      defaultMode,
-                      scanRunId,
-                      isDemoScan: isDemoData,
-                      useCachedAnalysis: true
-                    }
-                  });
-                } catch {
-                  // ignore
-                }
-              }
-            } catch {
-              // transient status error: continue polling
             }
           }
-        } catch {
-          // never abort Phase 3 due to polling errors
         }
+        console.log('[PHASE2] Client-side adjudication completed.');
+      } catch (adjEx) {
+        console.warn('[PHASE2] Client-side adjudication skipped due to error:', adjEx);
       }
 
       // Phase 3: Post-process flagged comments
