@@ -427,7 +427,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   if (fullAfterAdj && Array.isArray(fullAfterAdj.comments) && fullAfterAdj.comments.length >= (data.comments?.length || 0)) {
                     (data as any).comments = fullAfterAdj.comments;
                   }
-                } catch (/* ignore */) {}
+                } catch {
+                  // ignore
+                }
                 break;
               }
               // Nudge backend to resume adjudication if deferred and near the end of polling
@@ -442,11 +444,17 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                       useCachedAnalysis: true
                     }
                   });
-                } catch (/* ignore */) {}
+                } catch {
+                  // ignore
+                }
               }
-            } catch (/* transient status error: continue polling */) {}
+            } catch {
+              // transient status error: continue polling
+            }
           }
-        } catch (/* never abort Phase 3 due to polling errors */) {}
+        } catch {
+          // never abort Phase 3 due to polling errors
+        }
       }
 
       // Phase 3: Post-process flagged comments
