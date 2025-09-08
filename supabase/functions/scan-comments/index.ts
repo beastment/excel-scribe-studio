@@ -424,6 +424,9 @@ serve(async (req) => {
                            typeof requestBody.batchStart === 'string' ? parseInt(requestBody.batchStart) : 0;
     const isIncrementalRequest = Number.isFinite(batchStartValue) && batchStartValue > 0;
     const checkStatusOnly = Boolean(requestBody.checkStatusOnly);
+    // Optional runtime controls to ensure timely partial responses for large datasets
+    const requestedMaxBatchesPerRequest = Number.isFinite(requestBody.maxBatchesPerRequest) ? Math.max(1, Math.min(50, Number(requestBody.maxBatchesPerRequest))) : undefined;
+    const requestedMaxRunMs = Number.isFinite(requestBody.maxRunMs) ? Math.max(10000, Math.min(110000, Number(requestBody.maxRunMs))) : undefined;
 
     // Fast-path: status-only polling should not re-run scans
     if (checkStatusOnly) {
@@ -547,7 +550,9 @@ serve(async (req) => {
       defaultMode,
       batchStart,
       useCachedAnalysis,
-      isDemoScan
+      isDemoScan,
+      maxBatchesPerRequest: requestedMaxBatchesPerRequest,
+      maxRunMs: requestedMaxRunMs
     });
 
     console.log(`[REQUEST_DETAILS] phase=${useCachedAnalysis ? 'followup' : 'initial'} cached=${useCachedAnalysis} comments=${inputComments?.length} batchStart=${batchStart}`);
@@ -1073,8 +1078,8 @@ serve(async (req) => {
     
     // Process comments in smaller chunks to avoid gateway timeout
     // Reduce batch limits to prevent edge function timeout
-    const MAX_BATCHES_PER_REQUEST = 10; // Process up to 10 batches per invocation to stay under edge timeout
-    const MAX_EXECUTION_TIME = 120 * 1000; // Fixed 120 second limit for safety
+    const MAX_BATCHES_PER_REQUEST = requestedMaxBatchesPerRequest ?? 5; // Tunable; default conservative
+    const MAX_EXECUTION_TIME = requestedMaxRunMs ?? 100 * 1000; // Tunable; default conservative 100s
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     

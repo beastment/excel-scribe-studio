@@ -235,7 +235,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           comments,
           defaultMode,
           scanRunId,
-          isDemoScan: isDemoData
+          isDemoScan: isDemoData,
+          maxBatchesPerRequest: 5,
+          maxRunMs: 100000
         }
       });
 
@@ -266,7 +268,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               scanRunId,
               isDemoScan: isDemoData,
               batchStart: nextBatchStart,
-              useCachedAnalysis: true
+              useCachedAnalysis: true,
+              maxBatchesPerRequest: 5,
+              maxRunMs: 100000
             }
           });
 
