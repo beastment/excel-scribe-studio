@@ -331,7 +331,7 @@ serve(async (req) => {
               concerning: agreements.concerning !== null ? agreements.concerning : c.scanAResult.concerning,
               identifiable: agreements.identifiable !== null ? agreements.identifiable : c.scanAResult.identifiable,
               reasoning: 'No adjudication needed - scanners agreed',
-              model: `${adjudicatorConfig.provider}/${adjudicatorConfig.model}`
+              model: `${adjudicatorConfig?.provider || 'auto'}/${adjudicatorConfig?.model || 'auto'}`
             };
           }),
           summary: {
@@ -348,17 +348,9 @@ serve(async (req) => {
 
     try {
 
-      // Fetch limits from model_configurations and temperature from Dashboard AI Config
-      const { data: modelCfg, error: modelCfgError } = await supabase
-        .from('model_configurations')
-        .select('*')
-        .eq('provider', adjudicatorConfig.provider)
-        .eq('model', adjudicatorConfig.model)
-        .single();
-
       // Fetch adjudicator AI config rows and match in code to handle case/format drift
-      const normalizedProvider = String(adjudicatorConfig.provider || '').trim().toLowerCase();
-      const normalizedModel = String(adjudicatorConfig.model || '').trim().toLowerCase();
+      const normalizedProvider = String(adjudicatorConfig?.provider || '').trim().toLowerCase();
+      const normalizedModel = String(adjudicatorConfig?.model || '').trim().toLowerCase();
       const { data: aiCfgRows } = await supabase
         .from('ai_configurations')
         .select('temperature, tokens_per_comment, analysis_prompt, provider, model, updated_at')
@@ -370,20 +362,13 @@ serve(async (req) => {
         : undefined;
       if (!aiCfg) {
         const available = Array.isArray(aiCfgRows) ? aiCfgRows.map(r => `${r.provider}/${r.model}`) : [];
-        console.warn(`${logPrefix} [ADJUDICATOR] No exact adjudicator AI config match for ${adjudicatorConfig.provider}/${adjudicatorConfig.model}. Available adjudicator configs:`, available);
+        console.warn(`${logPrefix} [ADJUDICATOR] No exact adjudicator AI config match for ${adjudicatorConfig?.provider || 'n/a'}/${adjudicatorConfig?.model || 'n/a'}. Available adjudicator configs:`, available);
       }
-
-      let actualMaxTokens = adjudicatorConfig.max_tokens || 4096;
-      if (modelCfgError) {
-        console.warn(`${logPrefix} [ADJUDICATOR] Warning: Could not fetch model_configurations, using provided max_tokens:`, modelCfgError.message);
-      } else {
-        actualMaxTokens = modelCfg?.output_token_limit || adjudicatorConfig.max_tokens || 4096;
-        console.log(`${logPrefix} [ADJUDICATOR] Using max_tokens from model_configurations: ${actualMaxTokens}`);
-      }
+      let actualMaxTokens = 4096;
 
       const effectiveTemperature = (aiCfg && aiCfg.temperature !== null && aiCfg.temperature !== undefined)
         ? aiCfg.temperature
-        : (modelCfg?.temperature ?? 0);
+        : 0;
 
       const tokensPerComment = aiCfg?.tokens_per_comment || 13;
       console.log(`${logPrefix} [ADJUDICATOR] Using tokens_per_comment: ${tokensPerComment}`);

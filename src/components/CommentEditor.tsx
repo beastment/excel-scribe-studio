@@ -771,25 +771,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 processed = processedByScannedIndex.get(sidx);
               }
               if (processed) {
-                console.log(`[POSTPROCESS] Raw processed comment:`, {
-                  id: processed.id,
-                  mode: processed.mode,
-                  finalText: processed.finalText,
-                  redactedText: processed.redactedText,
-                  rephrasedText: processed.rephrasedText,
-                  hasRedacted: !!processed.redactedText,
-                  hasRephrased: !!processed.rephrasedText,
-                  redactedTextPreview: processed.redactedText?.substring(0, 50),
-                  rephrasedTextPreview: processed.rephrasedText?.substring(0, 50),
-                  finalTextPreview: processed.finalText?.substring(0, 50)
-                });
                 
                 // Determine the final text based on the backend finalText first, then fallback logic
                 let finalText = comment.text; // Default to existing text
                 let finalMode = processed.mode || defaultMode; // Use backend mode if available, otherwise use default mode
-                
-                console.log(`[MODE] Comment ${comment.id} - identifiable: ${comment.identifiable}, concerning: ${comment.concerning}, defaultMode: ${defaultMode}, processed mode: ${processed.mode}`);
-                console.log(`[MODE] Comment ${comment.id} - has redactedText: ${!!processed.redactedText}, has rephrasedText: ${!!processed.rephrasedText}`);
                 
                 // Prefer computed redacted/rephrased based on policy; fall back to backend finalText last
                 if (comment.identifiable) {
@@ -813,11 +798,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     console.log(`[MODE] Fallback to backend finalText for comment ${comment.id}`);
                   }
                 }
-                
-                 console.log(`[MODE] Final result for comment ${comment.id}: mode=${finalMode}, textLength=${finalText.length}`);
-                 console.log(`[UPDATE] Setting comment.text to:`, finalText?.substring(0, 100));
-                 console.log(`[UPDATE] Comment ${comment.id} - identifiable: ${comment.identifiable}, defaultMode: ${defaultMode}, finalMode: ${finalMode}, isRedacted: ${finalText !== comment.originalText && finalText === processed.redactedText}, isRephrased: ${finalText !== comment.originalText && finalText === processed.rephrasedText}`);
-                 
                  const result = {
                    ...comment,
                    text: finalText,
@@ -827,19 +807,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                    needsPostProcessing: false, // Mark as processed
                    isPostProcessed: true // Add flag to prevent re-processing
                  };
-                 
-                 console.log(`[POSTPROCESS] Final result for comment ${comment.id}:`, {
-                   identifiable: comment.identifiable,
-                   concerning: comment.concerning,
-                   defaultMode,
-                   finalMode,
-                   originalText: comment.text?.substring(0, 50),
-                   finalText: finalText?.substring(0, 50),
-                   redactedText: processed.redactedText?.substring(0, 50),
-                   rephrasedText: processed.rephrasedText?.substring(0, 50),
-                   isRedacted: finalText !== comment.text && finalText === processed.redactedText,
-                   isRephrased: finalText !== comment.text && finalText === processed.rephrasedText
-                 });
                  
                  return result;
               }
