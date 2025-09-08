@@ -135,28 +135,34 @@ export class AILogger {
           .eq('id', targetId);
         updateError = updateErr;
       } else {
-        // Fallback: attempt a best-effort update using the broader filter
-        const baseQuery = this.supabase
+        // Fallback: best-effort update; target the oldest pending row to clear FIFO
+        const { data: fallbackRows } = await this.supabase
           .from('ai_logs')
-          .update({
-            response_text: responseText,
-            response_tokens: tokenCounts.outputTokens,
-            response_status: responseStatus,
-            response_error: responseError,
-            processing_time_ms: processingTimeMs,
-            time_finished: new Date().toISOString(),
-            total_run_time_ms: calculatedTotalRunTimeMs
-          })
+          .select('id')
           .eq('user_id', userId)
           .eq('function_name', functionName)
+          .eq('request_type', requestType)
           .eq('phase', phase)
-          .eq('response_status', 'pending');
+          .eq('response_status', 'pending')
+          .order('time_started', { ascending: true })
+          .limit(1);
 
-        const finalQuery = scanRunId
-          ? baseQuery.eq('scan_run_id', scanRunId)
-          : baseQuery.is('scan_run_id', null);
-        const { error: updateErr } = await finalQuery;
-        updateError = updateErr;
+        if (fallbackRows && fallbackRows.length > 0) {
+          const targetId = fallbackRows[0].id;
+          const { error: updateErr } = await this.supabase
+            .from('ai_logs')
+            .update({
+              response_text: responseText,
+              response_tokens: tokenCounts.outputTokens,
+              response_status: responseStatus,
+              response_error: responseError,
+              processing_time_ms: processingTimeMs,
+              time_finished: new Date().toISOString(),
+              total_run_time_ms: calculatedTotalRunTimeMs
+            })
+            .eq('id', targetId);
+          updateError = updateErr;
+        }
       }
         
       if (updateError) {
