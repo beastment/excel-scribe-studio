@@ -407,7 +407,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         // Poll for adjudication completion without aborting Phase 3 on transient errors
         try {
           let adjudicationDone = Boolean((data as any).adjudicationCompleted);
-          const maxPolls = 30;
+          const maxPolls = 40;
           for (let i = 0; i < maxPolls && !adjudicationDone; i++) {
             await new Promise(r => setTimeout(r, 1500));
             try {

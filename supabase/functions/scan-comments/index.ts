@@ -217,6 +217,7 @@ const processAdjudicationBatches = async (
   
   console.log(`[ADJUDICATION] Processing ${commentsToAdjudicate.length} comments in ${batches.length} batches`);
   
+  let processedBatches = 0;
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
     const { comments, batchKey } = batch;
@@ -293,7 +294,8 @@ const processAdjudicationBatches = async (
             provider: adjudicatorConfig.provider,
             model: adjudicatorConfig.model,
             prompt: adjudicatorConfig.prompt,
-            max_tokens: adjudicatorConfig.max_tokens
+            max_tokens: adjudicatorConfig.max_tokens,
+            maxBatchesPerRequest: 1
           },
           scanRunId: scanRunId,
           batchIndex: batchIndex,
@@ -334,6 +336,16 @@ const processAdjudicationBatches = async (
         await aiLogger.logResponse(user.id, scanRunId, 'adjudicator', adjudicatorConfig.provider, adjudicatorConfig.model, 'adjudication', 'adjudication', '[BATCH SUCCESS]', undefined);
       } catch (persistErr) {
         console.warn(`[ADJUDICATION] Failed to persist success marker:`, persistErr);
+      }
+
+      processedBatches++;
+      // Stop early if caller wants to split adjudication across invocations
+      if (Number.isFinite((adjudicatorConfig as any)?.maxBatchesPerRequest) && (adjudicatorConfig as any).maxBatchesPerRequest > 0) {
+        const cap = (adjudicatorConfig as any).maxBatchesPerRequest as number;
+        if (processedBatches >= cap) {
+          console.log(`[ADJUDICATION] Reached adjudicator maxBatchesPerRequest=${cap}, stopping adjudication for this invocation`);
+          break;
+        }
       }
       
       // Add results to the collection
