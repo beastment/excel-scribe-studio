@@ -320,15 +320,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       // Debug scan results
       if (data?.comments) {
         console.log(`[DEBUG] Scan results - ${data.comments.length} comments:`);
-        data.comments.forEach((comment: any, index: number) => {
-          console.log(`[DEBUG] Comment ${index + 1}:`, {
-            id: comment.id,
-            concerning: comment.concerning,
-            identifiable: comment.identifiable,
-            needsAdjudication: comment.needsAdjudication,
-            mode: comment.mode
-          });
-        });
       }
 
       // Check for insufficient credits in the response data

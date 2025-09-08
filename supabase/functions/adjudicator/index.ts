@@ -393,9 +393,9 @@ Constraints:
 
       let promptSource = 'request';
       let prompt: string = '';
-      let modelSource = 'request';
-      let effectiveProvider = adjudicatorConfig.provider;
-      let effectiveModel = adjudicatorConfig.model;
+      let modelSource = 'ai_config_exact_match';
+      let effectiveProvider: string | undefined = undefined;
+      let effectiveModel: string | undefined = undefined;
       let fallbackAdjRow: { analysis_prompt?: string; provider?: string; model?: string } | null = null;
       if (typeof adjudicatorConfig.prompt === 'string' && adjudicatorConfig.prompt.length > 0) {
         prompt = adjudicatorConfig.prompt;
@@ -403,11 +403,9 @@ Constraints:
       } else if (typeof aiCfg?.analysis_prompt === 'string' && aiCfg.analysis_prompt.length > 0) {
         prompt = aiCfg.analysis_prompt;
         promptSource = 'ai_config_exact_match';
-        if (aiCfg.provider && aiCfg.model) {
-          effectiveProvider = aiCfg.provider as string;
-          effectiveModel = aiCfg.model as string;
-          modelSource = 'ai_config_exact_match';
-        }
+        effectiveProvider = String(aiCfg.provider || '');
+        effectiveModel = String(aiCfg.model || '');
+        modelSource = 'ai_config_exact_match';
       } else {
         try {
           const { data: anyAdjCfg } = await supabase
@@ -420,11 +418,9 @@ Constraints:
             prompt = anyAdjCfg[0].analysis_prompt as string;
             promptSource = 'ai_config_fallback_any';
             fallbackAdjRow = anyAdjCfg[0] as typeof fallbackAdjRow;
-            if (fallbackAdjRow?.provider && fallbackAdjRow?.model) {
-              effectiveProvider = fallbackAdjRow.provider as string;
-              effectiveModel = fallbackAdjRow.model as string;
-              modelSource = 'ai_config_fallback_any';
-            }
+            effectiveProvider = String(fallbackAdjRow?.provider || '');
+            effectiveModel = String(fallbackAdjRow?.model || '');
+            modelSource = 'ai_config_fallback_any';
           }
         } catch (_e) {
           // ignore and use defaultPrompt below
@@ -433,16 +429,31 @@ Constraints:
       if (prompt.length === 0) {
         prompt = defaultPrompt;
         promptSource = 'default_prompt';
+        // As a last resort, derive effective provider/model from the most recent adjudicator config
+        if (!effectiveProvider || !effectiveModel) {
+          try {
+            const { data: latestAdj } = await supabase
+              .from('ai_configurations')
+              .select('provider, model')
+              .eq('scanner_type', 'adjudicator')
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            if (Array.isArray(latestAdj) && latestAdj.length > 0) {
+              effectiveProvider = String(latestAdj[0].provider || '');
+              effectiveModel = String(latestAdj[0].model || '');
+              modelSource = 'ai_config_fallback_any';
+            }
+          } catch (_e2) {
+            // ignore
+          }
+        }
       }
       console.log(`${logPrefix} [ADJUDICATOR] Using prompt source: ${promptSource} (length=${prompt.length})`);
-      console.log(`${logPrefix} [ADJUDICATOR] Using provider/model: ${effectiveProvider}/${effectiveModel} (source=${modelSource})`);
+      console.log(`${logPrefix} [ADJUDICATOR] Using provider/model: ${effectiveProvider || '(unspecified)'}/${effectiveModel || '(unspecified)'} (source=${modelSource})`);
 
       // If effective model differs from request, refresh model configuration
       let modelCfgEff = modelCfg;
-      if (
-        String(effectiveProvider || '').trim().toLowerCase() !== String(adjudicatorConfig.provider || '').trim().toLowerCase() ||
-        String(effectiveModel || '').trim().toLowerCase() !== String(adjudicatorConfig.model || '').trim().toLowerCase()
-      ) {
+      if (effectiveProvider && effectiveModel) {
         const { data: modelCfg2, error: modelCfg2Error } = await supabase
           .from('model_configurations')
           .select('*')
@@ -464,10 +475,10 @@ Constraints:
 
       const input = buildAdjudicationInput(needsAdjudication);
 
-      console.log(`${logPrefix} [AI REQUEST] ${effectiveProvider}/${effectiveModel} type=adjudication`);
+      console.log(`${logPrefix} [AI REQUEST] ${effectiveProvider || '(unspecified)'}/${effectiveModel || '(unspecified)'} type=adjudication`);
       console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
-        provider: effectiveProvider,
-        model: effectiveModel,
+        provider: effectiveProvider || '(unspecified)',
+        model: effectiveModel || '(unspecified)',
         prompt_length: prompt.length,
         input_length: input.length,
         comment_count: needsAdjudication.length
@@ -545,8 +556,8 @@ Constraints:
         
         // Call AI for this batch
         const rawResponse = await callAI(
-          effectiveProvider,
-          effectiveModel,
+          effectiveProvider || '',
+          effectiveModel || '',
           prompt,
           batchInput,
           actualMaxTokens,
@@ -556,7 +567,7 @@ Constraints:
           effectiveTemperature
         );
 
-        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] AI RESPONSE ${effectiveProvider}/${effectiveModel} type=adjudication`);
+        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] AI RESPONSE ${effectiveProvider || '(unspecified)'}/${effectiveModel || '(unspecified)'} type=adjudication`);
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] rawResponse=${JSON.stringify(rawResponse).substring(0, 500)}...`);
         
         // Parse the batch response
