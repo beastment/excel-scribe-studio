@@ -1447,7 +1447,7 @@ serve(async (req) => {
       }
     }
     
-    // Call adjudicator if there are comments that need adjudication and no more batches
+    // Call adjudicator if there are comments that need adjudication and no more batches//
     console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}, skip=${skipAdjudication}`);
     
     if (!skipAdjudication && !hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
