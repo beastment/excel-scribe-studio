@@ -248,7 +248,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         
         console.log(`[BATCH_CLIENT] Starting batch aggregation: accumulated=${accumulated.length}, nextStart=${nextBatchStart}, expectedTotal=${expectedTotal}`);
         
-        while (data.hasMore && loops < 10 && accumulated.length < expectedTotal) {
+        // Continue requesting until server reports no more or we reach the expected total
+        // Use a generous cap to avoid premature stop on large datasets
+        const MAX_FOLLOWUPS = 200;
+        while (data.hasMore && loops < MAX_FOLLOWUPS && accumulated.length < expectedTotal) {
           console.log(`[BATCH_CLIENT] Loop ${loops + 1}: requesting batch starting at ${nextBatchStart}`);
           if (requestedBatchesRef.current.has(nextBatchStart)) {
             console.warn(`[BATCH_CLIENT] Suppressing duplicate request for batchStart=${nextBatchStart}`);

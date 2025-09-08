@@ -229,11 +229,11 @@ const processAdjudicationBatches = async (
     }
     
     // Check for duplicate batch in database (previous executions)
-    // NOTE: Disabled skip due to false positives across different batches. We rely on in-memory keys per run.
+    // Proceed even if duplicate-like; rely on in-memory keys per run to avoid true re-submission
     try {
       const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, comments);
       if (isDuplicate) {
-        console.log(`[ADJUDICATION] Duplicate-like log found for batch ${batchIndex + 1}, but proceeding to ensure all batches are processed`);
+        console.log(`[ADJUDICATION] Duplicate-like entry found for batch ${batchIndex + 1}, proceeding to ensure all batches are processed`);
       }
     } catch (dupErr) {
       console.warn(`[ADJUDICATION] Duplicate check failed (non-fatal):`, dupErr);
@@ -323,9 +323,16 @@ const processAdjudicationBatches = async (
         console.warn(`[ADJUDICATION][RATE_LIMIT] Failed to record usage:`, recErr);
       }
       
-      // Mark this batch as completed to prevent duplicates
+      // Mark this batch as completed to prevent duplicates in this execution
       completedBatchKeys.add(batchKeyForRun);
       console.log(`[ADJUDICATION] Marked batch ${batchIndex + 1} (key: ${batchKeyForRun}) as completed`);
+
+      // Persist a success marker row to ai_logs to help cross-invocation dedupe
+      try {
+        await aiLogger.logResponse(user.id, scanRunId, 'adjudicator', adjudicatorConfig.provider, adjudicatorConfig.model, 'adjudication', 'adjudication', '[BATCH SUCCESS]', undefined);
+      } catch (persistErr) {
+        console.warn(`[ADJUDICATION] Failed to persist success marker:`, persistErr);
+      }
       
       // Add results to the collection
       if (adjudicationResponse.data?.adjudicatedComments) {
