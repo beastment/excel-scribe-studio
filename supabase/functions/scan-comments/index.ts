@@ -419,17 +419,8 @@ serve(async (req) => {
     gAny.__analysisStarted = gAny.__analysisStarted || new Set<string>();
     gAny.__adjudicationBatchesCompleted = gAny.__adjudicationBatchesCompleted || new Set<string>();
     
-    // Prefix all logs for this request with the run id.
-    const __root = globalThis as any;
-    if (!__root.__baseLog) {
-      __root.__baseLog = console.log;
-      __root.__baseWarn = console.warn;
-      __root.__baseError = console.error;
-    }
-    console.log = (...args: any[]) => __root.__baseLog(`[RUN ${scanRunId}]`, ...args);
-    console.warn = (...args: any[]) => __root.__baseWarn(`[RUN ${scanRunId}]`, ...args);
-    console.error = (...args: any[]) => __root.__baseError(`[RUN ${scanRunId}]`, ...args);
-    
+    // Log run id context
+    console.log(`[RUN ${scanRunId}] Request started`);
     console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
 
     // Allow incremental processing: only block duplicate initial requests (batchStart=0)
@@ -1659,18 +1650,6 @@ serve(async (req) => {
     gAny.__runInProgress.delete(scanRunId);
     console.log(`[RUN STATUS] scanRunId=${scanRunId} removed from in progress`);
 
-    // Restore console methods before returning
-    try {
-      const __root: any = globalThis as any;
-      if (__root.__baseLog && __root.__baseWarn && __root.__baseError) {
-        console.log = __root.__baseLog;
-        console.warn = __root.__baseWarn;
-        console.error = __root.__baseError;
-      }
-    } catch (e) {
-      console.warn('Failed to restore console methods:', e);
-    }
-
         console.log('Returning successful response with CORS headers:', corsHeaders);
         return new Response(JSON.stringify(response), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -1697,18 +1676,6 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in scan-comments function:', error);
     
-    // Restore console methods before returning error
-    try {
-      const __root: any = globalThis as any;
-      if (__root.__baseLog && __root.__baseWarn && __root.__baseError) {
-        console.log = __root.__baseLog;
-        console.warn = __root.__baseWarn;
-        console.error = __root.__baseError;
-      }
-    } catch (e) {
-      console.warn('Failed to restore console methods:', e);
-    }
-
     console.log('Returning error response with CORS headers:', corsHeaders);
     return new Response(JSON.stringify({ 
       error: `Error in scan-comments function: ${error.message}` 
