@@ -362,7 +362,9 @@ serve(async (req) => {
   console.log('Edge function called with method:', req.method);
   
   // Build CORS headers for this request
-  const corsHeaders = buildCorsHeaders(req.headers.get('origin'));
+  const origin = req.headers.get('origin');
+  const corsHeaders = buildCorsHeaders(origin);
+  console.log('[CORS] Origin:', origin);
 
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {

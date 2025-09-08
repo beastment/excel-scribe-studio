@@ -230,14 +230,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         toast.info('Phase 1: Scanning comments for concerning/identifiable content...');
       }
       
+      console.log('[SCAN] Starting initial scan-comments call...');
       const { data, error } = await supabase.functions.invoke('scan-comments', {
         body: {
           comments,
           defaultMode,
           scanRunId,
           isDemoScan: isDemoData,
-          maxBatchesPerRequest: 5,
-          maxRunMs: 100000
+          maxBatchesPerRequest: 3,
+          maxRunMs: 80000
         }
       });
 
@@ -261,6 +262,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           }
           requestedBatchesRef.current.add(nextBatchStart);
           
+          console.log(`[SCAN] Requesting follow-up batch at start=${nextBatchStart}...`);
           const { data: nextData, error: nextError } = await supabase.functions.invoke('scan-comments', {
             body: {
               comments,
@@ -269,8 +271,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               isDemoScan: isDemoData,
               batchStart: nextBatchStart,
               useCachedAnalysis: true,
-              maxBatchesPerRequest: 5,
-              maxRunMs: 100000
+              maxBatchesPerRequest: 3,
+              maxRunMs: 80000
             }
           });
 

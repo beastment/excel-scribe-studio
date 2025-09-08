@@ -672,7 +672,9 @@ interface PostProcessResponse {
 }
 
 serve(async (req) => {
-  const corsHeaders = buildCorsHeaders(req.headers.get('origin'));
+  const origin = req.headers.get('origin');
+  const corsHeaders = buildCorsHeaders(origin);
+  console.log('[CORS] Origin:', origin);
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
