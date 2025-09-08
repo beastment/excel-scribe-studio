@@ -393,53 +393,60 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         toast.info('Phase 2: Adjudication completed with no disagreements to resolve');
       } else {
         toast.info('Phase 2: Waiting for adjudication to complete...');
-        // Poll for adjudication completion without re-running scans
-        // Increase wait window and, upon completion, fetch full comments via a non-status cached call
-        let adjudicationDone = Boolean((data as any).adjudicationCompleted);
-        const maxPolls = 30;
-        for (let i = 0; i < maxPolls && !adjudicationDone; i++) {
-          await new Promise(r => setTimeout(r, 1500));
-          const { data: statusData } = await supabase.functions.invoke('scan-comments', {
-            body: {
-              comments,
-              defaultMode,
-              scanRunId,
-              isDemoScan: isDemoData,
-              useCachedAnalysis: true,
-              checkStatusOnly: true
-            }
-          });
-          if (statusData && (statusData.adjudicationCompleted || (Array.isArray(statusData.comments) && statusData.comments.some((c: any) => c.isAdjudicated)))) {
-            (data as any).adjudicationCompleted = Boolean(statusData.adjudicationCompleted);
-            adjudicationDone = true;
-            // Fetch full adjudicated comments (status-only returns empty comments)
-            const { data: fullAfterAdj } = await supabase.functions.invoke('scan-comments', {
-              body: {
-                comments,
-                defaultMode,
-                scanRunId,
-                isDemoScan: isDemoData,
-                useCachedAnalysis: true
+        // Poll for adjudication completion without aborting Phase 3 on transient errors
+        try {
+          let adjudicationDone = Boolean((data as any).adjudicationCompleted);
+          const maxPolls = 30;
+          for (let i = 0; i < maxPolls && !adjudicationDone; i++) {
+            await new Promise(r => setTimeout(r, 1500));
+            try {
+              const { data: statusData } = await supabase.functions.invoke('scan-comments', {
+                body: {
+                  comments,
+                  defaultMode,
+                  scanRunId,
+                  isDemoScan: isDemoData,
+                  useCachedAnalysis: true,
+                  checkStatusOnly: true
+                }
+              });
+              if (statusData && (statusData.adjudicationCompleted || (Array.isArray(statusData.comments) && statusData.comments.some((c: any) => c.isAdjudicated)))) {
+                (data as any).adjudicationCompleted = Boolean(statusData.adjudicationCompleted);
+                adjudicationDone = true;
+                // Fetch full adjudicated comments (status-only returns empty comments)
+                try {
+                  const { data: fullAfterAdj } = await supabase.functions.invoke('scan-comments', {
+                    body: {
+                      comments,
+                      defaultMode,
+                      scanRunId,
+                      isDemoScan: isDemoData,
+                      useCachedAnalysis: true
+                    }
+                  });
+                  if (fullAfterAdj && Array.isArray(fullAfterAdj.comments) && fullAfterAdj.comments.length >= (data.comments?.length || 0)) {
+                    (data as any).comments = fullAfterAdj.comments;
+                  }
+                } catch (/* ignore */) {}
+                break;
               }
-            });
-            if (fullAfterAdj && Array.isArray(fullAfterAdj.comments) && fullAfterAdj.comments.length >= (data.comments?.length || 0)) {
-              (data as any).comments = fullAfterAdj.comments;
-            }
-            break;
-          }
-          // Nudge backend to resume adjudication if deferred and near the end of polling
-          if (i === maxPolls - 1) {
-            await supabase.functions.invoke('scan-comments', {
-              body: {
-                comments,
-                defaultMode,
-                scanRunId,
-                isDemoScan: isDemoData,
-                useCachedAnalysis: true
+              // Nudge backend to resume adjudication if deferred and near the end of polling
+              if (i === maxPolls - 1) {
+                try {
+                  await supabase.functions.invoke('scan-comments', {
+                    body: {
+                      comments,
+                      defaultMode,
+                      scanRunId,
+                      isDemoScan: isDemoData,
+                      useCachedAnalysis: true
+                    }
+                  });
+                } catch (/* ignore */) {}
               }
-            });
+            } catch (/* transient status error: continue polling */) {}
           }
-        }
+        } catch (/* never abort Phase 3 due to polling errors */) {}
       }
 
       // Phase 3: Post-process flagged comments
@@ -506,6 +513,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           routeB: commentsForB.length
         });
         // 1) Run Redaction for Scan A and Scan B in parallel (route-specific)
+        // Call post-process in parallel, but ensure we don't abort Phase 3 if one rejects
         const [ppRedactA, ppRedactB] = await Promise.allSettled([
           supabase.functions.invoke('post-process-comments', {
             body: {
