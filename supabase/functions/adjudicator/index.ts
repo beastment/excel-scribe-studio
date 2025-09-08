@@ -378,7 +378,7 @@ serve(async (req) => {
       const tokensPerComment = aiCfg?.tokens_per_comment || 13;
       console.log(`${logPrefix} [ADJUDICATOR] Using tokens_per_comment: ${tokensPerComment}`);
 
-      // Resolve prompt: prefer request value, fallback to DB configured analysis_prompt, else use safe default
+      // Resolve prompt: prefer request value, fallback to exact DB row, else fallback to any adjudicator config, else use safe default
       const defaultPrompt = `You are an adjudicator that resolves disagreements between two prior AI scans (AI1 and AI2) of user comments. For each item between <<<ITEM X>>> and <<<END X>>>:
 Return ONLY the following simple key-value lines, one item after another, no extra text or explanations:
 
@@ -396,11 +396,35 @@ Constraints:
 - Output exactly three lines per item in order i, A, B.
 - Ensure an output block exists for every input item.`;
 
-      const prompt = (typeof adjudicatorConfig.prompt === 'string' && adjudicatorConfig.prompt.length > 0)
-        ? adjudicatorConfig.prompt
-        : (typeof aiCfg?.analysis_prompt === 'string' && aiCfg.analysis_prompt.length > 0)
-          ? aiCfg.analysis_prompt
-          : defaultPrompt;
+      let promptSource = 'request';
+      let prompt: string = '';
+      if (typeof adjudicatorConfig.prompt === 'string' && adjudicatorConfig.prompt.length > 0) {
+        prompt = adjudicatorConfig.prompt;
+        promptSource = 'request';
+      } else if (typeof aiCfg?.analysis_prompt === 'string' && aiCfg.analysis_prompt.length > 0) {
+        prompt = aiCfg.analysis_prompt;
+        promptSource = 'ai_config_exact_match';
+      } else {
+        try {
+          const { data: anyAdjCfg } = await supabase
+            .from('ai_configurations')
+            .select('analysis_prompt, provider, model')
+            .eq('scanner_type', 'adjudicator')
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          if (Array.isArray(anyAdjCfg) && anyAdjCfg.length > 0 && typeof anyAdjCfg[0].analysis_prompt === 'string' && anyAdjCfg[0].analysis_prompt.length > 0) {
+            prompt = anyAdjCfg[0].analysis_prompt as string;
+            promptSource = 'ai_config_fallback_any';
+          }
+        } catch (_e) {
+          // ignore and use defaultPrompt below
+        }
+      }
+      if (prompt.length === 0) {
+        prompt = defaultPrompt;
+        promptSource = 'default_prompt';
+      }
+      console.log(`${logPrefix} [ADJUDICATOR] Using prompt source: ${promptSource} (length=${prompt.length})`);
 
       const input = buildAdjudicationInput(needsAdjudication);
 
