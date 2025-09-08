@@ -417,10 +417,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
                   agreements: c.adjudicationData?.agreements || c.agreements
                 })),
-                adjudicatorConfig: {
-                  provider: 'openai',
-                  model: 'gpt-4o-mini'
-                },
                 scanRunId
               }
             });
@@ -1640,17 +1636,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                              if (comment.mode === 'revert') {
                                displayText = comment.originalText;
                              }
-                             
-                             console.log(`[DISPLAY] Comment ${comment.id}:`, {
-                               mode: comment.mode,
-                               displayText: displayText?.substring(0, 100),
-                               text: comment.text?.substring(0, 100),
-                               originalText: comment.originalText?.substring(0, 100),
-                               redactedText: comment.redactedText?.substring(0, 100),
-                               rephrasedText: comment.rephrasedText?.substring(0, 100),
-                               hasScanRun,
-                               identifiable: comment.identifiable
-                             });
                              
                              return displayText;
                            })()}

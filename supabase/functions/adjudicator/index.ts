@@ -355,13 +355,22 @@ serve(async (req) => {
         .eq('model', adjudicatorConfig.model)
         .single();
 
-      const { data: aiCfg, error: aiCfgError } = await supabase
+      // Fetch adjudicator AI config rows and match in code to handle case/format drift
+      const normalizedProvider = String(adjudicatorConfig.provider || '').trim().toLowerCase();
+      const normalizedModel = String(adjudicatorConfig.model || '').trim().toLowerCase();
+      const { data: aiCfgRows } = await supabase
         .from('ai_configurations')
-        .select('temperature, tokens_per_comment, analysis_prompt')
+        .select('temperature, tokens_per_comment, analysis_prompt, provider, model, updated_at')
         .eq('scanner_type', 'adjudicator')
-        .eq('provider', adjudicatorConfig.provider)
-        .eq('model', adjudicatorConfig.model)
-        .single();
+        .order('updated_at', { ascending: false })
+        .limit(50);
+      const aiCfg = Array.isArray(aiCfgRows)
+        ? aiCfgRows.find(r => String(r.provider || '').trim().toLowerCase() === normalizedProvider && String(r.model || '').trim().toLowerCase() === normalizedModel)
+        : undefined;
+      if (!aiCfg) {
+        const available = Array.isArray(aiCfgRows) ? aiCfgRows.map(r => `${r.provider}/${r.model}`) : [];
+        console.warn(`${logPrefix} [ADJUDICATOR] No exact adjudicator AI config match for ${adjudicatorConfig.provider}/${adjudicatorConfig.model}. Available adjudicator configs:`, available);
+      }
 
       let actualMaxTokens = adjudicatorConfig.max_tokens || 4096;
       if (modelCfgError) {
@@ -378,7 +387,7 @@ serve(async (req) => {
       const tokensPerComment = aiCfg?.tokens_per_comment || 13;
       console.log(`${logPrefix} [ADJUDICATOR] Using tokens_per_comment: ${tokensPerComment}`);
 
-      // Resolve prompt: prefer request value, fallback to exact DB row, else fallback to any adjudicator config, else use safe default
+      // Resolve prompt and effective provider/model: prefer exact DB row; fallback to any adjudicator config; else use request values
       const defaultPrompt = `You are an adjudicator that resolves disagreements between two prior AI scans (AI1 and AI2) of user comments. For each item between <<<ITEM X>>> and <<<END X>>>:
 Return ONLY the following simple key-value lines, one item after another, no extra text or explanations:
 
@@ -398,12 +407,21 @@ Constraints:
 
       let promptSource = 'request';
       let prompt: string = '';
+      let modelSource = 'request';
+      let effectiveProvider = adjudicatorConfig.provider;
+      let effectiveModel = adjudicatorConfig.model;
+      let fallbackAdjRow: { analysis_prompt?: string; provider?: string; model?: string } | null = null;
       if (typeof adjudicatorConfig.prompt === 'string' && adjudicatorConfig.prompt.length > 0) {
         prompt = adjudicatorConfig.prompt;
         promptSource = 'request';
       } else if (typeof aiCfg?.analysis_prompt === 'string' && aiCfg.analysis_prompt.length > 0) {
         prompt = aiCfg.analysis_prompt;
         promptSource = 'ai_config_exact_match';
+        if (aiCfg.provider && aiCfg.model) {
+          effectiveProvider = aiCfg.provider as string;
+          effectiveModel = aiCfg.model as string;
+          modelSource = 'ai_config_exact_match';
+        }
       } else {
         try {
           const { data: anyAdjCfg } = await supabase
@@ -415,6 +433,12 @@ Constraints:
           if (Array.isArray(anyAdjCfg) && anyAdjCfg.length > 0 && typeof anyAdjCfg[0].analysis_prompt === 'string' && anyAdjCfg[0].analysis_prompt.length > 0) {
             prompt = anyAdjCfg[0].analysis_prompt as string;
             promptSource = 'ai_config_fallback_any';
+            fallbackAdjRow = anyAdjCfg[0] as typeof fallbackAdjRow;
+            if (fallbackAdjRow?.provider && fallbackAdjRow?.model) {
+              effectiveProvider = fallbackAdjRow.provider as string;
+              effectiveModel = fallbackAdjRow.model as string;
+              modelSource = 'ai_config_fallback_any';
+            }
           }
         } catch (_e) {
           // ignore and use defaultPrompt below
@@ -425,13 +449,39 @@ Constraints:
         promptSource = 'default_prompt';
       }
       console.log(`${logPrefix} [ADJUDICATOR] Using prompt source: ${promptSource} (length=${prompt.length})`);
+      console.log(`${logPrefix} [ADJUDICATOR] Using provider/model: ${effectiveProvider}/${effectiveModel} (source=${modelSource})`);
+
+      // If effective model differs from request, refresh model configuration
+      let modelCfgEff = modelCfg;
+      if (
+        String(effectiveProvider || '').trim().toLowerCase() !== String(adjudicatorConfig.provider || '').trim().toLowerCase() ||
+        String(effectiveModel || '').trim().toLowerCase() !== String(adjudicatorConfig.model || '').trim().toLowerCase()
+      ) {
+        const { data: modelCfg2, error: modelCfg2Error } = await supabase
+          .from('model_configurations')
+          .select('*')
+          .eq('provider', effectiveProvider)
+          .eq('model', effectiveModel)
+          .single();
+        if (modelCfg2Error) {
+          console.warn(`${logPrefix} [ADJUDICATOR] Warning: Could not fetch model_configurations for effective model ${effectiveProvider}/${effectiveModel}:`, modelCfg2Error.message);
+        } else {
+          modelCfgEff = modelCfg2;
+        }
+      }
+
+      // Recompute tokens limit based on effective model
+      if (modelCfgEff && typeof modelCfgEff.output_token_limit === 'number') {
+        actualMaxTokens = modelCfgEff.output_token_limit as number;
+        console.log(`${logPrefix} [ADJUDICATOR] Using max_tokens from model_configurations (effective): ${actualMaxTokens}`);
+      }
 
       const input = buildAdjudicationInput(needsAdjudication);
 
-      console.log(`${logPrefix} [AI REQUEST] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
+      console.log(`${logPrefix} [AI REQUEST] ${effectiveProvider}/${effectiveModel} type=adjudication`);
       console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
-        provider: adjudicatorConfig.provider,
-        model: adjudicatorConfig.model,
+        provider: effectiveProvider,
+        model: effectiveModel,
         prompt_length: prompt.length,
         input_length: input.length,
         comment_count: needsAdjudication.length
@@ -449,9 +499,9 @@ Constraints:
       console.log(`  Max tokens: ${actualMaxTokens}`);
 
       // Check rate limits and potentially split into batches
-      const tpmLimit = modelCfg?.tpm_limit;
-      const rpmLimit = modelCfg?.rpm_limit;
-      console.log(`${logPrefix} [RATE_LIMITS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
+      const tpmLimit = modelCfgEff?.tpm_limit;
+      const rpmLimit = modelCfgEff?.rpm_limit;
+      console.log(`${logPrefix} [RATE_LIMITS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${effectiveProvider}/${effectiveModel}`);
 
       // Global duplicate guard: check database for an identical request input for this run
       try {
@@ -509,8 +559,8 @@ Constraints:
         
         // Call AI for this batch
         const rawResponse = await callAI(
-          adjudicatorConfig.provider,
-          adjudicatorConfig.model,
+          effectiveProvider,
+          effectiveModel,
           prompt,
           batchInput,
           actualMaxTokens,
@@ -520,7 +570,7 @@ Constraints:
           effectiveTemperature
         );
 
-        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] AI RESPONSE ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
+        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] AI RESPONSE ${effectiveProvider}/${effectiveModel} type=adjudication`);
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] rawResponse=${JSON.stringify(rawResponse).substring(0, 500)}...`);
         
         // Parse the batch response
