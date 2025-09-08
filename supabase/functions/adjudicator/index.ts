@@ -346,23 +346,6 @@ serve(async (req) => {
     console.log(`${logPrefix} [ADJUDICATOR] ${needsAdjudication.length} comments need adjudication`);
 
     try {
-      // Use the prompt from the adjudicator configuration (same as Scan A and Scan B)
-      const prompt = adjudicatorConfig.prompt;
-      
-      if (!prompt) {
-        throw new Error('Adjudicator prompt is missing or empty');
-      }
-      
-      const input = buildAdjudicationInput(needsAdjudication);
-
-      console.log(`${logPrefix} [AI REQUEST] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
-      console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
-        provider: adjudicatorConfig.provider,
-        model: adjudicatorConfig.model,
-        prompt_length: prompt.length,
-        input_length: input.length,
-        comment_count: needsAdjudication.length
-      }).substring(0, 500)}...`);
 
       // Fetch limits from model_configurations and temperature from Dashboard AI Config
       const { data: modelCfg, error: modelCfgError } = await supabase
@@ -374,7 +357,7 @@ serve(async (req) => {
 
       const { data: aiCfg, error: aiCfgError } = await supabase
         .from('ai_configurations')
-        .select('temperature, tokens_per_comment')
+        .select('temperature, tokens_per_comment, analysis_prompt')
         .eq('scanner_type', 'adjudicator')
         .eq('provider', adjudicatorConfig.provider)
         .eq('model', adjudicatorConfig.model)
@@ -394,6 +377,26 @@ serve(async (req) => {
 
       const tokensPerComment = aiCfg?.tokens_per_comment || 13;
       console.log(`${logPrefix} [ADJUDICATOR] Using tokens_per_comment: ${tokensPerComment}`);
+
+      // Resolve prompt: prefer request value, fallback to DB configured analysis_prompt
+      const prompt = (typeof adjudicatorConfig.prompt === 'string' && adjudicatorConfig.prompt.length > 0)
+        ? adjudicatorConfig.prompt
+        : (aiCfg?.analysis_prompt || '');
+
+      if (typeof prompt !== 'string' || prompt.length === 0) {
+        throw new Error('Adjudicator prompt is missing. Provide adjudicatorConfig.prompt or configure analysis_prompt in ai_configurations.');
+      }
+
+      const input = buildAdjudicationInput(needsAdjudication);
+
+      console.log(`${logPrefix} [AI REQUEST] ${adjudicatorConfig.provider}/${adjudicatorConfig.model} type=adjudication`);
+      console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
+        provider: adjudicatorConfig.provider,
+        model: adjudicatorConfig.model,
+        prompt_length: prompt.length,
+        input_length: input.length,
+        comment_count: needsAdjudication.length
+      }).substring(0, 500)}...`);
 
       // Calculate token estimates for adjudication
       const estimatedInputTokens = Math.ceil(input.length / 4); // Rough estimation: 4 chars per token
