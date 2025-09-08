@@ -386,17 +386,22 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
       setScanProgress(30);
       toast.info('Phase 1 complete: Comments scanned and flagged');
+      console.log('[PHASE1] Completed initial scanning.');
 
       // Phase 2: Adjudication (handled by backend). Wait briefly if not completed yet.
       const adjudicatedCount = (data.comments as any[]).filter((c: any) => c.isAdjudicated).length;
       setScanProgress(60);
+      console.log('[PHASE2] Adjudication phase beginning.');
       const adjudicationCompleted = Boolean((data as any).adjudicationCompleted);
       if (adjudicatedCount > 0) {
         toast.success(`Phase 2 complete: ${adjudicatedCount} disagreements resolved`);
+        console.log(`[PHASE2] Completed with ${adjudicatedCount} resolved.`);
       } else if (adjudicationCompleted) {
         toast.info('Phase 2: Adjudication completed with no disagreements to resolve');
+        console.log('[PHASE2] Completed with no disagreements.');
       } else {
         toast.info('Phase 2: Waiting for adjudication to complete...');
+        console.log('[PHASE2] Waiting for adjudication to complete...');
         // Poll for adjudication completion without aborting Phase 3 on transient errors
         try {
           let adjudicationDone = Boolean((data as any).adjudicationCompleted);
@@ -486,6 +491,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       if (commentsToProcess.length > 0) {
         setScanProgress(70);
         toast.info(`Phase 3: Post-processing ${commentsToProcess.length} flagged comments (identifiable)...`);
+        console.log(`[PHASE3] Starting with ${commentsToProcess.length} items.`);
         
         // Get AI configuration for post-processing
         const { data: aiConfigs, error: configError } = await supabase
@@ -901,11 +907,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         } else {
           console.warn('Post-processing returned no data, using scan results with placeholders');
           console.log('Full post-process responses:', { postRephraseA, postRedactA });
+          console.log('[PHASE3] No processed results from split routes.');
         }
       } else {
         setScanProgress(95);
         // Explicit log note when Phase 3 is skipped (no identifiable items to post-process)
-        console.log(`[POSTPROCESS] Skipped: 0 flagged comments after adjudication.`);
+        console.log(`[PHASE3] Skipped: 0 flagged comments after adjudication.`);
         toast.info('Phase 3: No flagged comments to post-process');
       }
 
