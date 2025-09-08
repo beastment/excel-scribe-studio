@@ -432,29 +432,6 @@ serve(async (req) => {
     
     console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
 
-    // Proactive cleanup: clear stale pending scan-comments logs that could block adjudication or follow-up batches
-    try {
-      const staleCutoff = new Date(Date.now() - 90_000).toISOString();
-      const { error: clearPendErr } = await supabase
-        .from('ai_logs')
-        .update({
-          response_status: 'error',
-          response_error: 'stale pending cleared at request start',
-          time_finished: new Date().toISOString()
-        })
-        .eq('scan_run_id', scanRunId)
-        .eq('function_name', 'scan-comments')
-        .eq('response_status', 'pending')
-        .lte('time_started', staleCutoff);
-      if (clearPendErr) {
-        console.warn('[CLEANUP] Failed to pre-clear stale pending logs:', clearPendErr);
-      } else {
-        console.log('[CLEANUP] Pre-cleared stale pending scan-comments logs older than', staleCutoff);
-      }
-    } catch (preCleanupErr) {
-      console.warn('[CLEANUP] Exception during pre-cleanup:', preCleanupErr);
-    }
-
     // Allow incremental processing: only block duplicate initial requests (batchStart=0)
     const isCached = Boolean(requestBody.useCachedAnalysis);
     const batchStartValue = typeof requestBody.batchStart === 'number' ? requestBody.batchStart : 
