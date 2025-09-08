@@ -1447,7 +1447,7 @@ serve(async (req) => {
       }
     }
     
-    // Call adjudicator if there are comments that need adjudication and no more batches//
+    // Call adjudicator if there are comments that need adjudication and no more batches// //
     console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}, skip=${skipAdjudication}`);
     
     if (!skipAdjudication && !hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
@@ -1654,7 +1654,7 @@ serve(async (req) => {
         return new Response(JSON.stringify(response), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         });
-      } // Close the adjudication try block
+      }
     }
 
     // If we skipped adjudication or none was needed, return scan results now
@@ -1673,23 +1673,6 @@ serve(async (req) => {
     };
     return new Response(JSON.stringify(responseNoAdj), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    // Fallback (safety): ensure a Response is always returned
-    // This path should be unreachable, but guards against undefined returns
-    // by returning the current scan results with default flags
-    // eslint-disable-next-line no-unreachable
-    return new Response(JSON.stringify({
-      comments: allScannedComments,
-      batchStart: batchStart,
-      batchSize: finalBatchSize,
-      hasMore: hasMoreBatches,
-      totalComments: inputComments.length,
-      summary: totalSummary,
-      totalRunTimeMs: Date.now() - overallStartTime,
-      batchesProcessed: batchesProcessed,
-      nextBatchStart: hasMoreBatches ? lastProcessedIndex : inputComments.length,
-      adjudicationStarted: false,
-      adjudicationCompleted: false
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
     console.error('Error in scan-comments function:', error);
