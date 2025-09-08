@@ -1655,8 +1655,6 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         });
       }
-    }
-
     // If we skipped adjudication or none was needed, return scan results now
     const responseNoAdj = {
       comments: allScannedComments,
@@ -1672,8 +1670,6 @@ serve(async (req) => {
       adjudicationCompleted: false
     };
     return new Response(JSON.stringify(responseNoAdj), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-
   } catch (error) {
     console.error('Error in scan-comments function:', error);
     
