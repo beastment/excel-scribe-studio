@@ -404,6 +404,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         });
         if (needsAdj.length > 0) {
           const perBatch = 50;
+          // Ensure Authorization header is included for adjudicator invoke
+          const { data: sessionData } = await supabase.auth.getSession();
+          const accessToken = sessionData?.session?.access_token;
           for (let i = 0; i < needsAdj.length; i += perBatch) {
             const batch = needsAdj.slice(i, i + perBatch);
             const { data: adjData, error: adjErr } = await supabase.functions.invoke('adjudicator', {
@@ -418,7 +421,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   agreements: c.adjudicationData?.agreements || c.agreements
                 })),
                 scanRunId
-              }
+              },
+              headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
             });
             if (adjErr) {
               console.error('[PHASE2] Adjudicator error:', adjErr);
@@ -892,19 +896,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       setScanProgress(100);
       setHasScanRun(true);
       
-      // Debug final comments before update
-      console.log(`[DEBUG] Final comments before update - ${data.comments.length} comments:`);
-      data.comments.forEach((comment: any, index: number) => {
-        console.log(`[DEBUG] Final Comment ${index + 1}:`, {
-          id: comment.id,
-          concerning: comment.concerning,
-          identifiable: comment.identifiable,
-          mode: comment.mode,
-          redactedText: !!comment.redactedText,
-          rephrasedText: !!comment.rephrasedText,
-          hasScanRun: true
-        });
-      });
       
       if (!didPostProcessUpdate) {
         onCommentsUpdate(data.comments);
@@ -1582,14 +1573,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                          const status = getCommentStatus(comment);
                          const showButtons = comment.identifiable || comment.redactedText || comment.rephrasedText;
                          
-                         console.log('Button debug:', {
-                           status,
-                           identifiable: comment.identifiable,
-                           redactedText: !!comment.redactedText,
-                           rephrasedText: !!comment.rephrasedText,
-                           mode: comment.mode,
-                           showButtons
-                         });
                          
                           if (status === 'Scan Needed') return null;
                           

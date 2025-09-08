@@ -258,29 +258,30 @@ serve(async (req) => {
     const { comments, adjudicatorConfig, scanRunId, batchIndex, batchKey } = request;
     
     if (!comments || !Array.isArray(comments) || comments.length === 0) {
+      console.log(`[RUN ${scanRunId || 'n/a'}] [ADJUDICATOR] No comments provided; returning success with empty results`);
       return new Response(
-        JSON.stringify({ success: false, error: 'No comments provided' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        JSON.stringify({
+          success: true,
+          adjudicatedComments: [],
+          summary: { total: 0, resolved: 0, errors: 0 }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    if (!adjudicatorConfig) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'No adjudicator configuration provided' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
-    }
+    // adjudicatorConfig is optional; server will resolve provider/model/prompt from AI Config
 
     // Use scanRunId if provided, otherwise generate a new one
     const runId = scanRunId || Math.floor(Math.random() * 10000);
     const logPrefix = `[RUN ${runId}]`;
 
-    console.log(`${logPrefix} [ADJUDICATOR] Processing ${comments.length} comments with ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
+    console.log(`${logPrefix} [ADJUDICATOR] Request received: comments=${comments.length}, hasConfig=${Boolean(adjudicatorConfig)}`);
+    console.log(`${logPrefix} [ADJUDICATOR] Processing ${comments.length} comments with ${adjudicatorConfig?.provider || '(auto)'}/${adjudicatorConfig?.model || '(auto)'}`);
     console.log(`${logPrefix} [ADJUDICATOR] Config received:`, {
-      provider: adjudicatorConfig.provider,
-      model: adjudicatorConfig.model,
-      promptLength: adjudicatorConfig.prompt?.length || 0,
-      maxTokens: adjudicatorConfig.max_tokens
+      provider: adjudicatorConfig?.provider,
+      model: adjudicatorConfig?.model,
+      promptLength: adjudicatorConfig?.prompt?.length || 0,
+      maxTokens: adjudicatorConfig?.max_tokens
     });
 
     // Check user credits before processing adjudication
