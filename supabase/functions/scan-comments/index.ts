@@ -1676,6 +1676,23 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         });
       } // Close the adjudication try block
+    }
+
+    // If we skipped adjudication or none was needed, return scan results now
+    const responseNoAdj = {
+      comments: allScannedComments,
+      batchStart: batchStart,
+      batchSize: finalBatchSize,
+      hasMore: hasMoreBatches,
+      totalComments: inputComments.length,
+      summary: totalSummary,
+      totalRunTimeMs: Date.now() - overallStartTime,
+      batchesProcessed: batchesProcessed,
+      nextBatchStart: hasMoreBatches ? lastProcessedIndex : inputComments.length,
+      adjudicationStarted: false,
+      adjudicationCompleted: false
+    };
+    return new Response(JSON.stringify(responseNoAdj), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
     console.error('Error in scan-comments function:', error);
