@@ -4,12 +4,14 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { AILogger } from './ai-logger.ts';
 import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize as calculateRateLimitedBatchSize } from './tpm-tracker.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+const buildCorsHeaders = (origin: string | null) => ({
+  'Access-Control-Allow-Origin': origin || '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Max-Age': '86400',
-};
+  'Access-Control-Allow-Credentials': 'true',
+  'Vary': 'Origin'
+});
 
 // Global precise token counter for use in top-level helpers (e.g., adjudicator sizing)
 const getPreciseTokensGlobal = async (text: string, provider: string, model: string): Promise<number> => {
@@ -359,6 +361,9 @@ const processAdjudicationBatches = async (
 serve(async (req) => {
   console.log('Edge function called with method:', req.method);
   
+  // Build CORS headers for this request
+  const corsHeaders = buildCorsHeaders(req.headers.get('origin'));
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
