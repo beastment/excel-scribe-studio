@@ -378,14 +378,29 @@ serve(async (req) => {
       const tokensPerComment = aiCfg?.tokens_per_comment || 13;
       console.log(`${logPrefix} [ADJUDICATOR] Using tokens_per_comment: ${tokensPerComment}`);
 
-      // Resolve prompt: prefer request value, fallback to DB configured analysis_prompt
+      // Resolve prompt: prefer request value, fallback to DB configured analysis_prompt, else use safe default
+      const defaultPrompt = `You are an adjudicator that resolves disagreements between two prior AI scans (AI1 and AI2) of user comments. For each item between <<<ITEM X>>> and <<<END X>>>:
+Return ONLY the following simple key-value lines, one item after another, no extra text or explanations:
+
+i:X
+A:Y|N
+B:Y|N
+
+Where:
+- i is the numeric item index X
+- A is Concerning (Y if concerning, else N)
+- B is Identifiable (Y if identifiable, else N)
+
+Constraints:
+- Do not include any prose, bullets, JSON, or markdown.
+- Output exactly three lines per item in order i, A, B.
+- Ensure an output block exists for every input item.`;
+
       const prompt = (typeof adjudicatorConfig.prompt === 'string' && adjudicatorConfig.prompt.length > 0)
         ? adjudicatorConfig.prompt
-        : (aiCfg?.analysis_prompt || '');
-
-      if (typeof prompt !== 'string' || prompt.length === 0) {
-        throw new Error('Adjudicator prompt is missing. Provide adjudicatorConfig.prompt or configure analysis_prompt in ai_configurations.');
-      }
+        : (typeof aiCfg?.analysis_prompt === 'string' && aiCfg.analysis_prompt.length > 0)
+          ? aiCfg.analysis_prompt
+          : defaultPrompt;
 
       const input = buildAdjudicationInput(needsAdjudication);
 
