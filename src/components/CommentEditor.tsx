@@ -677,6 +677,49 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         addResults(postRephraseA?.processedComments);
         addResults(postRephraseB?.processedComments);
         let mergedProcessed = Object.values(processedCombined);
+
+        // Fallback: if nothing processed yet, try a single combined call (both phases)
+        if (mergedProcessed.length === 0) {
+          try {
+            console.warn('[PHASE3] No processed results from split routes, attempting single combined post-process call...');
+            const { data: ppCombined, error: ppCombinedErr } = await supabase.functions.invoke('post-process-comments', {
+              body: {
+                comments: commentsToProcess.map((c: any) => ({
+                  id: c.id,
+                  originalRow: c.originalRow,
+                  scannedIndex: c.scannedIndex,
+                  originalText: c.originalText || c.text,
+                  text: c.text,
+                  concerning: c.concerning,
+                  identifiable: c.identifiable,
+                  mode: c.mode || (c.identifiable ? defaultMode : (c.concerning ? 'rephrase' : 'original')),
+                  scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                  scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
+                  adjudicationResult: c.adjudicationResult
+                })),
+                scanConfig: {
+                  provider: aiConfigs?.provider || 'openai',
+                  model: aiConfigs?.model || 'gpt-4o-mini',
+                  redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                  rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+                },
+                defaultMode,
+                scanRunId,
+                phase: 'both',
+                routingMode: 'both'
+              }
+            });
+            if (!ppCombinedErr && ppCombined?.processedComments) {
+              addResults(ppCombined.processedComments);
+              mergedProcessed = Object.values(processedCombined);
+              console.log('[PHASE3] Combined post-process fallback succeeded:', mergedProcessed.length);
+            } else if (ppCombinedErr) {
+              console.error('[PHASE3] Combined post-process fallback error:', ppCombinedErr);
+            }
+          } catch (ppCombinedEx) {
+            console.error('[PHASE3] Combined post-process fallback exception:', ppCombinedEx);
+          }
+        }
         // Safety: ensure concerning-only comments are present (rephrase-only)
         const concerningOnly = commentsToProcess.filter((c: any) => c.concerning && !c.identifiable);
         const missingConcerning = concerningOnly.filter((c: any) => !processedCombined[c.id]);
