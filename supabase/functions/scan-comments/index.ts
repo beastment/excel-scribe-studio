@@ -1325,7 +1325,7 @@ serve(async (req) => {
 
         if (needsAdjudication) {
           totalSummary.needsAdjudication++;
-          console.log(`[ADJUDICATION] Comment ${comment.id} needs adjudication: concerning disagreement=${concerningDisagreement} (A:${scanAResult.concerning}, B:${scanBResult.concerning}), identifiable disagreement=${identifiableDisagreement} (A:${scanAResult.identifiable}, B:${scanBResult.identifiable})`);
+          //console.log(`[ADJUDICATION] Comment ${comment.id} needs adjudication: concerning disagreement=${concerningDisagreement} (A:${scanAResult.concerning}, B:${scanBResult.concerning}), identifiable disagreement=${identifiableDisagreement} (A:${scanAResult.identifiable}, B:${scanBResult.identifiable})`);
         }
 
         // Set flags based on scan results (will be resolved by adjudicator later)
