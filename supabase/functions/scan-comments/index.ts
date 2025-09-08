@@ -1340,6 +1340,29 @@ serve(async (req) => {
       
       // Increment batch counter
       batchesProcessed++;
+
+      // Cleanup: clear stale pending logs for this run so they don't block adjudication
+      try {
+        const staleCutoff = new Date(Date.now() - 60_000).toISOString();
+        const { data: cleared, error: clearErr } = await supabase
+          .from('ai_logs')
+          .update({
+            response_status: 'error',
+            response_error: 'stale pending cleared by scan-comments',
+            time_finished: new Date().toISOString()
+          })
+          .eq('scan_run_id', scanRunId)
+          .eq('function_name', 'scan-comments')
+          .eq('response_status', 'pending')
+          .lte('time_started', staleCutoff);
+        if (clearErr) {
+          console.warn(`[CLEANUP] Failed to clear stale pending logs:`, clearErr);
+        } else if (cleared) {
+          console.log(`[CLEANUP] Cleared stale pending logs older than ${staleCutoff}`);
+        }
+      } catch (cleanupErr) {
+        console.warn(`[CLEANUP] Exception while clearing stale pending logs:`, cleanupErr);
+      }
     }
       
       totalSummary.total = allScannedComments.length;
@@ -2053,21 +2076,25 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
   console.log(`[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 8192}, temperature=${temperature || 0}`);
 
-      // Log the AI request if logger is provided
-      if (aiLogger) {
-        await aiLogger.logRequest({
-          userId,
-          scanRunId,
-          functionName: 'scan-comments',
-          provider,
-          model,
-          requestType: responseType,
-          phase,
-          requestPrompt: prompt,
-          requestInput: input,
-          requestTemperature: temperature || 0,
-          requestMaxTokens: maxTokens // Use the actual max_tokens from model_configurations
-        });
+      // Log the AI request if logger is provided (best-effort)
+      try {
+        if (aiLogger) {
+          await aiLogger.logRequest({
+            userId,
+            scanRunId,
+            functionName: 'scan-comments',
+            provider,
+            model,
+            requestType: responseType,
+            phase,
+            requestPrompt: prompt,
+            requestInput: input,
+            requestTemperature: temperature || 0,
+            requestMaxTokens: maxTokens // Use the actual max_tokens from model_configurations
+          });
+        }
+      } catch (logReqErr) {
+        console.warn(`[LOGGER] Failed to log request (${phase}):`, logReqErr);
       }
 
   if (provider === 'azure') {
