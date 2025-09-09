@@ -148,7 +148,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
   if (provider === 'azure') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 115000); // 115s, below edge 120s cap
+    const timeoutId = setTimeout(() => controller.abort(), 140000); // 140s, below edge 150s cap
     
     try {
       const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -197,7 +197,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
   } else if (provider === 'openai') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 115000); // 115s, below edge 120s cap
+    const timeoutId = setTimeout(() => controller.abort(), 140000); // 140s, below edge 150s cap
     
     let response;
     try {
@@ -914,27 +914,22 @@ serve(async (req) => {
         
         // If routingMode is forced, prefer that branch when possible
         if (routingMode === 'scan_a' && (aPM.provider && aPM.model)) {
-          console.log(`${logPrefix} [PICK_MODEL] Using forced scan_a routing: ${aPM.provider}/${aPM.model}`);
           return { provider: aPM.provider, model: aPM.model };
         }
         if (routingMode === 'scan_b' && (bPM.provider && bPM.model)) {
-          console.log(`${logPrefix} [PICK_MODEL] Using forced scan_b routing: ${bPM.provider}/${bPM.model}`);
           return { provider: bPM.provider, model: bPM.model };
         }
         // Prefer identifiable routing
         if (aIdent && !bIdent && aPM.provider && aPM.model) {
-          console.log(`${logPrefix} [PICK_MODEL] Using scan_a (identifiable only): ${aPM.provider}/${aPM.model}`);
           return { provider: aPM.provider, model: aPM.model };
         }
         if (!aIdent && bIdent && bPM.provider && bPM.model) {
-          console.log(`${logPrefix} [PICK_MODEL] Using scan_b (identifiable only): ${bPM.provider}/${bPM.model}`);
           return { provider: bPM.provider, model: bPM.model };
         }
         if (aIdent && bIdent) {
           const useA = Math.random() < 0.5;
           const pm = useA ? aPM : bPM;
           if (pm.provider && pm.model) {
-            console.log(`${logPrefix} [PICK_MODEL] Using random choice (both identifiable): ${pm.provider}/${pm.model} (chose ${useA ? 'A' : 'B'})`);
             return { provider: pm.provider, model: pm.model };
           }
         }
@@ -942,13 +937,11 @@ serve(async (req) => {
         if (aConc !== bConc) {
           const pm = aConc ? aPM : bPM;
           if (pm.provider && pm.model) {
-            console.log(`${logPrefix} [PICK_MODEL] Using concerning-only routing: ${pm.provider}/${pm.model} (${aConc ? 'A' : 'B'} flagged concerning)`);
             return { provider: pm.provider, model: pm.model };
           }
         }
         const pm = Math.random() < 0.5 ? aPM : bPM;
         const result = { provider: pm.provider || effectiveConfig.provider, model: pm.model || effectiveConfig.model };
-        console.log(`${logPrefix} [PICK_MODEL] Using fallback routing: ${result.provider}/${result.model}`);
         return result;
       };
 
