@@ -441,8 +441,6 @@ function normalizeBatchTextParsed(parsed: any): string[] {
     
     const result = commentParts
       .map((part, index) => {
-        console.log(`[NORMALIZE] Processing part ${index}:`, part.substring(0, 100));
-        
         // Extract text content from each part
         // Look for patterns like: "rephrased": "text content here
         const textMatch = part.match(/"(?:redacted|rephrased)"\s*:\s*"([^"]*(?:\\.[^"]*)*)$/);
@@ -913,13 +911,7 @@ serve(async (req) => {
         const bConc = Boolean(c.scanBResult?.concerning);
         const aPM = parseProviderModel(c.scanAResult?.model);
         const bPM = parseProviderModel(c.scanBResult?.model);
-        
-        console.log(`${logPrefix} [PICK_MODEL_DEBUG] Comment ${c.id}:`, {
-          aIdent, bIdent, aConc, bConc,
-          aPM: aPM.provider ? `${aPM.provider}/${aPM.model}` : 'null',
-          bPM: bPM.provider ? `${bPM.provider}/${bPM.model}` : 'null',
-          routingMode
-        });
+
         
         // If routingMode is forced, prefer that branch when possible
         if (routingMode === 'scan_a' && (aPM.provider && aPM.model)) {
@@ -967,21 +959,6 @@ serve(async (req) => {
         const key = `${provider}/${model}`;
         if (!groups.has(key)) groups.set(key, { provider, model, items: [] });
         groups.get(key)!.items.push(c);
-        
-        // Debug logging for routing decisions
-        console.log(`${logPrefix} [ROUTING_DEBUG] Comment ${c.id}:`, {
-          scanAResult: c.scanAResult ? { 
-            identifiable: c.scanAResult.identifiable, 
-            concerning: c.scanAResult.concerning, 
-            model: c.scanAResult.model 
-          } : 'null',
-          scanBResult: c.scanBResult ? { 
-            identifiable: c.scanBResult.identifiable, 
-            concerning: c.scanBResult.concerning, 
-            model: c.scanBResult.model 
-          } : 'null',
-          routedTo: `${provider}/${model}`
-        });
       }
       console.log(`${logPrefix} [ROUTING] Routed ${flaggedComments.length} comments into ${groups.size} groups`);
 
@@ -1268,22 +1245,6 @@ serve(async (req) => {
           const hasAIRedaction = requestRedaction && redCandidate.trim().length > 0;
           const hasAIRephrase = requestRephrase && rephCandidate.trim().length > 0;
           
-          console.log(`${logPrefix} [DEBUG] Comment ${i+1} (${comment.id}) - Raw candidates:`, {
-            redCandidate: redCandidate,
-            rephCandidate: rephCandidate,
-            redCandidateLength: redCandidate.length,
-            rephCandidateLength: rephCandidate.length
-          });
-          
-          console.log(`${logPrefix} [DEBUG] Comment ${i+1} (${comment.id}):`, {
-            identifiable: comment.identifiable,
-            concerning: comment.concerning,
-            redCandidate: redCandidate?.substring(0, 50),
-            rephCandidate: rephCandidate?.substring(0, 50),
-            redactedText: redactedText?.substring(0, 50),
-            rephrasedText: rephrasedText?.substring(0, 50),
-            originalText: comment.text?.substring(0, 50)
-          });
           // Enforce policy-driven mode regardless of incoming mode
           let mode: 'redact' | 'rephrase' | 'original';
           if (comment.identifiable) {
