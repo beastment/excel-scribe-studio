@@ -2096,7 +2096,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
   if (provider === 'azure') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below 120s function max
+    const timeoutId = setTimeout(() => controller.abort(), 140000); // 110s, below 120s function max
     let response: Response;
     try {
       response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -2167,7 +2167,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     console.log(`[OPENAI] API Key: ${openaiApiKey ? '***' + openaiApiKey.slice(-4) : 'NOT SET'}`);
     console.log(`[OPENAI] Request payload:`, JSON.stringify(payload, null, 2));
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below 120s function max
+    const timeoutId = setTimeout(() => controller.abort(), 140000); // 110s, below 120s function max
     let response: Response;
     try {
       response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -2291,7 +2291,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 110000); // 110s, below 120s function max
+    const timeoutId = setTimeout(() => controller.abort(), 140000); // 110s, below 120s function max
     let response: Response;
     try {
       response = await fetch(endpoint, {
