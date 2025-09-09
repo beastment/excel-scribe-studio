@@ -384,7 +384,7 @@ serve(async (req) => {
   }
 
   const overallStartTime = Date.now(); // Track overall process time
-      const MAX_EXECUTION_TIME = 120 * 1000; // 120 seconds max execution time (2 minutes)
+      const MAX_EXECUTION_TIME = 140 * 1000; // 140 seconds max execution time (2.33 minutes)
 
   try {
     const requestBody = await req.json();
@@ -432,7 +432,7 @@ serve(async (req) => {
     const skipAdjudication = Boolean(requestBody.skipAdjudication);
     // Optional runtime controls to ensure timely partial responses for large datasets
     const requestedMaxBatchesPerRequest = Number.isFinite(requestBody.maxBatchesPerRequest) ? Math.max(1, Math.min(50, Number(requestBody.maxBatchesPerRequest))) : undefined;
-    const requestedMaxRunMs = Number.isFinite(requestBody.maxRunMs) ? Math.max(10000, Math.min(110000, Number(requestBody.maxRunMs))) : undefined;
+    const requestedMaxRunMs = Number.isFinite(requestBody.maxRunMs) ? Math.max(10000, Math.min(140000, Number(requestBody.maxRunMs))) : undefined;
 
     // Fast-path: status-only polling should not re-run scans
     if (checkStatusOnly) {
@@ -1086,7 +1086,7 @@ serve(async (req) => {
     // Process comments in smaller chunks to avoid gateway timeout
     // Reduce batch limits to prevent edge function timeout
     const MAX_BATCHES_PER_REQUEST = requestedMaxBatchesPerRequest ?? 5; // Tunable; default conservative
-    const MAX_EXECUTION_TIME = requestedMaxRunMs ?? 100 * 1000; // Tunable; default conservative 100s
+    const MAX_EXECUTION_TIME = requestedMaxRunMs ?? 140 * 1000; // Tunable; default conservative 140s
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
     
