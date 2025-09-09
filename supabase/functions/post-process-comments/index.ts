@@ -447,7 +447,6 @@ function normalizeBatchTextParsed(parsed: any): string[] {
         if (textMatch) {
           const text = textMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
           const cleaned = cleanSentinels(text);
-          console.log('[NORMALIZE] Comment boundary match cleaned:', cleaned.substring(0, 100));
           return cleaned;
         }
         
@@ -1261,16 +1260,11 @@ serve(async (req) => {
           if (mode === 'redact' && (comment.identifiable || comment.concerning)) {
             finalText = redactedText;
             redactedCount++;
-            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REDACTED: ${redactedText.substring(0, 100)}...`);
-            console.log(`${logPrefix} [DEBUG] Final redacted text length: ${redactedText.length}, full text: "${redactedText}"`);
           } else if (mode === 'rephrase' && (comment.identifiable || comment.concerning)) {
             finalText = rephrasedText;
             rephrasedCount++;
-            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REPHRASED: ${rephrasedText.substring(0, 100)}...`);
-            console.log(`${logPrefix} [DEBUG] Final rephrased text length: ${rephrasedText.length}, full text: "${rephrasedText}"`);
           } else {
             originalCount++;
-            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - ORIGINAL (mode: ${mode}, concerning: ${comment.concerning}, identifiable: ${comment.identifiable})`);
           }
 
           processedComments.push({
