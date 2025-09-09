@@ -238,8 +238,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           scanRunId,
           isDemoScan: isDemoData,
           skipAdjudication: true,
-          maxBatchesPerRequest: 2,
-          maxRunMs: 70000
+          maxBatchesPerRequest: 1,
+          maxRunMs: 140000
         }
       });
 
@@ -273,8 +273,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               batchStart: nextBatchStart,
               useCachedAnalysis: true,
               skipAdjudication: true,
-              maxBatchesPerRequest: 2,
-              maxRunMs: 70000
+              maxBatchesPerRequest: 1,
+              maxRunMs: 140000
             }
           });
 

@@ -1085,7 +1085,7 @@ serve(async (req) => {
     
     // Process comments in smaller chunks to avoid gateway timeout
     // Reduce batch limits to prevent edge function timeout
-    const MAX_BATCHES_PER_REQUEST = requestedMaxBatchesPerRequest ?? 5; // Tunable; default conservative
+    const MAX_BATCHES_PER_REQUEST = requestedMaxBatchesPerRequest ?? 1; // Tunable; default conservative
     const MAX_EXECUTION_TIME = requestedMaxRunMs ?? 140 * 1000; // Tunable; default conservative 140s
     let allScannedComments: any[] = [];
     let totalSummary = { total: 0, concerning: 0, identifiable: 0, needsAdjudication: 0 };
