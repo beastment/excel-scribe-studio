@@ -479,16 +479,58 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const r = getScanResult(c, key);
           return Boolean(r && (r.concerning || r.identifiable));
         };
-        const flaggedByAOnly = commentsToProcess.filter((c: any) => wasFlaggedBy(c, 'scanAResult') && !wasFlaggedBy(c, 'scanBResult'));
-        const flaggedByBOnly = commentsToProcess.filter((c: any) => wasFlaggedBy(c, 'scanBResult') && !wasFlaggedBy(c, 'scanAResult'));
-        const flaggedByBoth = commentsToProcess.filter((c: any) => wasFlaggedBy(c, 'scanAResult') && wasFlaggedBy(c, 'scanBResult'));
-        const bothToA: any[] = [];
-        const bothToB: any[] = [];
-        flaggedByBoth.forEach((c: any, idx: number) => {
-          if (idx % 2 === 0) bothToA.push(c); else bothToB.push(c);
-        });
-        const commentsForA = [...flaggedByAOnly, ...bothToA];
-        const commentsForB = [...flaggedByBOnly, ...bothToB];
+        // Assign each flagged comment to a single model for BOTH redaction and rephrase,
+        // based on adjudicated flags and which scanner flagged the relevant condition.
+        const commentsForA: any[] = [];
+        const commentsForB: any[] = [];
+        let identToggle = 0;
+        let concToggle = 0;
+        const flaggedAll = commentsToProcess.filter((c: any) => Boolean(c.identifiable) || Boolean(c.concerning));
+        for (const c of flaggedAll) {
+          const aRes = c.adjudicationData?.scanAResult || c.scanAResult;
+          const bRes = c.adjudicationData?.scanBResult || c.scanBResult;
+          const adjudIdent = Boolean(c.identifiable);
+          const adjudConc = Boolean(c.concerning) && !adjudIdent ? true : Boolean(c.concerning);
+          if (adjudIdent) {
+            const aIdent = Boolean(aRes?.identifiable);
+            const bIdent = Boolean(bRes?.identifiable);
+            if (aIdent && bIdent) {
+              // Split evenly when both flagged identifiable
+              if (identToggle % 2 === 0) commentsForA.push(c); else commentsForB.push(c);
+              identToggle++;
+            } else if (aIdent) {
+              commentsForA.push(c);
+            } else if (bIdent) {
+              commentsForB.push(c);
+            } else {
+              // Fallback: use concerning flags if neither marked identifiable
+              const aConc = Boolean(aRes?.concerning);
+              const bConc = Boolean(bRes?.concerning);
+              if (aConc && !bConc) commentsForA.push(c);
+              else if (!aConc && bConc) commentsForB.push(c);
+              else {
+                if (identToggle % 2 === 0) commentsForA.push(c); else commentsForB.push(c);
+                identToggle++;
+              }
+            }
+          } else if (adjudConc) {
+            const aConc = Boolean(aRes?.concerning);
+            const bConc = Boolean(bRes?.concerning);
+            if (aConc && bConc) {
+              // Split evenly when both flagged concerning
+              if (concToggle % 2 === 0) commentsForA.push(c); else commentsForB.push(c);
+              concToggle++;
+            } else if (aConc) {
+              commentsForA.push(c);
+            } else if (bConc) {
+              commentsForB.push(c);
+            } else {
+              // Final fallback split
+              if (concToggle % 2 === 0) commentsForA.push(c); else commentsForB.push(c);
+              concToggle++;
+            }
+          }
+        }
 
         console.log('[PHASE3] Launching redaction (scan_a, scan_b) ...', {
           aOnly: flaggedByAOnly.length,
@@ -693,50 +735,97 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             console.error('[PHASE3] Combined post-process fallback exception:', ppCombinedEx);
           }
         }
-        // Safety: ensure concerning-only comments are present (rephrase-only)
+        // Safety: ensure concerning-only comments are present (rephrase-only) and route to the original scanner
         const concerningOnly = commentsToProcess.filter((c: any) => c.concerning && !c.identifiable);
         const missingConcerning = concerningOnly.filter((c: any) => !processedCombined[c.id]);
         if (missingConcerning.length > 0) {
           console.log(`[PHASE3] Safety rephrase for concerning-only: ${missingConcerning.length} items`);
-          const { data: ppRephraseSafety, error: safetyErr } = await supabase.functions.invoke('post-process-comments', {
-            body: {
-              comments: missingConcerning.map((c: any) => ({
-                id: c.id,
-                originalRow: c.originalRow,
-                scannedIndex: c.scannedIndex,
-                originalText: c.originalText || c.text,
-                text: c.text,
-                concerning: c.concerning,
-                identifiable: c.identifiable,
-                mode: 'rephrase',
-                scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
-                scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
-                adjudicationResult: c.adjudicationResult
-              })),
-              scanConfig: {
-                provider: aiConfigs?.provider || 'openai',
-                model: aiConfigs?.model || 'gpt-4o-mini',
-                redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
-                rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
-              },
-              defaultMode,
-              scanRunId,
-              phase: 'rephrase',
-              routingMode: 'both'
-            }
+          // Split by which scan originally flagged concerning
+          const missingAOnly = missingConcerning.filter((c: any) => Boolean((c.adjudicationData?.scanAResult || c.scanAResult)?.concerning) && !Boolean((c.adjudicationData?.scanBResult || c.scanBResult)?.concerning));
+          const missingBOnly = missingConcerning.filter((c: any) => Boolean((c.adjudicationData?.scanBResult || c.scanBResult)?.concerning) && !Boolean((c.adjudicationData?.scanAResult || c.scanAResult)?.concerning));
+          const missingBoth = missingConcerning.filter((c: any) => Boolean((c.adjudicationData?.scanAResult || c.scanAResult)?.concerning) && Boolean((c.adjudicationData?.scanBResult || c.scanBResult)?.concerning));
+          const bothToA: any[] = [];
+          const bothToB: any[] = [];
+          missingBoth.forEach((c: any, idx: number) => {
+            if (idx % 2 === 0) bothToA.push(c); else bothToB.push(c);
           });
-          if (!safetyErr && ppRephraseSafety?.processedComments) {
-            for (const item of ppRephraseSafety.processedComments as any[]) {
-              const existing = processedCombined[item.id] || { id: item.id };
-              processedCombined[item.id] = {
-                ...existing,
-                rephrasedText: item.rephrasedText ?? existing.rephrasedText,
-                finalText: item.finalText ?? existing.finalText,
-                mode: item.mode ?? existing.mode,
-              };
+          const safetyA = [...missingAOnly, ...bothToA];
+          const safetyB = [...missingBOnly, ...bothToB];
+
+          const [ppSafetyA, ppSafetyB] = await Promise.allSettled([
+            safetyA.length > 0 ? supabase.functions.invoke('post-process-comments', {
+              body: {
+                comments: safetyA.map((c: any) => ({
+                  id: c.id,
+                  originalRow: c.originalRow,
+                  scannedIndex: c.scannedIndex,
+                  originalText: c.originalText || c.text,
+                  text: c.text,
+                  concerning: c.concerning,
+                  identifiable: c.identifiable,
+                  mode: 'rephrase',
+                  scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                  scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
+                  adjudicationResult: c.adjudicationResult
+                })),
+                scanConfig: {
+                  provider: aiConfigs?.provider || 'openai',
+                  model: aiConfigs?.model || 'gpt-4o-mini',
+                  redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                  rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+                },
+                defaultMode,
+                scanRunId,
+                phase: 'rephrase',
+                routingMode: 'scan_a'
+              }
+            }) : Promise.resolve({ data: null }) as any,
+            safetyB.length > 0 ? supabase.functions.invoke('post-process-comments', {
+              body: {
+                comments: safetyB.map((c: any) => ({
+                  id: c.id,
+                  originalRow: c.originalRow,
+                  scannedIndex: c.scannedIndex,
+                  originalText: c.originalText || c.text,
+                  text: c.text,
+                  concerning: c.concerning,
+                  identifiable: c.identifiable,
+                  mode: 'rephrase',
+                  scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                  scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
+                  adjudicationResult: c.adjudicationResult
+                })),
+                scanConfig: {
+                  provider: aiConfigs?.provider || 'openai',
+                  model: aiConfigs?.model || 'gpt-4o-mini',
+                  redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                  rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+                },
+                defaultMode,
+                scanRunId,
+                phase: 'rephrase',
+                routingMode: 'scan_b'
+              }
+            }) : Promise.resolve({ data: null }) as any
+          ]);
+
+          const safetyAData = (ppSafetyA as any).status === 'fulfilled' ? (ppSafetyA as any).value.data : null;
+          const safetyBData = (ppSafetyB as any).status === 'fulfilled' ? (ppSafetyB as any).value.data : null;
+          const safetyArrays = [safetyAData?.processedComments, safetyBData?.processedComments];
+          for (const arr of safetyArrays) {
+            if (Array.isArray(arr)) {
+              for (const item of arr as any[]) {
+                const existing = processedCombined[item.id] || { id: item.id };
+                processedCombined[item.id] = {
+                  ...existing,
+                  rephrasedText: item.rephrasedText ?? existing.rephrasedText,
+                  finalText: item.finalText ?? existing.finalText,
+                  mode: item.mode ?? existing.mode,
+                };
+              }
             }
-            mergedProcessed = Object.values(processedCombined);
           }
+          mergedProcessed = Object.values(processedCombined);
         }
         if (mergedProcessed.length > 0) {
           console.log(`Post-processing completed: merged ${mergedProcessed.length} items`);

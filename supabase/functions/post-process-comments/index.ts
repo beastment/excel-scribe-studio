@@ -824,7 +824,16 @@ serve(async (req) => {
 
     // Filter comments that need post-processing
     const flaggedComments = comments.filter(c => c.concerning || c.identifiable)
-    const needsProcessing = flaggedComments.length > 0
+    // De-duplicate by id to avoid processing the same comment multiple times
+    const uniqueMap = new Map<string, any>();
+    for (const c of flaggedComments) {
+      if (!uniqueMap.has(c.id)) uniqueMap.set(c.id, c);
+    }
+    const workComments = Array.from(uniqueMap.values());
+    if (workComments.length !== flaggedComments.length) {
+      console.log(`[POSTPROCESS] De-duplicated flagged comments: ${flaggedComments.length} → ${workComments.length}`);
+    }
+    const needsProcessing = workComments.length > 0
 
     if (!needsProcessing) {
       console.log(`${logPrefix} [POSTPROCESS] No comments need post-processing`)
@@ -858,7 +867,7 @@ serve(async (req) => {
       let optimalBatchSize = DEFAULT_POST_PROCESS_BATCH_SIZE;
       
       // Calculate actual token usage for better batch sizing
-      const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
+      const avgCommentLength = workComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / workComments.length;
       const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 5); // ~5 chars per token (more realistic for post-processing)
       const estimatedOutputTokensPerComment = Math.ceil(avgCommentLength / 5) * 1.1; // Output is typically similar to input for post-processing
       const estimatedTotalTokensPerComment = estimatedInputTokensPerComment + estimatedOutputTokensPerComment;
@@ -929,7 +938,10 @@ serve(async (req) => {
         const aPM = parseProviderModel(c.scanAResult?.model);
         const bPM = parseProviderModel(c.scanBResult?.model);
 
-        
+        // Determine the primary flag type based on adjudicated result
+        const preferIdent = Boolean(c.identifiable);
+        const preferConc = !preferIdent && Boolean(c.concerning);
+
         // If routingMode is forced, prefer that branch when possible
         if (routingMode === 'scan_a' && (aPM.provider && aPM.model)) {
           return { provider: aPM.provider, model: aPM.model };
@@ -937,40 +949,48 @@ serve(async (req) => {
         if (routingMode === 'scan_b' && (bPM.provider && bPM.model)) {
           return { provider: bPM.provider, model: bPM.model };
         }
-        // Prefer identifiable routing
-        if (aIdent && !bIdent && aPM.provider && aPM.model) {
-          return { provider: aPM.provider, model: aPM.model };
-        }
-        if (!aIdent && bIdent && bPM.provider && bPM.model) {
-          return { provider: bPM.provider, model: bPM.model };
-        }
-        if (aIdent && bIdent) {
-          const useA = Math.random() < 0.5;
-          const pm = useA ? aPM : bPM;
-          if (pm.provider && pm.model) {
-            return { provider: pm.provider, model: pm.model };
+
+        // Choose by primary flag type
+        if (preferIdent) {
+          if (aIdent && !bIdent && aPM.provider && aPM.model) return { provider: aPM.provider, model: aPM.model };
+          if (!aIdent && bIdent && bPM.provider && bPM.model) return { provider: bPM.provider, model: bPM.model };
+          if (aIdent && bIdent) {
+            const pm = (Math.random() < 0.5) ? aPM : bPM;
+            if (pm.provider && pm.model) return { provider: pm.provider, model: pm.model };
           }
         }
-        // Concerning-only: prefer the model that flagged concerning; else random; fallback to effective config
-        if (aConc !== bConc) {
+        if (preferConc) {
+          if (aConc && !bConc && aPM.provider && aPM.model) return { provider: aPM.provider, model: aPM.model };
+          if (!aConc && bConc && bPM.provider && bPM.model) return { provider: bPM.provider, model: bPM.model };
+          if (aConc && bConc) {
+            const pm = (Math.random() < 0.5) ? aPM : bPM;
+            if (pm.provider && pm.model) return { provider: pm.provider, model: pm.model };
+          }
+        }
+
+        // Fallbacks: if adjudication says flagged but neither scanner marked that specific flag
+        // try the other flag type
+        if (preferIdent && (aConc || bConc)) {
           const pm = aConc ? aPM : bPM;
-          if (pm.provider && pm.model) {
-            return { provider: pm.provider, model: pm.model };
-          }
+          if (pm.provider && pm.model) return { provider: pm.provider, model: pm.model };
         }
-        const pm = Math.random() < 0.5 ? aPM : bPM;
-        const result = { provider: pm.provider || effectiveConfig.provider, model: pm.model || effectiveConfig.model };
-        return result;
+        if (preferConc && (aIdent || bIdent)) {
+          const pm = aIdent ? aPM : bPM;
+          if (pm.provider && pm.model) return { provider: pm.provider, model: pm.model };
+        }
+
+        // Final fallback to effective config
+        return { provider: effectiveConfig.provider, model: effectiveConfig.model };
       };
 
       const groups = new Map<GroupKey, Group>();
-      for (const c of flaggedComments) {
+      for (const c of workComments) {
         const { provider, model } = pickModelForComment(c);
         const key = `${provider}/${model}`;
         if (!groups.has(key)) groups.set(key, { provider, model, items: [] });
         groups.get(key)!.items.push(c);
       }
-      console.log(`${logPrefix} [ROUTING] Routed ${flaggedComments.length} comments into ${groups.size} groups`);
+      console.log(`${logPrefix} [ROUTING] Routed ${workComments.length} comments into ${groups.size} groups`);
 
       for (const [key, group] of groups.entries()) {
         // Fetch model configuration for this specific group
@@ -1004,8 +1024,10 @@ serve(async (req) => {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
 
         // Determine which items should be processed by redaction vs rephrase
-        const redactItems = chunk.filter((c: any) => Boolean(c.identifiable) || Boolean(c.concerning));
-        const rephraseItems = chunk.filter((c: any) => Boolean(c.identifiable) || Boolean(c.concerning));
+        // Per requirements: every flagged comment should be processed for BOTH redaction and rephrase.
+        // Routing to a model is handled at the group level (chunk). For phase control, we just choose which calls to make.
+        const redactItems = chunk;
+        const rephraseItems = chunk;
 
         // Build sentinel inputs separately for each phase to honor concerning-only = rephrase-only
         const sentinelInputRedact = buildSentinelInput(redactItems.map((c: any) => c.originalText || c.text), redactItems);
@@ -1015,7 +1037,7 @@ serve(async (req) => {
         const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt, redactItems.length);
         const rephrasePrompt = buildBatchTextPrompt(scanConfig.rephrase_prompt, rephraseItems.length);
         
-        // Determine which phases to request for this chunk
+        // Determine which phases to request for this chunk, respecting single-pass policy
         const requestRedaction = (phase === 'both' || phase === 'redaction') && redactItems.length > 0;
         const requestRephrase = (phase === 'both' || phase === 'rephrase') && rephraseItems.length > 0;
 
@@ -1246,6 +1268,7 @@ serve(async (req) => {
         console.log(`${logPrefix} [DEBUG] rephrasedTextsAligned:`, rephrasedTextsAligned.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
         for (let i = 0; i < chunk.length; i++) {
           const comment = chunk[i];
+          // Capture AI outputs for both phases for all flagged comments
           const redCandidate = redactedTextsAligned[i] || '';
           let redactedText = redCandidate.trim().length > 0
             ? redCandidate
@@ -1268,10 +1291,10 @@ serve(async (req) => {
           let finalText = comment.text;
           
           // Apply the appropriate transformation based on enforced mode
-          if (mode === 'redact' && (comment.identifiable || comment.concerning)) {
+          if (mode === 'redact') {
             finalText = redactedText;
             redactedCount++;
-          } else if (mode === 'rephrase' && (comment.identifiable || comment.concerning)) {
+          } else if (mode === 'rephrase') {
             finalText = rephrasedText;
             rephrasedCount++;
           } else {
