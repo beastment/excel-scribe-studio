@@ -15,7 +15,7 @@ const buildCorsHeaders = (origin: string | null) => ({
 
 // Timeout utilities (configurable via environment)
 function getTimeoutMs(envKey: string, fallbackMs: number): number {
-  const raw = Deno.env.get(envKey);
+  const raw = ((globalThis as any).Deno?.env?.get(envKey) as string) || undefined;
   const parsed = raw ? Number(raw) : NaN;
   if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
   return fallbackMs;
@@ -88,8 +88,8 @@ const buildSentinelInput = (texts: string[], comments?: any[]): string => {
 };
 
 // Deterministic redaction enforcement to catch items models may miss
-function enforceRedactionPolicy(text: string | null | undefined): string | null {
-  if (!text) return text ?? null;
+function enforceRedactionPolicy(text: string | null | undefined): string {
+  if (!text) return '';
   let out = String(text);
   
   // Names (more comprehensive pattern to catch names that AI might miss)
@@ -807,7 +807,7 @@ serve(async (req) => {
 
     const effectiveTemperature = (aiCfg && aiCfg.temperature !== null && aiCfg.temperature !== undefined)
       ? aiCfg.temperature
-      : (modelCfg?.temperature ?? scanConfig.temperature ?? 0);
+      : (modelCfg?.temperature ?? 0);
 
     const tokensPerComment = aiCfg?.tokens_per_comment || 13;
     console.log(`${logPrefix} [POSTPROCESS] Using tokens_per_comment: ${tokensPerComment} (for reference, post-processing uses I/O ratios)`);
@@ -865,7 +865,7 @@ serve(async (req) => {
     }
 
     // Process flagged comments using AI-powered redaction and rephrasing
-    const processedComments = []
+    const processedComments: Array<{ id: string; originalRow?: number; scannedIndex?: number; redactedText?: string; rephrasedText?: string; finalText: string; mode: 'redact' | 'rephrase' | 'original'; }> = []
     let redactedCount = 0
     let rephrasedCount = 0
     let originalCount = 0
