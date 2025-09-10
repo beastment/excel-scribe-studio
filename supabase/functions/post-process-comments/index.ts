@@ -782,7 +782,10 @@ serve(async (req) => {
       .single();
     
     const safetyMarginPercent = batchSizingData?.safety_margin_percent || 15;
+    const redactionIoRatio = typeof batchSizingData?.redaction_io_ratio === 'number' ? batchSizingData.redaction_io_ratio : 1.7;
+    const rephraseIoRatio = typeof batchSizingData?.rephrase_io_ratio === 'number' ? batchSizingData.rephrase_io_ratio : 2.3;
     console.log(`${logPrefix} [POSTPROCESS] Safety margin: ${safetyMarginPercent}%`);
+    console.log(`${logPrefix} [POSTPROCESS] I/O ratios: redaction=${redactionIoRatio}, rephrase=${rephraseIoRatio}`);
 
     let actualMaxTokens = getEffectiveMaxTokens(scanConfig);
     console.log(`${logPrefix} [DEBUG] Initial actualMaxTokens from getEffectiveMaxTokens: ${actualMaxTokens}`);
@@ -869,11 +872,15 @@ serve(async (req) => {
       // Calculate actual token usage for better batch sizing
       const avgCommentLength = workComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / workComments.length;
       const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 5); // ~5 chars per token (more realistic for post-processing)
-      const estimatedOutputTokensPerComment = Math.ceil(avgCommentLength / 5) * 1.1; // Output is typically similar to input for post-processing
-      const estimatedTotalTokensPerComment = estimatedInputTokensPerComment + estimatedOutputTokensPerComment;
+      // Estimate outputs using configured I/O ratios (not scan-comments constants)
+      const estimatedOutputTokensPerCommentRedact = Math.ceil(estimatedInputTokensPerComment * redactionIoRatio);
+      const estimatedOutputTokensPerCommentRephrase = Math.ceil(estimatedInputTokensPerComment * rephraseIoRatio);
+      const estimatedTotalTokensPerCommentRedact = estimatedInputTokensPerComment + estimatedOutputTokensPerCommentRedact;
+      const estimatedTotalTokensPerCommentRephrase = estimatedInputTokensPerComment + estimatedOutputTokensPerCommentRephrase;
       
       console.log(`${logPrefix} [BATCH_CALC] Average comment length: ${Math.round(avgCommentLength)} chars`);
-      console.log(`${logPrefix} [BATCH_CALC] Estimated tokens per comment: ${estimatedInputTokensPerComment} input + ${estimatedOutputTokensPerComment} output = ${estimatedTotalTokensPerComment} total`);
+      console.log(`${logPrefix} [BATCH_CALC] Estimated tokens per comment (redact): ${estimatedInputTokensPerComment} in + ${estimatedOutputTokensPerCommentRedact} out = ${estimatedTotalTokensPerCommentRedact}`);
+      console.log(`${logPrefix} [BATCH_CALC] Estimated tokens per comment (rephrase): ${estimatedInputTokensPerComment} in + ${estimatedOutputTokensPerCommentRephrase} out = ${estimatedTotalTokensPerCommentRephrase}`);
       
       // Calculate batch size based on input token limits - use proper defaults for modern models
       const inputTokenLimit = modelCfg?.input_token_limit || 128000;
@@ -886,15 +893,19 @@ serve(async (req) => {
       // Calculate max batch size by input tokens
       const maxBatchByInput = Math.floor(availableInputTokens / estimatedInputTokensPerComment);
       
-      // Calculate max batch size by output tokens  
-      const maxBatchByOutput = Math.floor(outputTokenLimit / estimatedOutputTokensPerComment);
+      // Calculate max batch size by output tokens per phase (use stricter when both phases requested)
+      const maxBatchByOutputRedact = Math.max(1, Math.floor(outputTokenLimit / Math.max(1, estimatedOutputTokensPerCommentRedact)));
+      const maxBatchByOutputRephrase = Math.max(1, Math.floor(outputTokenLimit / Math.max(1, estimatedOutputTokensPerCommentRephrase)));
+      const phasesToRun = (phase === 'both') ? 'both' : phase;
+      const maxBatchByOutput = phasesToRun === 'both' ? Math.min(maxBatchByOutputRedact, maxBatchByOutputRephrase)
+        : (phase === 'redaction' ? maxBatchByOutputRedact : maxBatchByOutputRephrase);
       
       // Use the more restrictive limit
       const maxBatchByTokens = Math.min(maxBatchByInput, maxBatchByOutput);
       
       console.log(`${logPrefix} [BATCH_CALC] Input limit: ${inputTokenLimit}, Output limit: ${outputTokenLimit}`);
       console.log(`${logPrefix} [BATCH_CALC] Available input tokens: ${availableInputTokens} (after ${promptTokens} prompt tokens)`);
-      console.log(`${logPrefix} [BATCH_CALC] Max batch by input: ${maxBatchByInput}, Max batch by output: ${maxBatchByOutput}`);
+      console.log(`${logPrefix} [BATCH_CALC] Max batch by input: ${maxBatchByInput}, Max batch by output: ${maxBatchByOutput} (redact=${maxBatchByOutputRedact}, rephrase=${maxBatchByOutputRephrase})`);
       console.log(`${logPrefix} [BATCH_CALC] Max batch by tokens: ${maxBatchByTokens}`);
       
       // Start with token-based limit
