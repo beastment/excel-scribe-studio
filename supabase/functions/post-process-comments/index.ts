@@ -1029,8 +1029,72 @@ serve(async (req) => {
           }
         }
 
-        const chunks = chunkArray(group.items, optimalBatchSize);
-        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} chunks`);
+        // Build token-aware chunks: greedily pack items until input/output token limits would be exceeded.
+        const buildTokenAwareChunks = (
+          items: any[],
+          phaseMode: 'both' | 'redaction' | 'rephrase',
+          inputLimit: number,
+          outputLimit: number,
+          promptTokenReserve: number,
+          inputTokensPerCharEstimate: number,
+          ioRedact: number,
+          ioRephrase: number
+        ): any[][] => {
+          const chunksOut: any[][] = [];
+          let i = 0;
+          while (i < items.length) {
+            let chunk: any[] = [];
+            let sumInput = 0;
+            let sumOutRedact = 0;
+            let sumOutRephrase = 0;
+            while (i < items.length) {
+              const item = items[i];
+              const text = String(item.originalText || item.text || "");
+              const inputTokens = Math.ceil(text.length / 5); // consistent with earlier estimate
+              const outRedact = Math.ceil(inputTokens * ioRedact);
+              const outRephrase = Math.ceil(inputTokens * ioRephrase);
+              const nextSumInput = sumInput + inputTokens;
+              const nextSumOutRedact = sumOutRedact + outRedact;
+              const nextSumOutRephrase = sumOutRephrase + outRephrase;
+              const inputOk = (nextSumInput + promptTokenReserve) <= inputLimit;
+              const redactOk = (phaseMode !== 'rephrase') ? (nextSumOutRedact <= outputLimit) : true;
+              const rephraseOk = (phaseMode !== 'redaction') ? (nextSumOutRephrase <= outputLimit) : true;
+              const bothOk = phaseMode === 'both' ? (nextSumOutRedact <= outputLimit && nextSumOutRephrase <= outputLimit) : true;
+              if (inputOk && redactOk && rephraseOk && bothOk) {
+                // Add item to chunk
+                chunk.push(item);
+                sumInput = nextSumInput;
+                sumOutRedact = nextSumOutRedact;
+                sumOutRephrase = nextSumOutRephrase;
+                i += 1;
+                // Guardrail to prevent overly large chunks even if limits are high
+                if (chunk.length >= optimalBatchSize) break;
+              } else {
+                // If chunk is empty, force single item to avoid infinite loop
+                if (chunk.length === 0) {
+                  chunk.push(item);
+                  i += 1;
+                }
+                break;
+              }
+            }
+            chunksOut.push(chunk);
+          }
+          return chunksOut;
+        };
+
+        const phaseMode: 'both' | 'redaction' | 'rephrase' = (phase === 'both' || phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
+        const chunks = buildTokenAwareChunks(
+          group.items,
+          phaseMode,
+          (groupModelCfg?.input_token_limit || 128000),
+          groupMaxTokens,
+          2000,
+          5,
+          redactionIoRatio,
+          rephraseIoRatio
+        );
+        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks`);
         for (const chunk of chunks) {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
 
