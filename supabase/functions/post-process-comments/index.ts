@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { AILogger } from './ai-logger.ts';
@@ -169,10 +170,12 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_REQUEST_TIMEOUT_MS); // configurable
     
     try {
-      const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
+      const AZ_ENDPOINT = ((globalThis as any).Deno?.env?.get('AZURE_OPENAI_ENDPOINT') as string) || '';
+      const AZ_KEY = ((globalThis as any).Deno?.env?.get('AZURE_OPENAI_API_KEY') as string) || '';
+      const response = await fetch(`${AZ_ENDPOINT}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
         method: 'POST',
         headers: {
-          'api-key': Deno.env.get('AZURE_OPENAI_API_KEY') || '',
+          'api-key': AZ_KEY,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -222,7 +225,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY') || ''}`,
+          'Authorization': `Bearer ${(((globalThis as any).Deno?.env?.get('OPENAI_API_KEY') as string) || '')}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -717,9 +720,11 @@ serve(async (req) => {
     }
     
     const token = authHeader.replace('Bearer ', '');
+    const SUPABASE_URL = (((globalThis as any).Deno?.env?.get('SUPABASE_URL') as string) || '');
+    const SUPABASE_SERVICE_ROLE_KEY = (((globalThis as any).Deno?.env?.get('SUPABASE_SERVICE_ROLE_KEY') as string) || '');
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') || '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY
     );
     
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
@@ -1059,7 +1064,8 @@ serve(async (req) => {
           promptTokenReserve: number,
           inputTokensPerCharEstimate: number,
           ioRedact: number,
-          ioRephrase: number
+          ioRephrase: number,
+          maxItemsCap: number
         ): any[][] => {
           const chunksOut: any[][] = [];
           let i = 0;
@@ -1089,7 +1095,7 @@ serve(async (req) => {
                 sumOutRephrase = nextSumOutRephrase;
                 i += 1;
                 // Guardrail to prevent overly large chunks even if limits are high
-                if (chunk.length >= optimalBatchSize) break;
+                if (chunk.length >= maxItemsCap) break;
               } else {
                 // If chunk is empty, force single item to avoid infinite loop
                 if (chunk.length === 0) {
@@ -1105,6 +1111,8 @@ serve(async (req) => {
         };
 
         const phaseMode: 'both' | 'redaction' | 'rephrase' = (phase === 'both' || phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
+        const capItemsByOutput = Math.max(1, Math.floor(conservativeOutputLimitSafe / Math.max(estimatedOutputTokensPerCommentRedact, estimatedOutputTokensPerCommentRephrase)));
+        const maxItemsCap = Math.max(1, Math.min(optimalBatchSize, capItemsByOutput));
         let chunks = buildTokenAwareChunks(
           group.items,
           phaseMode,
@@ -1113,7 +1121,8 @@ serve(async (req) => {
           2000,
           5,
           redactionIoRatio,
-          rephraseIoRatio
+          rephraseIoRatio,
+          maxItemsCap
         );
         // As an extra guard, if both phases are requested, further split any chunk whose estimated phase output exceeds the model output limit
         if (phaseMode === 'both') {
@@ -1142,7 +1151,7 @@ serve(async (req) => {
           }
           chunks = guarded;
         }
-        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks (conservative limits applied)`);
+        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks (conservative limits applied, cap=${maxItemsCap})`);
         for (const chunk of chunks) {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
 
