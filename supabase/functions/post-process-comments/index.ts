@@ -923,7 +923,7 @@ serve(async (req) => {
       
       console.log(`${logPrefix} [BATCH_CALC] Final optimal batch size: ${optimalBatchSize}`);
       console.log(`${logPrefix} [BATCH_CALC] Calculation breakdown: DEFAULT_POST_PROCESS_BATCH_SIZE=${DEFAULT_POST_PROCESS_BATCH_SIZE}, maxBatchByTokens=${maxBatchByTokens}, safetyMarginPercent=${safetyMarginPercent}%`);
-      console.log(`${logPrefix} [BATCH_CALC] Token estimation: avgCommentLength=${Math.round(avgCommentLength)}, inputTokensPerComment=${estimatedInputTokensPerComment}, outputTokensPerComment=${estimatedOutputTokensPerComment}`);
+      console.log(`${logPrefix} [BATCH_CALC] Token estimation summary: avgCommentLength=${Math.round(avgCommentLength)}, inputTokensPerComment=${estimatedInputTokensPerComment}, outputTokensPerCommentRedact=${estimatedOutputTokensPerCommentRedact}, outputTokensPerCommentRephrase=${estimatedOutputTokensPerCommentRephrase}`);
       
       // Route each comment to Scan A/B model based on identifiable flags; random if both; for concerning-only use concerning flags, else random
       type GroupKey = string;
