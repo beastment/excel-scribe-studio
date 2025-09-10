@@ -12,7 +12,7 @@
 - **I/O Ratio Optimization**: Batch sizing now uses per-phase I/O ratios from `batch_sizing_config` (`redaction_io_ratio`, `rephrase_io_ratio`).
 - **Token-Aware Greedy Chunking**: Implemented greedy chunk builder that respects input token limits (minus prompt reserve) and output token limits per phase, splitting chunks when needed.
 - **Dual-Phase Guard**: When both redaction and rephrase are requested, chunks are further split to ensure each phase stays within its output token limit.
-- **Safety Margins**: Configurable safety margin percentage applied to calculated batch sizes.
+- **Safety Margins**: Configurable safety margin percentage applied to calculated batch sizes and to conservative input/output limits and AI call `max_tokens` to reduce overrun risk.
 - **Large Dataset Support**: Improved handling of large comment volumes with stable chunking.
 - **Timeout Protection**: Standardized timeouts via `POSTPROCESS_AI_REQUEST_TIMEOUT_MS` (default 140000 ms) and `POSTPROCESS_BEDROCK_REQUEST_TIMEOUT_MS` (default 140000 ms).
 
