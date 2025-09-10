@@ -290,9 +290,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_BEDROCK_TIMEOUT_MS); // configurable
     try {
-      const region = Deno.env.get('AWS_REGION') || 'us-east-1';
-      const accessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
-      const secretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+      const region = (((globalThis as any).Deno?.env?.get('AWS_REGION') as string) || 'us-east-1');
+      const accessKeyId = (((globalThis as any).Deno?.env?.get('AWS_ACCESS_KEY_ID') as string) || undefined);
+      const secretAccessKey = (((globalThis as any).Deno?.env?.get('AWS_SECRET_ACCESS_KEY') as string) || undefined);
       if (!accessKeyId || !secretAccessKey) {
         throw new Error('AWS credentials not configured');
       }

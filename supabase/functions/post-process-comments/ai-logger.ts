@@ -31,8 +31,8 @@ export class AILogger {
   
   constructor() {
     this.supabase = createClient(
-      Deno.env.get('SUPABASE_URL') || '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+      (((globalThis as any).Deno?.env?.get('SUPABASE_URL') as string) || ''),
+      (((globalThis as any).Deno?.env?.get('SUPABASE_SERVICE_ROLE_KEY') as string) || '')
     );
     this.startTime = Date.now();
     this.functionStartTime = Date.now();
