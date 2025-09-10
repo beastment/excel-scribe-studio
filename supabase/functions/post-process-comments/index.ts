@@ -1,7 +1,12 @@
 // @ts-nocheck
+// @ts-ignore - Editor-only: URL imports are resolved by Deno at runtime
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// @ts-ignore - Editor-only: URL imports are resolved by Deno at runtime
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { AILogger } from './ai-logger.ts';
+
+// Editor-only ambient type to suppress "Cannot find name 'Deno'" in non-Deno TS servers
+declare const Deno: { env: { get: (key: string) => string | undefined } };
 
 
 const buildCorsHeaders = (origin: string | null) => ({
