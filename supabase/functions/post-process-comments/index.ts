@@ -1084,7 +1084,7 @@ serve(async (req) => {
         };
 
         const phaseMode: 'both' | 'redaction' | 'rephrase' = (phase === 'both' || phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
-        const chunks = buildTokenAwareChunks(
+        let chunks = buildTokenAwareChunks(
           group.items,
           phaseMode,
           (groupModelCfg?.input_token_limit || 128000),
@@ -1094,6 +1094,33 @@ serve(async (req) => {
           redactionIoRatio,
           rephraseIoRatio
         );
+        // As an extra guard, if both phases are requested, further split any chunk whose estimated phase output exceeds the model output limit
+        if (phaseMode === 'both') {
+          const guarded: any[][] = [];
+          for (const ch of chunks) {
+            let start = 0;
+            while (start < ch.length) {
+              let end = start;
+              let sumOutR = 0;
+              let sumOutP = 0;
+              while (end < ch.length) {
+                const ti = Math.ceil(String(ch[end].originalText || ch[end].text || '').length / 5);
+                const addR = Math.ceil(ti * redactionIoRatio);
+                const addP = Math.ceil(ti * rephraseIoRatio);
+                if ((sumOutR + addR) <= groupMaxTokens && (sumOutP + addP) <= groupMaxTokens) {
+                  sumOutR += addR;
+                  sumOutP += addP;
+                  end += 1;
+                } else {
+                  break;
+                }
+              }
+              guarded.push(ch.slice(start, end > start ? end : (start + 1)));
+              start = end > start ? end : (start + 1);
+            }
+          }
+          chunks = guarded;
+        }
         console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks`);
         for (const chunk of chunks) {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
@@ -1141,15 +1168,18 @@ serve(async (req) => {
          const aiLogger = new AILogger();
          aiLogger.setFunctionStartTime(overallStartTime);
         
-        // Estimate tokens for this chunk more accurately (use the larger of the two inputs when both requested)
-        const chosenLength = requestRedaction && requestRephrase
-          ? Math.max(sentinelInputRedact.length, sentinelInputRephrase.length)
-          : (requestRedaction ? sentinelInputRedact.length : sentinelInputRephrase.length);
-        const chunkEstimatedInputTokens = Math.ceil(chosenLength / 5);
-        const chunkEstimatedOutputTokens = Math.ceil(chosenLength / 5) * 1.1; // Post-processing typically generates similar text
-        const chunkTotalTokens = chunkEstimatedInputTokens + chunkEstimatedOutputTokens;
-        
-        console.log(`${logPrefix} [CHUNK] Estimated tokens: ${chunkTotalTokens} (${chunkEstimatedInputTokens} input + ${chunkEstimatedOutputTokens} output)`);
+        // Estimate per-chunk tokens using configured I/O ratios (and include prompt reserve for input)
+        const chunkInputTokensNoPrompt = chunk.reduce((sum, c) => sum + Math.ceil(String(c.originalText || c.text || '').length / 5), 0);
+        const chunkEstimatedInputTokens = chunkInputTokensNoPrompt + 2000;
+        const chunkEstimatedOutputRedact = chunk.reduce((sum, c) => {
+          const ti = Math.ceil(String(c.originalText || c.text || '').length / 5);
+          return sum + Math.ceil(ti * redactionIoRatio);
+        }, 0);
+        const chunkEstimatedOutputRephrase = chunk.reduce((sum, c) => {
+          const ti = Math.ceil(String(c.originalText || c.text || '').length / 5);
+          return sum + Math.ceil(ti * rephraseIoRatio);
+        }, 0);
+        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${groupModelCfg?.input_token_limit || 128000}, out=${groupMaxTokens})`);
         
 
         
