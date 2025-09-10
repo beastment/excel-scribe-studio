@@ -871,7 +871,7 @@ serve(async (req) => {
       let optimalBatchSize = DEFAULT_POST_PROCESS_BATCH_SIZE;
       
       // Calculate actual token usage for better batch sizing
-      const avgCommentLength = workComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / workComments.length;
+      const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
       const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 5); // ~5 chars per token (more realistic for post-processing)
       // Estimate outputs using configured I/O ratios (not scan-comments constants)
       const estimatedOutputTokensPerCommentRedact = Math.ceil(estimatedInputTokensPerComment * redactionIoRatio);
