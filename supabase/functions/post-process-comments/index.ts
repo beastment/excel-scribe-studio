@@ -785,15 +785,15 @@ serve(async (req) => {
       .limit(1)
       .single();
 
-    // Get batch sizing configuration for safety margin
+    // Get batch sizing configuration for safety margin and IO ratios
     const { data: batchSizingData } = await supabase
-      .from('batch_sizing_config')
-      .select('*')
+      .from("batch_sizing_config")
+      .select("*")
       .single();
     
-    const safetyMarginPercent = batchSizingData?.safety_margin_percent || 15;
-    const redactionIoRatio = typeof batchSizingData?.redaction_io_ratio === 'number' ? batchSizingData.redaction_io_ratio : 1.7;
-    const rephraseIoRatio = typeof batchSizingData?.rephrase_io_ratio === 'number' ? batchSizingData.rephrase_io_ratio : 2.3;
+    const safetyMarginPercent = typeof batchSizingData?.safety_margin_percent === "number" ? batchSizingData.safety_margin_percent : 10;
+    const redactionIoRatio = typeof batchSizingData?.redaction_io_ratio === "number" ? batchSizingData.redaction_io_ratio : 1.7;
+    const rephraseIoRatio = typeof batchSizingData?.rephrase_io_ratio === "number" ? batchSizingData.rephrase_io_ratio : 2.3;
     console.log(`${logPrefix} [POSTPROCESS] Safety margin: ${safetyMarginPercent}%`);
     console.log(`${logPrefix} [POSTPROCESS] I/O ratios: redaction=${redactionIoRatio}, rephrase=${rephraseIoRatio}`);
 
@@ -837,16 +837,7 @@ serve(async (req) => {
 
     // Filter comments that need post-processing
     const flaggedComments = comments.filter(c => c.concerning || c.identifiable)
-    // De-duplicate by id to avoid processing the same comment multiple times
-    const uniqueMap = new Map<string, any>();
-    for (const c of flaggedComments) {
-      if (!uniqueMap.has(c.id)) uniqueMap.set(c.id, c);
-    }
-    const workComments = Array.from(uniqueMap.values());
-    if (workComments.length !== flaggedComments.length) {
-      console.log(`[POSTPROCESS] De-duplicated flagged comments: ${flaggedComments.length} → ${workComments.length}`);
-    }
-    const needsProcessing = workComments.length > 0
+    const needsProcessing = flaggedComments.length > 0
 
     if (!needsProcessing) {
       console.log(`${logPrefix} [POSTPROCESS] No comments need post-processing`)
@@ -1005,13 +996,13 @@ serve(async (req) => {
       };
 
       const groups = new Map<GroupKey, Group>();
-      for (const c of workComments) {
+      for (const c of flaggedComments) {
         const { provider, model } = pickModelForComment(c);
         const key = `${provider}/${model}`;
         if (!groups.has(key)) groups.set(key, { provider, model, items: [] });
         groups.get(key)!.items.push(c);
       }
-      console.log(`${logPrefix} [ROUTING] Routed ${workComments.length} comments into ${groups.size} groups`);
+      console.log(`${logPrefix} [ROUTING] Routed ${flaggedComments.length} comments into ${groups.size} groups`);
 
       // Pre-fetch model configurations for all groups to compute conservative limits
       const groupCfgCache = new Map<string, any>();
