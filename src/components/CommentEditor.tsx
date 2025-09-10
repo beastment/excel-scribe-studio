@@ -533,9 +533,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
 
         console.log('[PHASE3] Launching redaction (scan_a, scan_b) ...', {
-          aOnly: flaggedByAOnly.length,
-          bOnly: flaggedByBOnly.length,
-          both: flaggedByBoth.length,
           routeA: commentsForA.length,
           routeB: commentsForB.length
         });
