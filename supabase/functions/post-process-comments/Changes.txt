@@ -9,10 +9,12 @@
 - **Consistent Output**: Better formatting and structure preservation
 
 ### Improved Batch Processing
-- **I/O Ratio Optimization**: Better batch size calculation using input/output ratios
-- **Safety Margins**: Configurable safety margins to prevent token limit violations
-- **Large Dataset Support**: Improved handling of large comment volumes
-- **Timeout Protection**: Better timeout handling for long-running processes
+- **I/O Ratio Optimization**: Batch sizing now uses per-phase I/O ratios from `batch_sizing_config` (`redaction_io_ratio`, `rephrase_io_ratio`).
+- **Token-Aware Greedy Chunking**: Implemented greedy chunk builder that respects input token limits (minus prompt reserve) and output token limits per phase, splitting chunks when needed.
+- **Dual-Phase Guard**: When both redaction and rephrase are requested, chunks are further split to ensure each phase stays within its output token limit.
+- **Safety Margins**: Configurable safety margin percentage applied to calculated batch sizes.
+- **Large Dataset Support**: Improved handling of large comment volumes with stable chunking.
+- **Timeout Protection**: Standardized timeouts via `POSTPROCESS_AI_REQUEST_TIMEOUT_MS` (default 140000 ms) and `POSTPROCESS_BEDROCK_REQUEST_TIMEOUT_MS` (default 140000 ms).
 
 ### Enhanced AI Integration
 - **Multiple Provider Support**: Enhanced support for OpenAI and Azure OpenAI
@@ -39,10 +41,14 @@
 - **Memory Efficiency**: Improved memory usage patterns
 
 ### Timeout Configuration
-- **Configurable AI Request Timeout**: Added `POSTPROCESS_AI_REQUEST_TIMEOUT_MS` env var (default 140000 ms)
-- **Configurable Bedrock Timeout**: Added `POSTPROCESS_BEDROCK_REQUEST_TIMEOUT_MS` env var (default 140000 ms)
-- **Consistent Messaging**: Timeout errors report exact seconds instead of hard-coded text (e.g., "OpenAI API timeout after 140 seconds")
-- **AbortController**: All AI provider calls use AbortController with the configured timeouts
+- **Configurable AI Request Timeout**: `POSTPROCESS_AI_REQUEST_TIMEOUT_MS` (default 140000 ms) used in all OpenAI/Azure code paths.
+- **Configurable Bedrock Timeout**: `POSTPROCESS_BEDROCK_REQUEST_TIMEOUT_MS` (default 140000 ms) used for Bedrock.
+- **Consistent Messaging**: Timeout errors report exact seconds from the configured value.
+- **AbortController**: All providers use AbortController with the configured timeouts.
+
+### Routing and Logging
+- **RoutingMode Support**: Backend respects `routingMode` and adjudicated flags to route each comment to the correct provider/model (Scan A vs Scan B) for both phases; evenly splits when both flagged.
+- **Detailed Chunk Logs**: Added per-chunk token logs showing input (incl. prompt), estimated output for redaction and rephrase using I/O ratios, and model limits used for gating.
 
 ### Input/Output Improvements
 - **Better Format Handling**: Improved parsing of AI responses
