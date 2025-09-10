@@ -50,6 +50,9 @@
 - **RoutingMode Support**: Backend respects `routingMode` and adjudicated flags to route each comment to the correct provider/model (Scan A vs Scan B) for both phases; evenly splits when both flagged.
 - **Detailed Chunk Logs**: Added per-chunk token logs showing input (incl. prompt), estimated output for redaction and rephrase using I/O ratios, and model limits used for gating.
 
+### Conservative Limits Across Models
+- **Cross-Model Conservative Limits**: Batch building and AI `max_tokens` now use the most conservative (lowest) input and output token limits across all routed models in a run to ensure uniform safety regardless of grouping.
+
 ### Input/Output Improvements
 - **Better Format Handling**: Improved parsing of AI responses
 - **ID Tagging Support**: Enhanced support for ID-tagged responses

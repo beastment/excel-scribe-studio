@@ -1003,15 +1003,31 @@ serve(async (req) => {
       }
       console.log(`${logPrefix} [ROUTING] Routed ${workComments.length} comments into ${groups.size} groups`);
 
+      // Pre-fetch model configurations for all groups to compute conservative limits
+      const groupCfgCache = new Map<string, any>();
+      let conservativeInputLimit = Infinity;
+      let conservativeOutputLimit = Infinity;
       for (const [key, group] of groups.entries()) {
-        // Fetch model configuration for this specific group
         const { data: groupModelCfg, error: groupModelCfgError } = await supabase
           .from('model_configurations')
           .select('*')
           .eq('provider', group.provider)
           .eq('model', group.model)
           .single();
+        groupCfgCache.set(key, { cfg: groupModelCfg, err: groupModelCfgError });
+        const grpInput = (groupModelCfg && typeof groupModelCfg.input_token_limit === 'number') ? groupModelCfg.input_token_limit : 128000;
+        const grpOutput = (groupModelCfg && typeof groupModelCfg.output_token_limit === 'number') ? groupModelCfg.output_token_limit : getEffectiveMaxTokens({ provider: group.provider, model: group.model });
+        conservativeInputLimit = Math.min(conservativeInputLimit, grpInput);
+        conservativeOutputLimit = Math.min(conservativeOutputLimit, grpOutput);
+      }
+      if (!Number.isFinite(conservativeInputLimit)) conservativeInputLimit = 128000;
+      if (!Number.isFinite(conservativeOutputLimit)) conservativeOutputLimit = getEffectiveMaxTokens(effectiveConfig);
+      console.log(`${logPrefix} [BATCH_CALC] Conservative limits across models: input=${conservativeInputLimit}, output=${conservativeOutputLimit}`);
 
+      for (const [key, group] of groups.entries()) {
+        const cached = groupCfgCache.get(key) as { cfg: any, err: any } | undefined;
+        const groupModelCfg = cached?.cfg;
+        const groupModelCfgError = cached?.err;
         let groupMaxTokens = getEffectiveMaxTokens({ provider: group.provider, model: group.model });
         if (!groupModelCfgError && groupModelCfg) {
           groupMaxTokens = groupModelCfg.output_token_limit || groupMaxTokens;
@@ -1025,11 +1041,11 @@ serve(async (req) => {
         } else {
           console.log(`${logPrefix} [POSTPROCESS] Group ${key} using fallback token limit: ${groupMaxTokens}`);
           if (groupModelCfgError) {
-            console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError.message);
+            console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError?.message);
           }
         }
 
-        // Build token-aware chunks: greedily pack items until input/output token limits would be exceeded.
+        // Build token-aware chunks: greedily pack items until input/output token limits would be exceeded (using conservative limits)
         const buildTokenAwareChunks = (
           items: any[],
           phaseMode: 'both' | 'redaction' | 'rephrase',
@@ -1087,8 +1103,8 @@ serve(async (req) => {
         let chunks = buildTokenAwareChunks(
           group.items,
           phaseMode,
-          (groupModelCfg?.input_token_limit || 128000),
-          groupMaxTokens,
+          conservativeInputLimit,
+          conservativeOutputLimit,
           2000,
           5,
           redactionIoRatio,
@@ -1121,7 +1137,7 @@ serve(async (req) => {
           }
           chunks = guarded;
         }
-        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks`);
+        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks (conservative limits applied)`);
         for (const chunk of chunks) {
         console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
 
@@ -1179,7 +1195,7 @@ serve(async (req) => {
           const ti = Math.ceil(String(c.originalText || c.text || '').length / 5);
           return sum + Math.ceil(ti * rephraseIoRatio);
         }, 0);
-        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${groupModelCfg?.input_token_limit || 128000}, out=${groupMaxTokens})`);
+        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${conservativeInputLimit}, out=${conservativeOutputLimit})`);
         
 
         
@@ -1200,7 +1216,7 @@ serve(async (req) => {
               redactPrompt,
               sentinelInputRedact,
               'batch_text',
-              groupMaxTokens,
+              conservativeOutputLimit,
               user.id,
               scanRunId,
               'redaction',
@@ -1218,7 +1234,7 @@ serve(async (req) => {
               rephrasePrompt,
               sentinelInputRephrase,
               'batch_text',
-              groupMaxTokens,
+              conservativeOutputLimit,
               user.id,
               scanRunId,
               'rephrase',
