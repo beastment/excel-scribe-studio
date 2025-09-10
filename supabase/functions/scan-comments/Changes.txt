@@ -60,6 +60,11 @@
 - **Fallback Mechanisms**: Default classifications when AI fails
 - **Comprehensive Logging**: Detailed error tracking and debugging
 
+### Timeout Configuration
+- **Configurable AI Request Timeout**: Added `SCAN_COMMENTS_AI_REQUEST_TIMEOUT_MS` env var (default 140000 ms)
+- **Consistent Messaging**: Timeout errors report exact seconds instead of hard-coded text
+- **AbortController**: All AI provider calls use AbortController with the configured timeout
+
 ### Performance Optimizations
 - **Parallel Processing**: Scan A and Scan B run concurrently
 - **Optimized Batching**: Intelligent batch size calculation

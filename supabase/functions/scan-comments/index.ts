@@ -2094,9 +2094,13 @@ async function callAI(provider: string, model: string, prompt: string, input: st
         console.warn(`[LOGGER] Failed to log request (${phase}):`, logReqErr);
       }
 
+  // Configurable timeouts (use function-specific env overrides if provided)
+  const SCAN_COMMENTS_TIMEOUT_MS = Number(Deno.env.get('SCAN_COMMENTS_AI_REQUEST_TIMEOUT_MS')) > 0 ? Math.floor(Number(Deno.env.get('SCAN_COMMENTS_AI_REQUEST_TIMEOUT_MS'))) : 140000; // 140s default
+  const toSeconds = (ms: number) => Math.round(ms / 1000);
+
   if (provider === 'azure') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 140000); // 110s, below 120s function max
+    const timeoutId = setTimeout(() => controller.abort(), SCAN_COMMENTS_TIMEOUT_MS);
     let response: Response;
     try {
       response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -2110,7 +2114,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       });
     } catch (e: any) {
       clearTimeout(timeoutId);
-      const errorMessage = e && e.name === 'AbortError' ? 'Azure OpenAI API timeout after 5 minutes' : `Azure OpenAI API fetch failed: ${String(e && e.message || e)}`;
+      const errorMessage = e && e.name === 'AbortError' ? `Azure OpenAI API timeout after ${toSeconds(SCAN_COMMENTS_TIMEOUT_MS)} seconds` : `Azure OpenAI API fetch failed: ${String(e && e.message || e)}`;
       if (aiLogger) {
         await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
@@ -2167,7 +2171,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     console.log(`[OPENAI] API Key: ${openaiApiKey ? '***' + openaiApiKey.slice(-4) : 'NOT SET'}`);
     console.log(`[OPENAI] Request payload:`, JSON.stringify(payload, null, 2));
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 140000); // 110s, below 120s function max
+    const timeoutId = setTimeout(() => controller.abort(), SCAN_COMMENTS_TIMEOUT_MS);
     let response: Response;
     try {
       response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -2181,7 +2185,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       });
     } catch (e: any) {
       clearTimeout(timeoutId);
-      const errorMessage = e && e.name === 'AbortError' ? 'OpenAI API timeout after 5 minutes' : `OpenAI API fetch failed: ${String(e && e.message || e)}`;
+      const errorMessage = e && e.name === 'AbortError' ? `OpenAI API timeout after ${toSeconds(SCAN_COMMENTS_TIMEOUT_MS)} seconds` : `OpenAI API fetch failed: ${String(e && e.message || e)}`;
       if (aiLogger) {
         await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
       }
@@ -2291,7 +2295,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 140000); // 110s, below 120s function max
+    const timeoutId = setTimeout(() => controller.abort(), SCAN_COMMENTS_TIMEOUT_MS);
     let response: Response;
     try {
       response = await fetch(endpoint, {

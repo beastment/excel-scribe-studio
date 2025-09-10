@@ -10,6 +10,21 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 }
 
+// Timeout utilities (configurable via environment)
+function getTimeoutMs(envKey: string, fallbackMs: number): number {
+  const raw = Deno.env.get(envKey);
+  const parsed = raw ? Number(raw) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  return fallbackMs;
+}
+
+function seconds(ms: number): number {
+  return Math.round(ms / 1000);
+}
+
+// Default timeouts (override via env)
+const ADJUDICATOR_REQUEST_TIMEOUT_MS = getTimeoutMs("ADJUDICATOR_AI_REQUEST_TIMEOUT_MS", 140000);
+
 interface AdjudicationRequest {
   comments: Array<{
     id: string;
@@ -91,14 +106,29 @@ async function callAI(provider: string, model: string, prompt: string, input: st
   }
 
   if (provider === 'azure') {
-    const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
-      method: 'POST',
-      headers: {
-        'api-key': Deno.env.get('AZURE_OPENAI_API_KEY') || '',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ADJUDICATOR_REQUEST_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
+        method: 'POST',
+        headers: {
+          'api-key': Deno.env.get('AZURE_OPENAI_API_KEY') || '',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } catch (e: unknown) {
+      clearTimeout(timeoutId);
+      const isAbort = (e as { name?: string })?.name === 'AbortError';
+      const errorMessage = isAbort ? `Azure OpenAI API timeout after ${seconds(ADJUDICATOR_REQUEST_TIMEOUT_MS)} seconds` : `Azure OpenAI API fetch failed: ${e instanceof Error ? e.message : String(e)}`;
+      if (aiLogger && userId && scanRunId) {
+        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage, undefined);
+      }
+      throw new Error(errorMessage);
+    }
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
@@ -118,14 +148,29 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
     return responseText;
   } else if (provider === 'openai') {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ADJUDICATOR_REQUEST_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } catch (e: unknown) {
+      clearTimeout(timeoutId);
+      const isAbort = (e as { name?: string })?.name === 'AbortError';
+      const errorMessage = isAbort ? `OpenAI API timeout after ${seconds(ADJUDICATOR_REQUEST_TIMEOUT_MS)} seconds` : `OpenAI API fetch failed: ${e instanceof Error ? e.message : String(e)}`;
+      if (aiLogger && userId && scanRunId) {
+        await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', '', errorMessage, undefined);
+      }
+      throw new Error(errorMessage);
+    }
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
@@ -138,7 +183,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const result = await response.json();
     const responseText = result.choices[0]?.message?.content || '';
     
-    // Log the AI response //
+    // Log the AI response
     if (aiLogger && userId && scanRunId) {
       await aiLogger.logResponse(userId, scanRunId, 'adjudicator', provider, model, 'adjudication', 'adjudication', responseText, undefined, undefined);
     }

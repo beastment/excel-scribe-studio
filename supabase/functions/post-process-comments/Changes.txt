@@ -38,6 +38,12 @@
 - **Token Optimization**: Better token usage and limit management
 - **Memory Efficiency**: Improved memory usage patterns
 
+### Timeout Configuration
+- **Configurable AI Request Timeout**: Added `POSTPROCESS_AI_REQUEST_TIMEOUT_MS` env var (default 140000 ms)
+- **Configurable Bedrock Timeout**: Added `POSTPROCESS_BEDROCK_REQUEST_TIMEOUT_MS` env var (default 140000 ms)
+- **Consistent Messaging**: Timeout errors report exact seconds instead of hard-coded text (e.g., "OpenAI API timeout after 140 seconds")
+- **AbortController**: All AI provider calls use AbortController with the configured timeouts
+
 ### Input/Output Improvements
 - **Better Format Handling**: Improved parsing of AI responses
 - **ID Tagging Support**: Enhanced support for ID-tagged responses

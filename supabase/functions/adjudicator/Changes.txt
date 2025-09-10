@@ -54,3 +54,8 @@
 - **Shared Infrastructure**: Uses same authentication and configuration systems
 - **Consistent Logging**: Unified logging and monitoring approach
 - **Data Consistency**: Maintains consistency across all functions
+
+### Timeout Configuration
+- **Configurable AI Request Timeout**: Added `ADJUDICATOR_AI_REQUEST_TIMEOUT_MS` env var (default 140000 ms)
+- **AbortController**: OpenAI and Azure calls use AbortController with the configured timeout
+- **Consistent Messaging**: Timeout errors report exact seconds instead of hard-coded values

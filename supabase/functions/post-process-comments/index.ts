@@ -12,6 +12,24 @@ const buildCorsHeaders = (origin: string | null) => ({
   'Vary': 'Origin'
 });
 
+// Timeout utilities (configurable via environment)
+function getTimeoutMs(envKey: string, fallbackMs: number): number {
+  const raw = Deno.env.get(envKey);
+  const parsed = raw ? Number(raw) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  return fallbackMs;
+}
+
+function seconds(ms: number): number {
+  return Math.round(ms / 1000);
+}
+
+// Default timeouts can be overridden per function via env vars
+// Using 140s for OpenAI/Azure to remain below common 150s edge caps
+const POSTPROCESS_REQUEST_TIMEOUT_MS = getTimeoutMs("POSTPROCESS_AI_REQUEST_TIMEOUT_MS", 140000);
+// Bedrock often sits behind 120s caps on some platforms; keep conservative default
+const POSTPROCESS_BEDROCK_TIMEOUT_MS = getTimeoutMs("POSTPROCESS_BEDROCK_REQUEST_TIMEOUT_MS", 140000);
+
 // Utility functions
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -148,7 +166,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
   if (provider === 'azure') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 140000); // 140s, below edge 150s cap
+    const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_REQUEST_TIMEOUT_MS); // configurable
     
     try {
       const response = await fetch(`${Deno.env.get('AZURE_OPENAI_ENDPOINT')}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -187,7 +205,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        const timeoutMessage = 'Azure OpenAI API timeout after 115 seconds';
+        const timeoutMessage = `Azure OpenAI API timeout after ${seconds(POSTPROCESS_REQUEST_TIMEOUT_MS)} seconds`;
         if (aiLogger && userId && scanRunId && phase) {
           await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
         }
@@ -197,7 +215,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
   } else if (provider === 'openai') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 140000); // 140s, below edge 150s cap
+    const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_REQUEST_TIMEOUT_MS); // configurable
     
     let response;
     try {
@@ -226,7 +244,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        const timeoutMessage = 'OpenAI API timeout after 115 seconds';
+        const timeoutMessage = `OpenAI API timeout after ${seconds(POSTPROCESS_REQUEST_TIMEOUT_MS)} seconds`;
         if (aiLogger && userId && scanRunId && phase) {
           await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
         }
@@ -262,7 +280,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
   } else if (provider === 'bedrock') {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 115000); // 115s, below edge 120s cap
+    const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_BEDROCK_TIMEOUT_MS); // configurable
     try {
       const region = Deno.env.get('AWS_REGION') || 'us-east-1';
       const accessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
@@ -336,7 +354,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     } catch (error) {
       clearTimeout(timeoutId);
       if ((error as any)?.name === 'AbortError') {
-        const timeoutMessage = 'Bedrock API timeout after 115 seconds';
+        const timeoutMessage = `Bedrock API timeout after ${seconds(POSTPROCESS_BEDROCK_TIMEOUT_MS)} seconds`;
         if (aiLogger && userId && scanRunId && phase) {
           await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
         }
