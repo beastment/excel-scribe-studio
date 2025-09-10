@@ -1079,9 +1079,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     if (comment.aiReasoning) {
       return 'AI: No Changes';
     }
-
-    // Default to scan needed if no AI processing has occurred
-    return 'Scan Needed';
+    // At this point, a scan has run and the item is not flagged and has no AI output text
+    // Treat as scanned with no changes needed
+    return 'AI: No Changes';
   };
 
   // Get the initial mode for comments with "AI: No Changes" status
