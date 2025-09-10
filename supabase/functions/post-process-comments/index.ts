@@ -1022,7 +1022,12 @@ serve(async (req) => {
       }
       if (!Number.isFinite(conservativeInputLimit)) conservativeInputLimit = 128000;
       if (!Number.isFinite(conservativeOutputLimit)) conservativeOutputLimit = getEffectiveMaxTokens(effectiveConfig);
+      // Apply the same safety margin used elsewhere to conservative limits
+      const safetyMultiplierConservative = 1 - (safetyMarginPercent / 100);
+      const conservativeInputLimitSafe = Math.floor(conservativeInputLimit * safetyMultiplierConservative);
+      const conservativeOutputLimitSafe = Math.floor(conservativeOutputLimit * safetyMultiplierConservative);
       console.log(`${logPrefix} [BATCH_CALC] Conservative limits across models: input=${conservativeInputLimit}, output=${conservativeOutputLimit}`);
+      console.log(`${logPrefix} [BATCH_CALC] Safety-adjusted conservative limits: input=${conservativeInputLimitSafe}, output=${conservativeOutputLimitSafe} (margin=${safetyMarginPercent}%)`);
 
       for (const [key, group] of groups.entries()) {
         const cached = groupCfgCache.get(key) as { cfg: any, err: any } | undefined;
@@ -1103,8 +1108,8 @@ serve(async (req) => {
         let chunks = buildTokenAwareChunks(
           group.items,
           phaseMode,
-          conservativeInputLimit,
-          conservativeOutputLimit,
+          conservativeInputLimitSafe,
+          conservativeOutputLimitSafe,
           2000,
           5,
           redactionIoRatio,
@@ -1195,7 +1200,7 @@ serve(async (req) => {
           const ti = Math.ceil(String(c.originalText || c.text || '').length / 5);
           return sum + Math.ceil(ti * rephraseIoRatio);
         }, 0);
-        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${conservativeInputLimit}, out=${conservativeOutputLimit})`);
+        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${conservativeInputLimitSafe}, out=${conservativeOutputLimitSafe})`);
         
 
         
@@ -1216,7 +1221,7 @@ serve(async (req) => {
               redactPrompt,
               sentinelInputRedact,
               'batch_text',
-              conservativeOutputLimit,
+              conservativeOutputLimitSafe,
               user.id,
               scanRunId,
               'redaction',
@@ -1234,7 +1239,7 @@ serve(async (req) => {
               rephrasePrompt,
               sentinelInputRephrase,
               'batch_text',
-              conservativeOutputLimit,
+              conservativeOutputLimitSafe,
               user.id,
               scanRunId,
               'rephrase',
