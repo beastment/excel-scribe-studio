@@ -601,7 +601,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
     return matches.map(m => m[1].trim()).filter(s => s.length > 0);
   }
   
-  // Check if this is a JSON array (the AI might return the entire array as a string)
+  // Check if this is a JSON array (the AI might return the entire array as a string) //
   if (content.trim().startsWith('[')) {
     try {
       const jsonArray = JSON.parse(content);
