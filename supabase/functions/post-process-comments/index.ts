@@ -81,7 +81,6 @@ function getEffectiveMaxTokens(config: any, logPrefix?: string): number {
   const model = String(config?.model || '').toLowerCase();
   if (provider === 'bedrock') {
     if (model.includes('anthropic.claude')) {
-      console.log(`${lp}[getEffectiveMaxTokens] Claude model detected, returning 4096`);
       return 4096;
     }
     if (model.startsWith('mistral.')) return 4096;
