@@ -195,6 +195,8 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     setRunStats(stats);
   };
 
+  const FETCH_TIMEOUT_MS = 60000; // Increase timeout to reduce spurious client-side timeouts
+
   const fetchLogs = async () => {
     if (!user) {
       console.log('AILogsViewer: No user, skipping fetch');
@@ -206,9 +208,9 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     
     // Add timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
-      console.error('AILogsViewer: Fetch timeout after 30 seconds');
+      console.error(`AILogsViewer: Fetch timeout after ${Math.floor(FETCH_TIMEOUT_MS / 1000)} seconds`);
       setLoading(false);
-    }, 30000);
+    }, FETCH_TIMEOUT_MS);
     
     try {
       // Test authentication first with a simple query
@@ -282,12 +284,13 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
       
       // Now do the full query for the current user
       console.log('AILogsViewer: Starting full query for user...');
+      // Reduce volume and prioritize recent activity to avoid long responses
       const { data: allLogs, error: allLogsError } = await supabase
         .from('ai_logs')
-        .select('*')
+        .select('id, scan_run_id, function_name, provider, model, request_type, phase, request_tokens, response_tokens, response_status, processing_time_ms, time_started, time_finished, total_run_time_ms, created_at, request_input, response_text, response_error')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .limit(250);
 
       if (allLogsError) {
         console.error('Error fetching AI logs:', allLogsError);
