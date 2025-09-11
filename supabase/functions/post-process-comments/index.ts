@@ -1251,7 +1251,7 @@ serve(async (req) => {
           const ti = Math.ceil(String(c.originalText || c.text || '').length / 5);
           return sum + Math.ceil(ti * rephraseIoRatio);
         }, 0);
-        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${conservativeInputLimitSafe}, out=${conservativeOutputLimitSafe})`);
+        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${conservativeInputLimitSafe}, out=${sharedOutputLimitSafe})`);
         
 
         
@@ -1264,7 +1264,7 @@ serve(async (req) => {
         }
 
         if (requestRedaction) {
-          console.log(`${logPrefix} [AI_CALL_DEBUG] Redaction call: ${group.provider}/${group.model} max_tokens=${conservativeOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
+          console.log(`${logPrefix} [AI_CALL_DEBUG] Redaction call: ${group.provider}/${group.model} max_tokens=${sharedOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
           calls.push(
             callAI(
               group.provider,
@@ -1272,7 +1272,7 @@ serve(async (req) => {
               redactPrompt,
               sentinelInputRedact,
               'batch_text',
-              conservativeOutputLimitSafe,
+              sharedOutputLimitSafe,
               user.id,
               scanRunId,
               'redaction',
@@ -1282,7 +1282,7 @@ serve(async (req) => {
           );
         }
         if (requestRephrase) {
-          console.log(`${logPrefix} [AI_CALL_DEBUG] Rephrase call: ${group.provider}/${group.model} max_tokens=${conservativeOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
+          console.log(`${logPrefix} [AI_CALL_DEBUG] Rephrase call: ${group.provider}/${group.model} max_tokens=${sharedOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
           calls.push(
             callAI(
               group.provider,
@@ -1290,7 +1290,7 @@ serve(async (req) => {
               rephrasePrompt,
               sentinelInputRephrase,
               'batch_text',
-              conservativeOutputLimitSafe,
+              sharedOutputLimitSafe,
               user.id,
               scanRunId,
               'rephrase',
