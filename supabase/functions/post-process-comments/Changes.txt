@@ -48,6 +48,10 @@
 
 ### Instrumentation
 - **Per-call timing logs**: Added `[CALL_AI_TIMING] <provider>/<model> took <ms>` around Azure/OpenAI/Bedrock calls to identify slow batches.
+- **Heartbeats**: Added `[CALL_AI_TIMING] <provider>/<model> heartbeat <ms>` every 15s during in-flight AI calls to confirm progress before completion or timeout.
+
+### Rate Limiting & Pacing
+- **RPM-based pacing**: Implemented per-model RPM pacing via `enforceRpmDelay` using `rpm_limit` from `model_configurations`. Ensures a minimum interval between calls to the same provider/model. Logs `[RPM] <provider>/<model> waiting <ms> (rpm=<limit>)` when delaying.
 
 ### Routing and Logging
 - **RoutingMode Support**: Backend respects `routingMode` and adjudicated flags to route each comment to the correct provider/model (Scan A vs Scan B) for both phases; evenly splits when both flagged.

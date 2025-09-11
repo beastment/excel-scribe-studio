@@ -36,6 +36,27 @@ function seconds(ms: number): number {
 const POSTPROCESS_REQUEST_TIMEOUT_MS = getTimeoutMs("POSTPROCESS_AI_REQUEST_TIMEOUT_MS", 140000);
 const POSTPROCESS_BEDROCK_TIMEOUT_MS = getTimeoutMs("POSTPROCESS_BEDROCK_REQUEST_TIMEOUT_MS", 140000);
 
+// Simple delay utility
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// RPM pacing tracker per provider/model
+const lastCallStartByModel: Map<string, number> = new Map();
+async function enforceRpmDelay(provider: string, model: string, rpmLimit?: number): Promise<void> {
+  if (!rpmLimit || rpmLimit <= 0) return;
+  const key = `${provider}/${model}`;
+  const minIntervalMs = Math.ceil(60000 / rpmLimit);
+  const now = Date.now();
+  const last = lastCallStartByModel.get(key) ?? 0;
+  const waitMs = Math.max(0, minIntervalMs - (now - last));
+  if (waitMs > 0) {
+    console.log(`[RPM] ${key} waiting ${waitMs}ms (rpm=${rpmLimit})`);
+    await delay(waitMs);
+  }
+  lastCallStartByModel.set(key, Date.now());
+}
+
 // Utility functions
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -176,6 +197,13 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     const callStart = Date.now();
     console.log(`[CALL_AI_TIMING] azure/${model} start`);
+    const heartbeatId = setInterval(() => {
+      try {
+        console.log(`[CALL_AI_TIMING] azure/${model} heartbeat ${Date.now() - callStart}ms`);
+      } catch (_) {
+        // ignore logging errors
+      }
+    }, 15000);
     try {
       const AZ_ENDPOINT = ((globalThis as any).Deno?.env?.get('AZURE_OPENAI_ENDPOINT') as string) || '';
       const AZ_KEY = ((globalThis as any).Deno?.env?.get('AZURE_OPENAI_API_KEY') as string) || '';
@@ -190,6 +218,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       });
       
       clearTimeout(timeoutId);
+      clearInterval(heartbeatId);
       console.log(`[CALL_AI_TIMING] azure/${model} took ${Date.now() - callStart}ms`);
 
       if (!response.ok) {
@@ -215,6 +244,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       return responseText;
     } catch (error) {
       clearTimeout(timeoutId);
+      clearInterval(heartbeatId);
       if (error.name === 'AbortError') {
         const timeoutMessage = `Azure OpenAI API timeout after ${seconds(POSTPROCESS_REQUEST_TIMEOUT_MS)} seconds`;
         if (aiLogger && userId && scanRunId && phase) {
@@ -231,6 +261,13 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     let response;
     const callStart = Date.now();
     console.log(`[CALL_AI_TIMING] openai/${model} start`);
+    const heartbeatId = setInterval(() => {
+      try {
+        console.log(`[CALL_AI_TIMING] openai/${model} heartbeat ${Date.now() - callStart}ms`);
+      } catch (_) {
+        // ignore logging errors
+      }
+    }, 15000);
     try {
       response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -246,6 +283,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       });
       
       clearTimeout(timeoutId);
+      clearInterval(heartbeatId);
       console.log(`[CALL_AI_TIMING] openai/${model} took ${Date.now() - callStart}ms`);
 
       if (!response.ok) {
@@ -257,6 +295,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       }
     } catch (error) {
       clearTimeout(timeoutId);
+      clearInterval(heartbeatId);
       if (error.name === 'AbortError') {
         const timeoutMessage = `OpenAI API timeout after ${seconds(POSTPROCESS_REQUEST_TIMEOUT_MS)} seconds`;
         if (aiLogger && userId && scanRunId && phase) {
@@ -297,6 +336,13 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_BEDROCK_TIMEOUT_MS); // configurable
     const callStart = Date.now();
     console.log(`[CALL_AI_TIMING] bedrock/${model} start`);
+    const heartbeatId = setInterval(() => {
+      try {
+        console.log(`[CALL_AI_TIMING] bedrock/${model} heartbeat ${Date.now() - callStart}ms`);
+      } catch (_) {
+        // ignore logging errors
+      }
+    }, 15000);
     try {
       const region = (((globalThis as any).Deno?.env?.get('AWS_REGION') as string) || 'us-east-1');
       const accessKeyId = (((globalThis as any).Deno?.env?.get('AWS_ACCESS_KEY_ID') as string) || undefined);
@@ -348,6 +394,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       });
 
       clearTimeout(timeoutId);
+      clearInterval(heartbeatId);
       console.log(`[CALL_AI_TIMING] bedrock/${modelId} took ${Date.now() - callStart}ms`);
       if (!response.ok) {
         const errorText = await response.text();
@@ -370,6 +417,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       return responseText;
     } catch (error) {
       clearTimeout(timeoutId);
+      clearInterval(heartbeatId);
       if ((error as any)?.name === 'AbortError') {
         const timeoutMessage = `Bedrock API timeout after ${seconds(POSTPROCESS_BEDROCK_TIMEOUT_MS)} seconds`;
         if (aiLogger && userId && scanRunId && phase) {
@@ -1292,8 +1340,9 @@ serve(async (req) => {
 
         if (requestRedaction) {
           console.log(`${logPrefix} [AI_CALL_DEBUG] Redaction call: ${group.provider}/${group.model} max_tokens=${sharedOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
-          calls.push(
-            callAI(
+          calls.push((async () => {
+            await enforceRpmDelay(group.provider, group.model, effectiveConfig.rpm_limit);
+            return await callAI(
               group.provider,
               group.model,
               redactPrompt,
@@ -1305,13 +1354,14 @@ serve(async (req) => {
               'redaction',
               aiLogger,
               groupModelCfg?.temperature ?? effectiveConfig.temperature
-            )
-          );
+            );
+          })());
         }
         if (requestRephrase) {
           console.log(`${logPrefix} [AI_CALL_DEBUG] Rephrase call: ${group.provider}/${group.model} max_tokens=${sharedOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
-          calls.push(
-            callAI(
+          calls.push((async () => {
+            await enforceRpmDelay(group.provider, group.model, effectiveConfig.rpm_limit);
+            return await callAI(
               group.provider,
               group.model,
               rephrasePrompt,
@@ -1323,8 +1373,8 @@ serve(async (req) => {
               'rephrase',
               aiLogger,
               groupModelCfg?.temperature ?? effectiveConfig.temperature
-            )
-          );
+            );
+          })());
         }
         const settled = await Promise.allSettled(calls);
         let rawRedacted: string | null = null;
