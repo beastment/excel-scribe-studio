@@ -65,29 +65,30 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 }
 /////
 
-function getEffectiveMaxTokens(config: any): number {
+function getEffectiveMaxTokens(config: any, logPrefix?: string): number {
   const explicit = config?.max_tokens;
-  console.log('[getEffectiveMaxTokens] Input config:', { 
+  const lp = logPrefix ? `${logPrefix} ` : '';
+  console.log(`${lp}[getEffectiveMaxTokens] Input config:`, { 
     provider: config?.provider, 
     model: config?.model, 
     explicit_max_tokens: explicit 
   });
   if (explicit && explicit > 0) {
-    console.log('[getEffectiveMaxTokens] Using explicit max_tokens:', explicit);
+    console.log(`${lp}[getEffectiveMaxTokens] Using explicit max_tokens:`, explicit);
     return Math.floor(explicit);
   }
   const provider = String(config?.provider || '').toLowerCase();
   const model = String(config?.model || '').toLowerCase();
   if (provider === 'bedrock') {
     if (model.includes('anthropic.claude')) {
-      console.log('[getEffectiveMaxTokens] Claude model detected, returning 4096');
+      console.log(`${lp}[getEffectiveMaxTokens] Claude model detected, returning 4096`);
       return 4096;
     }
     if (model.startsWith('mistral.')) return 4096;
     if (model.startsWith('amazon.titan')) return 2000; // Fallback only - should use output_token_limit from model config
   }
   if (provider === 'openai' || provider === 'azure') return 4096;
-  console.log('[getEffectiveMaxTokens] Using default fallback: 2000');
+  console.log(`${lp}[getEffectiveMaxTokens] Using default fallback: 2000`);
   return 2000; // Fallback only - should use output_token_limit from model config
 }
 
@@ -161,7 +162,8 @@ function enforceRedactionPolicy(text: string | null | undefined): string {
 }
 
 // AI calling function (simplified version for post-processing)
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger, temperature?: number) {
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger, temperature?: number, logPrefix?: string) {
+  const lp = logPrefix ? `${logPrefix} ` : '';
   const payload = {
     messages: [
       { role: 'system', content: prompt },
@@ -171,8 +173,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     max_tokens: maxTokens || 4096
   };
 
-  console.log(`[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 4096}, temperature=${temperature || 0}`);
-  console.log(`[CALL_AI_DEBUG] Provider: ${provider}, Model: ${model}, MaxTokens: ${maxTokens}, Temperature: ${temperature}`);
+  console.log(`${lp}[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 4096}, temperature=${temperature || 0}`);
+  console.log(`${lp}[CALL_AI_DEBUG] Provider: ${provider}, Model: ${model}, MaxTokens: ${maxTokens}, Temperature: ${temperature}`);
 
         // Log the AI request if logger is provided
       if (aiLogger && userId && scanRunId && phase) {
@@ -196,10 +198,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_REQUEST_TIMEOUT_MS); // configurable
     
     const callStart = Date.now();
-    console.log(`[CALL_AI_TIMING] azure/${model} start`);
+    console.log(`${lp}[CALL_AI_TIMING] azure/${model} start`);
     const heartbeatId = setInterval(() => {
       try {
-        console.log(`[CALL_AI_TIMING] azure/${model} heartbeat ${Date.now() - callStart}ms`);
+        console.log(`${lp}[CALL_AI_TIMING] azure/${model} heartbeat ${Date.now() - callStart}ms`);
       } catch (_) {
         // ignore logging errors
       }
@@ -219,7 +221,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       
       clearTimeout(timeoutId);
       clearInterval(heartbeatId);
-      console.log(`[CALL_AI_TIMING] azure/${model} took ${Date.now() - callStart}ms`);
+      console.log(`${lp}[CALL_AI_TIMING] azure/${model} took ${Date.now() - callStart}ms`);
 
       if (!response.ok) {
         const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
@@ -260,10 +262,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     let response;
     const callStart = Date.now();
-    console.log(`[CALL_AI_TIMING] openai/${model} start`);
+    console.log(`${lp}[CALL_AI_TIMING] openai/${model} start`);
     const heartbeatId = setInterval(() => {
       try {
-        console.log(`[CALL_AI_TIMING] openai/${model} heartbeat ${Date.now() - callStart}ms`);
+        console.log(`${lp}[CALL_AI_TIMING] openai/${model} heartbeat ${Date.now() - callStart}ms`);
       } catch (_) {
         // ignore logging errors
       }
@@ -284,7 +286,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       
       clearTimeout(timeoutId);
       clearInterval(heartbeatId);
-      console.log(`[CALL_AI_TIMING] openai/${model} took ${Date.now() - callStart}ms`);
+      console.log(`${lp}[CALL_AI_TIMING] openai/${model} took ${Date.now() - callStart}ms`);
 
       if (!response.ok) {
         const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
@@ -335,10 +337,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_BEDROCK_TIMEOUT_MS); // configurable
     const callStart = Date.now();
-    console.log(`[CALL_AI_TIMING] bedrock/${model} start`);
+    console.log(`${lp}[CALL_AI_TIMING] bedrock/${model} start`);
     const heartbeatId = setInterval(() => {
       try {
-        console.log(`[CALL_AI_TIMING] bedrock/${model} heartbeat ${Date.now() - callStart}ms`);
+        console.log(`${lp}[CALL_AI_TIMING] bedrock/${model} heartbeat ${Date.now() - callStart}ms`);
       } catch (_) {
         // ignore logging errors
       }
@@ -395,7 +397,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
       clearTimeout(timeoutId);
       clearInterval(heartbeatId);
-      console.log(`[CALL_AI_TIMING] bedrock/${modelId} took ${Date.now() - callStart}ms`);
+      console.log(`${lp}[CALL_AI_TIMING] bedrock/${modelId} took ${Date.now() - callStart}ms`);
       if (!response.ok) {
         const errorText = await response.text();
         const errorMessage = `Bedrock API error: ${response.status} ${response.statusText} ${errorText}`;
@@ -723,7 +725,7 @@ interface PostProcessResponse {
 serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = buildCorsHeaders(origin);
-  console.log('[CORS] Origin:', origin);
+  // CORS: origin logging removed to reduce noise
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -771,12 +773,7 @@ serve(async (req) => {
     const runId = scanRunId || Math.floor(Math.random() * 10000);
     const logPrefix = `[RUN ${runId}]`;
 
-    console.log(`${logPrefix} [DEBUG] scanConfig details:`, {
-      provider: scanConfig.provider,
-      model: scanConfig.model,
-      max_tokens: scanConfig.max_tokens,
-      full_scanConfig: scanConfig
-    });
+    // Reduced scanConfig debug logging
 
     // Test database connection and verify we're hitting the right database
     const { data: testData, error: testError } = await supabase
@@ -817,13 +814,12 @@ serve(async (req) => {
     console.log(`${logPrefix} [POSTPROCESS] Safety margin: ${safetyMarginPercent}%`);
     console.log(`${logPrefix} [POSTPROCESS] I/O ratios: redaction=${redactionIoRatio}, rephrase=${rephraseIoRatio}`);
 
-    let actualMaxTokens = getEffectiveMaxTokens(scanConfig);
-    console.log(`${logPrefix} [DEBUG] Initial actualMaxTokens from getEffectiveMaxTokens: ${actualMaxTokens}`);
-    console.log(`${logPrefix} [DEBUG] scanConfig.max_tokens: ${scanConfig.max_tokens}`);
+    let actualMaxTokens = getEffectiveMaxTokens(scanConfig, logPrefix);
+    // Initial token estimation logs reduced
     if (modelCfgError) {
       console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations, using defaults:`, modelCfgError.message);
     } else {
-      actualMaxTokens = modelCfg?.output_token_limit || getEffectiveMaxTokens(scanConfig);
+      actualMaxTokens = modelCfg?.output_token_limit || getEffectiveMaxTokens(scanConfig, logPrefix);
       console.log(`${logPrefix} [POSTPROCESS] Using max_tokens from model_configurations: ${actualMaxTokens}, model_temperature=${modelCfg?.temperature}`);
     }
 
@@ -1095,13 +1091,7 @@ serve(async (req) => {
         let groupMaxTokens = getEffectiveMaxTokens({ provider: group.provider, model: group.model });
         if (!groupModelCfgError && groupModelCfg) {
           groupMaxTokens = groupModelCfg.output_token_limit || groupMaxTokens;
-          console.log(`${logPrefix} [POSTPROCESS] Group ${key} token limit from model_configurations: ${groupMaxTokens}`);
-          console.log(`${logPrefix} [DEBUG] Group ${key} modelCfg details:`, {
-            provider: groupModelCfg.provider,
-            model: groupModelCfg.model,
-            output_token_limit: groupModelCfg.output_token_limit,
-            temperature: groupModelCfg.temperature
-          });
+
         } else {
           if (groupModelCfgError) {
             console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError?.message);
@@ -1308,7 +1298,8 @@ serve(async (req) => {
                 scanRunId,
                 'redaction',
                 aiLogger,
-                groupModelCfg?.temperature ?? effectiveConfig.temperature
+                groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                logPrefix
               );
               console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} took ${Date.now() - outerStart}ms redaction`);
               return result;
@@ -1336,7 +1327,8 @@ serve(async (req) => {
                 scanRunId,
                 'rephrase',
                 aiLogger,
-                groupModelCfg?.temperature ?? effectiveConfig.temperature
+                groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                logPrefix
               );
               console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} took ${Date.now() - outerStart}ms rephrase`);
               return result;
