@@ -454,9 +454,10 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
     }
   };
 
-  const truncateText = (text: string, maxLength: number = 100) => {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + '...';
+  const truncateText = (text: unknown, maxLength: number = 100): string => {
+    const s = typeof text === 'string' ? text : (text == null ? '' : String(text));
+    if (s.length <= maxLength) return s;
+    return s.substring(0, maxLength) + '...';
   };
 
   const extractCommentsCount = (requestInput: string): number => {
