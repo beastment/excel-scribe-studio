@@ -814,6 +814,51 @@ serve(async (req) => {
       ? aiCfg.temperature
       : (modelCfg?.temperature ?? 0);
 
+    // Determine shared conservative output limit across BOTH scan models (scan_a and scan_b)
+    // regardless of which model is being processed in this request
+    const parseProviderModel = (modelStr: string | undefined): { provider: string | null; model: string | null } => {
+      if (!modelStr) return { provider: null, model: null };
+      const parts = modelStr.split('/');
+      if (parts.length === 2) return { provider: parts[0], model: parts[1] };
+      const lower = modelStr.toLowerCase();
+      if (lower.startsWith('anthropic.') || lower.startsWith('mistral.') || lower.startsWith('amazon.titan')) {
+        return { provider: 'bedrock', model: modelStr };
+      }
+      if (lower.startsWith('gpt') || lower.includes('gpt-4') || lower.includes('gpt-4o')) {
+        return { provider: 'openai', model: modelStr };
+      }
+      return { provider: null, model: modelStr };
+    };
+
+    const uniqueModels = new Map<string, { provider: string; model: string }>();
+    for (const c of comments) {
+      const a = parseProviderModel(c.scanAResult?.model);
+      const b = parseProviderModel(c.scanBResult?.model);
+      if (a.provider && a.model) uniqueModels.set(`${a.provider}/${a.model}`, { provider: a.provider, model: a.model });
+      if (b.provider && b.model) uniqueModels.set(`${b.provider}/${b.model}`, { provider: b.provider, model: b.model });
+    }
+    // Always include the incoming scanConfig too
+    uniqueModels.set(`${scanConfig.provider}/${scanConfig.model}`, { provider: scanConfig.provider, model: scanConfig.model });
+
+    let sharedConservativeOutputLimit = Infinity;
+    for (const { provider, model } of uniqueModels.values()) {
+      const { data: mc, error: mcErr } = await supabase
+        .from('model_configurations')
+        .select('*')
+        .eq('provider', provider)
+        .eq('model', model)
+        .single();
+      const limit = (mc && typeof mc.output_token_limit === 'number')
+        ? mc.output_token_limit
+        : getEffectiveMaxTokens({ provider, model });
+      sharedConservativeOutputLimit = Math.min(sharedConservativeOutputLimit, limit);
+    }
+    if (!Number.isFinite(sharedConservativeOutputLimit)) {
+      sharedConservativeOutputLimit = getEffectiveMaxTokens(scanConfig);
+    }
+    const sharedOutputLimitSafe = Math.max(1, Math.floor(sharedConservativeOutputLimit * (1 - (safetyMarginPercent / 100))));
+    console.log(`${logPrefix} [BATCH_CALC] Shared conservative output limit across models: ${sharedConservativeOutputLimit}, safe=${sharedOutputLimitSafe}`);
+
     const tokensPerComment = aiCfg?.tokens_per_comment || 13;
     console.log(`${logPrefix} [POSTPROCESS] Using tokens_per_comment: ${tokensPerComment} (for reference, post-processing uses I/O ratios)`);
 
@@ -825,7 +870,8 @@ serve(async (req) => {
     // Use the actual max_tokens from model_configurations
     const effectiveConfig = {
       ...scanConfig,
-      max_tokens: actualMaxTokens,
+      // Force the max_tokens to the shared conservative safe limit so both models use the same cap
+      max_tokens: sharedOutputLimitSafe,
       temperature: effectiveTemperature,
       tpm_limit: tpmLimit,
       rpm_limit: rpmLimit
@@ -1218,7 +1264,7 @@ serve(async (req) => {
         }
 
         if (requestRedaction) {
-          console.log(`${logPrefix} [AI_CALL_DEBUG] Redaction call: ${group.provider}/${group.model} max_tokens=${groupMaxTokens} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
+          console.log(`${logPrefix} [AI_CALL_DEBUG] Redaction call: ${group.provider}/${group.model} max_tokens=${conservativeOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
           calls.push(
             callAI(
               group.provider,
@@ -1236,7 +1282,7 @@ serve(async (req) => {
           );
         }
         if (requestRephrase) {
-          console.log(`${logPrefix} [AI_CALL_DEBUG] Rephrase call: ${group.provider}/${group.model} max_tokens=${groupMaxTokens} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
+          console.log(`${logPrefix} [AI_CALL_DEBUG] Rephrase call: ${group.provider}/${group.model} max_tokens=${conservativeOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
           calls.push(
             callAI(
               group.provider,
