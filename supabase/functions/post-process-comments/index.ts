@@ -771,7 +771,6 @@ serve(async (req) => {
     const runId = scanRunId || Math.floor(Math.random() * 10000);
     const logPrefix = `[RUN ${runId}]`;
 
-    console.log(`${logPrefix} [POSTPROCESS] Processing ${comments.length} comments with ${scanConfig.provider}/${scanConfig.model}`)
     console.log(`${logPrefix} [DEBUG] scanConfig details:`, {
       provider: scanConfig.provider,
       model: scanConfig.model,
@@ -785,9 +784,6 @@ serve(async (req) => {
       .select('provider, model, output_token_limit')
       .eq('provider', 'bedrock')
       .limit(5);
-    console.log(`${logPrefix} [DEBUG] Test query result:`, { testData, testError });
-    console.log(`${logPrefix} [DEBUG] Looking up model config for: provider=${scanConfig.provider}, model=${scanConfig.model}`);
-    console.log(`${logPrefix} [DEBUG] Query: SELECT * FROM model_configurations WHERE provider='${scanConfig.provider}' AND model='${scanConfig.model}'`);
     const { data: modelCfg, error: modelCfgError } = await supabase
       .from('model_configurations')
       .select('*')
@@ -795,7 +791,6 @@ serve(async (req) => {
       .eq('model', scanConfig.model)
       .single();
     
-    console.log(`${logPrefix} [DEBUG] Model config lookup result:`, { 
       found: !!modelCfg, 
       error: modelCfgError?.message, 
       output_token_limit: modelCfg?.output_token_limit,
@@ -828,9 +823,6 @@ serve(async (req) => {
     if (modelCfgError) {
       console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations, using defaults:`, modelCfgError.message);
     } else {
-      console.log(`${logPrefix} [DEBUG] modelCfg?.output_token_limit: ${modelCfg?.output_token_limit}`);
-      console.log(`${logPrefix} [DEBUG] Full modelCfg object:`, JSON.stringify(modelCfg, null, 2));
-      console.log(`${logPrefix} [DEBUG] Full scanConfig object:`, JSON.stringify(scanConfig, null, 2));
       actualMaxTokens = modelCfg?.output_token_limit || getEffectiveMaxTokens(scanConfig);
       console.log(`${logPrefix} [POSTPROCESS] Using max_tokens from model_configurations: ${actualMaxTokens}, model_temperature=${modelCfg?.temperature}`);
     }
@@ -901,10 +893,6 @@ serve(async (req) => {
       tpm_limit: tpmLimit,
       rpm_limit: rpmLimit
     };
-
-    console.log(`${logPrefix} [POSTPROCESS] Effective config: max_tokens=${effectiveConfig.max_tokens}, temperature=${effectiveConfig.temperature}`);
-    console.log(`${logPrefix} [POSTPROCESS] Token limit for AI calls: ${effectiveConfig.max_tokens} tokens (from model config: ${modelCfg?.output_token_limit || 'not set'})`);
-    console.log(`${logPrefix} [POSTPROCESS] Model config output_token_limit: ${modelCfg?.output_token_limit || 'not set'}`);
 
     // Filter comments that need post-processing
     const flaggedComments = comments.filter(c => c.concerning || c.identifiable)
@@ -1073,7 +1061,6 @@ serve(async (req) => {
         if (!groups.has(key)) groups.set(key, { provider, model, items: [] });
         groups.get(key)!.items.push(c);
       }
-      console.log(`${logPrefix} [ROUTING] Routed ${flaggedComments.length} comments into ${groups.size} groups`);
 
       // Pre-fetch model configurations for all groups to compute conservative limits
       const groupCfgCache = new Map<string, any>();
@@ -1109,14 +1096,12 @@ serve(async (req) => {
         if (!groupModelCfgError && groupModelCfg) {
           groupMaxTokens = groupModelCfg.output_token_limit || groupMaxTokens;
           console.log(`${logPrefix} [POSTPROCESS] Group ${key} token limit from model_configurations: ${groupMaxTokens}`);
-          console.log(`${logPrefix} [DEBUG] Group ${key} modelCfg details:`, {
             provider: groupModelCfg.provider,
             model: groupModelCfg.model,
             output_token_limit: groupModelCfg.output_token_limit,
             temperature: groupModelCfg.temperature
           });
         } else {
-          console.log(`${logPrefix} [POSTPROCESS] Group ${key} using fallback token limit: ${groupMaxTokens}`);
           if (groupModelCfgError) {
             console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError?.message);
           }
@@ -1306,7 +1291,6 @@ serve(async (req) => {
         }
 
         if (requestRedaction) {
-          console.log(`${logPrefix} [AI_CALL_DEBUG] Redaction call: ${group.provider}/${group.model} max_tokens=${sharedOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
           calls.push((async () => {
             const outerStart = Date.now();
             console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} start redaction`);
