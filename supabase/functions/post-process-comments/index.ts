@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Prefer deno.json imports. Fallback to URL imports if editor ignores mappings.
 // @ts-ignore - Editor-only: URL/bare imports are resolved by Deno at runtime
-import { serve } from "std/http/server.ts"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 // @ts-ignore - Editor-only: URL imports are resolved by Deno at runtime
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1"
 import { AILogger } from './ai-logger.ts';
