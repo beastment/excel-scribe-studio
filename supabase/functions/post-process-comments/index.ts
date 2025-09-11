@@ -1103,11 +1103,12 @@ serve(async (req) => {
           phaseMode: 'both' | 'redaction' | 'rephrase',
           inputLimit: number,
           outputLimit: number,
-          promptTokenReserve: number,
+          basePromptReserve: number,
           inputTokensPerCharEstimate: number,
           ioRedact: number,
           ioRephrase: number,
-          maxItemsCap: number
+          maxItemsCap: number,
+          perItemPromptOverhead: number
         ): any[][] => {
           const chunksOut: any[][] = [];
           let i = 0;
@@ -1125,7 +1126,8 @@ serve(async (req) => {
               const nextSumInput = sumInput + inputTokens;
               const nextSumOutRedact = sumOutRedact + outRedact;
               const nextSumOutRephrase = sumOutRephrase + outRephrase;
-              const inputOk = (nextSumInput + promptTokenReserve) <= inputLimit;
+              const dynamicPromptReserve = basePromptReserve + (chunk.length + 1) * perItemPromptOverhead;
+              const inputOk = (nextSumInput + dynamicPromptReserve) <= inputLimit;
               const redactOk = (phaseMode !== 'rephrase') ? (nextSumOutRedact <= outputLimit) : true;
               const rephraseOk = (phaseMode !== 'redaction') ? (nextSumOutRephrase <= outputLimit) : true;
               const bothOk = phaseMode === 'both' ? (nextSumOutRedact <= outputLimit && nextSumOutRephrase <= outputLimit) : true;
@@ -1163,16 +1165,23 @@ serve(async (req) => {
           return Math.min(conservativeInputLimitSafe, repIn);
         })();
 
+        // Estimate prompt reserve dynamically: base + per-item overhead tied to provider
+        const isClaude = group.model.toLowerCase().includes('claude');
+        const charsPerToken = isClaude ? 3.5 : 4; // rough cpt for prompt estimation
+        const basePromptReserve = Math.min(1000, Math.max(300, Math.ceil(scanConfig.redact_prompt.length / charsPerToken)));
+        const perItemPromptOverhead = 8; // tokens for sentinels/markers per item
+
         let chunks = buildTokenAwareChunks(
           group.items,
           phaseMode,
           inputDerivedLimitSafe,
           sharedOutputLimitSafe,
-          2000,
+          basePromptReserve,
           5,
           redactionIoRatio,
           rephraseIoRatio,
-          maxItemsCap
+          maxItemsCap,
+          perItemPromptOverhead
         );
         // As an extra guard, if both phases are requested, further split any chunk whose estimated phase output exceeds the model output limit
         if (phaseMode === 'both') {
@@ -1250,7 +1259,7 @@ serve(async (req) => {
         
         // Estimate per-chunk tokens using configured I/O ratios (and include prompt reserve for input)
         const chunkInputTokensNoPrompt = chunk.reduce((sum, c) => sum + Math.ceil(String(c.originalText || c.text || '').length / 5), 0);
-        const chunkEstimatedInputTokens = chunkInputTokensNoPrompt + 2000;
+        const chunkEstimatedInputTokens = chunkInputTokensNoPrompt + basePromptReserve + (chunk.length * perItemPromptOverhead);
         const chunkEstimatedOutputRedact = chunk.reduce((sum, c) => {
           const ti = Math.ceil(String(c.originalText || c.text || '').length / 5);
           return sum + Math.ceil(ti * redactionIoRatio);
