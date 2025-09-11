@@ -1155,11 +1155,19 @@ serve(async (req) => {
         const phaseMode: 'both' | 'redaction' | 'rephrase' = (phase === 'both' || phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
         const capItemsByOutput = Math.max(1, Math.floor(conservativeOutputLimitSafe / Math.max(estimatedOutputTokensPerCommentRedact, estimatedOutputTokensPerCommentRephrase)));
         const maxItemsCap = Math.max(1, Math.min(optimalBatchSize, capItemsByOutput));
+        const inputDerivedLimitSafe = (() => {
+          const redIn = Math.floor(sharedOutputLimitSafe / Math.max(1, redactionIoRatio));
+          const repIn = Math.floor(sharedOutputLimitSafe / Math.max(1, rephraseIoRatio));
+          if (phaseMode === 'both') return Math.min(conservativeInputLimitSafe, redIn, repIn);
+          if (phaseMode === 'redaction') return Math.min(conservativeInputLimitSafe, redIn);
+          return Math.min(conservativeInputLimitSafe, repIn);
+        })();
+
         let chunks = buildTokenAwareChunks(
           group.items,
           phaseMode,
-          conservativeInputLimitSafe,
-          conservativeOutputLimitSafe,
+          inputDerivedLimitSafe,
+          sharedOutputLimitSafe,
           2000,
           5,
           redactionIoRatio,
@@ -1251,7 +1259,7 @@ serve(async (req) => {
           const ti = Math.ceil(String(c.originalText || c.text || '').length / 5);
           return sum + Math.ceil(ti * rephraseIoRatio);
         }, 0);
-        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${conservativeInputLimitSafe}, out=${sharedOutputLimitSafe})`);
+        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${inputDerivedLimitSafe}, out=${sharedOutputLimitSafe})`);
         
 
         
