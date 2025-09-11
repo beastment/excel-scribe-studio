@@ -1341,39 +1341,57 @@ serve(async (req) => {
         if (requestRedaction) {
           console.log(`${logPrefix} [AI_CALL_DEBUG] Redaction call: ${group.provider}/${group.model} max_tokens=${sharedOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
           calls.push((async () => {
+            const outerStart = Date.now();
+            console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} start redaction`);
             await enforceRpmDelay(group.provider, group.model, effectiveConfig.rpm_limit);
-            return await callAI(
-              group.provider,
-              group.model,
-              redactPrompt,
-              sentinelInputRedact,
-              'batch_text',
-              sharedOutputLimitSafe,
-              user.id,
-              scanRunId,
-              'redaction',
-              aiLogger,
-              groupModelCfg?.temperature ?? effectiveConfig.temperature
-            );
+            try {
+              const result = await callAI(
+                group.provider,
+                group.model,
+                redactPrompt,
+                sentinelInputRedact,
+                'batch_text',
+                sharedOutputLimitSafe,
+                user.id,
+                scanRunId,
+                'redaction',
+                aiLogger,
+                groupModelCfg?.temperature ?? effectiveConfig.temperature
+              );
+              console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} took ${Date.now() - outerStart}ms redaction`);
+              return result;
+            } catch (e) {
+              console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} failed after ${Date.now() - outerStart}ms redaction`);
+              throw e;
+            }
           })());
         }
         if (requestRephrase) {
           console.log(`${logPrefix} [AI_CALL_DEBUG] Rephrase call: ${group.provider}/${group.model} max_tokens=${sharedOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
           calls.push((async () => {
+            const outerStart = Date.now();
+            console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} start rephrase`);
             await enforceRpmDelay(group.provider, group.model, effectiveConfig.rpm_limit);
-            return await callAI(
-              group.provider,
-              group.model,
-              rephrasePrompt,
-              sentinelInputRephrase,
-              'batch_text',
-              sharedOutputLimitSafe,
-              user.id,
-              scanRunId,
-              'rephrase',
-              aiLogger,
-              groupModelCfg?.temperature ?? effectiveConfig.temperature
-            );
+            try {
+              const result = await callAI(
+                group.provider,
+                group.model,
+                rephrasePrompt,
+                sentinelInputRephrase,
+                'batch_text',
+                sharedOutputLimitSafe,
+                user.id,
+                scanRunId,
+                'rephrase',
+                aiLogger,
+                groupModelCfg?.temperature ?? effectiveConfig.temperature
+              );
+              console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} took ${Date.now() - outerStart}ms rephrase`);
+              return result;
+            } catch (e) {
+              console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} failed after ${Date.now() - outerStart}ms rephrase`);
+              throw e;
+            }
           })());
         }
         const settled = await Promise.allSettled(calls);
