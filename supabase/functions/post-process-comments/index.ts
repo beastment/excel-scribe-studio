@@ -514,12 +514,9 @@ function normalizeBatchTextParsed(parsed: any): string[] {
   // Check for the specific sequence "\n as comment boundary FIRST - before any other processing
   const content = String(parsed || '');
   if (content.includes('"\n')) {
-    console.log('[NORMALIZE] Found "\\n sequence, parsing as comment boundaries');
-    console.log('[NORMALIZE] Full content with "\\n:', content);
     
     // Split on "\n to separate comments
     const commentParts = content.split('"\n');
-    console.log('[NORMALIZE] Split into', commentParts.length, 'parts');
     
     const result = commentParts
       .map((part, index) => {
@@ -537,7 +534,6 @@ function normalizeBatchTextParsed(parsed: any): string[] {
         if (quotedMatch) {
           const text = quotedMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
           const cleaned = cleanSentinels(text);
-          console.log('[NORMALIZE] Quoted text match cleaned:', cleaned.substring(0, 100));
           return cleaned;
         }
         
@@ -546,7 +542,6 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       })
       .filter(s => s && s.length > 0);
     
-    console.log('[NORMALIZE] Comment boundary parsing result:', result);
     if (result.length > 0) {
       return result;
     }
@@ -811,7 +806,6 @@ serve(async (req) => {
     });
 
     // Test database connection and verify we're hitting the right database
-    console.log(`${logPrefix} [DEBUG] Testing database connection...`);
     const { data: testData, error: testError } = await supabase
       .from('model_configurations')
       .select('provider, model, output_token_limit')
@@ -1453,7 +1447,6 @@ serve(async (req) => {
         }
 
         // Handle ID-tagged responses and realign by index
-        console.log(`${logPrefix} [POSTPROCESS] Handling ID-tagged responses...`);
         const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
         const stripAndIndex = (arr: string[]) => arr.map(s => {
           const m = idTag.exec(s || '');
