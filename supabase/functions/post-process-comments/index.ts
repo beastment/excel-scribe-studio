@@ -610,37 +610,28 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       console.log('[NORMALIZE] JSON parse successful, type:', typeof jsonArray, 'isArray:', Array.isArray(jsonArray));
       if (Array.isArray(jsonArray)) {
         const result = jsonArray.map(item => {
-          console.log('[NORMALIZE] Processing item:', item);
           if (typeof item === 'string') {
             const cleaned = cleanSentinels(item.trim());
-            console.log('[NORMALIZE] String item cleaned:', cleaned.substring(0, 100));
             return cleaned;
           } else if (typeof item === 'object' && item !== null) {
             // Handle JSON objects with redacted/rephrased/text fields
             if (item.redacted) {
-              console.log('[NORMALIZE] Found redacted field:', item.redacted.substring(0, 50));
               const cleaned = cleanSentinels(item.redacted);
-              console.log('[NORMALIZE] Redacted field cleaned:', cleaned.substring(0, 100));
               return cleaned;
             }
             if (item.rephrased) {
-              console.log('[NORMALIZE] Found rephrased field:', item.rephrased.substring(0, 50));
               const cleaned = cleanSentinels(item.rephrased);
-              console.log('[NORMALIZE] Rephrased field cleaned:', cleaned.substring(0, 100));
               return cleaned;
             }
             if (item.text) {
               const cleaned = cleanSentinels(item.text);
-              console.log('[NORMALIZE] Text field cleaned:', cleaned.substring(0, 100));
               return cleaned;
             }
             // Fallback to stringifying the object
             const cleaned = cleanSentinels(JSON.stringify(item));
-            console.log('[NORMALIZE] Object stringified and cleaned:', cleaned.substring(0, 100));
             return cleaned;
           } else {
             const cleaned = cleanSentinels(String(item));
-            console.log('[NORMALIZE] Other type cleaned:', cleaned.substring(0, 100));
             return cleaned;
           }
         }).filter(s => s.length > 0);
@@ -674,11 +665,9 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       const altMatches = [...content.matchAll(alternativePattern)];
       
       if (altMatches.length > 0) {
-        console.log('[NORMALIZE] Found', altMatches.length, 'alternative pattern matches');
         const result = altMatches.map(match => {
           const text = match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
           const cleaned = cleanSentinels(text);
-          console.log('[NORMALIZE] Alternative pattern match cleaned:', cleaned.substring(0, 100));
           return cleaned;
         }).filter(s => s.length > 0);
         console.log('[NORMALIZE] Alternative pattern result:', result);
