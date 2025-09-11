@@ -3,6 +3,7 @@
     "start": "deno run --allow-net --allow-env --allow-read index.ts"
   },
   "imports": {
-    "std/": "https://deno.land/std@0.168.0/"
+    "std/": "https://deno.land/std@0.168.0/",
+    "https://esm.sh/@supabase/supabase-js@2.7.1": "https://esm.sh/@supabase/supabase-js@2.7.1"
   }
 }

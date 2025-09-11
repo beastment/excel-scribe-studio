@@ -1,8 +1,9 @@
 // @ts-nocheck
+// Prefer deno.json imports. Fallback to URL imports if editor ignores mappings.
+// @ts-ignore - Editor-only: URL/bare imports are resolved by Deno at runtime
+import { serve } from "std/http/server.ts"
 // @ts-ignore - Editor-only: URL imports are resolved by Deno at runtime
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-// @ts-ignore - Editor-only: URL imports are resolved by Deno at runtime
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1"
 import { AILogger } from './ai-logger.ts';
 
 // Editor-only ambient type to suppress "Cannot find name 'Deno'" in non-Deno TS servers
@@ -20,7 +21,7 @@ const buildCorsHeaders = (origin: string | null) => ({
 
 // Timeout utilities (configurable via environment)
 function getTimeoutMs(envKey: string, fallbackMs: number): number {
-  const raw = ((globalThis as any).Deno?.env?.get(envKey) as string) || undefined;
+  const raw = (((globalThis as any).Deno?.env?.get(envKey) as string) || undefined);
   const parsed = raw ? Number(raw) : NaN;
   if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
   return fallbackMs;
@@ -666,6 +667,7 @@ interface PostProcessRequest {
     redact_prompt: string;
     rephrase_prompt: string;
     max_tokens?: number;
+    temperature?: number;
   };
   defaultMode: 'redact' | 'rephrase';
   scanRunId?: string; // Add scanRunId to the interface
@@ -812,7 +814,7 @@ serve(async (req) => {
 
     const effectiveTemperature = (aiCfg && aiCfg.temperature !== null && aiCfg.temperature !== undefined)
       ? aiCfg.temperature
-      : (modelCfg?.temperature ?? 0);
+      : (modelCfg?.temperature ?? (scanConfig.temperature ?? 0));
 
     // Determine shared conservative output limit across BOTH scan models (scan_a and scan_b)
     // regardless of which model is being processed in this request
@@ -907,7 +909,7 @@ serve(async (req) => {
     }
 
     // Process flagged comments using AI-powered redaction and rephrasing
-    const processedComments: Array<{ id: string; originalRow?: number; scannedIndex?: number; redactedText?: string; rephrasedText?: string; finalText: string; mode: 'redact' | 'rephrase' | 'original'; }> = []
+    const processedComments: PostProcessResponse["processedComments"] = []
     let redactedCount = 0
     let rephrasedCount = 0
     let originalCount = 0
@@ -1369,8 +1371,8 @@ serve(async (req) => {
         const expectedRephraseCount = rephraseItems.length;
         console.log(`${logPrefix} [DEBUG] rawRedacted type:`, typeof rawRedacted);
         console.log(`${logPrefix} [DEBUG] rawRedacted content:`, rawRedacted?.substring(0, 200));
-        let redactedTexts = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : [];
-        let rephrasedTexts = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : [];
+        let redactedTexts: string[] = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : [];
+        let rephrasedTexts: string[] = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : [];
         // Debug: Log the parsed results (after initialization to avoid ReferenceError)
         console.log(`${logPrefix} [DEBUG] Parsed redactedTexts:`, redactedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
         console.log(`${logPrefix} [DEBUG] Parsed rephrasedTexts:`, rephrasedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
@@ -1399,8 +1401,8 @@ serve(async (req) => {
           return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
         });
         
-        const redIdx = stripAndIndex(redactedTexts);
-        const rephIdx = stripAndIndex(rephrasedTexts);
+        const redIdx = stripAndIndex(redactedTexts as string[]);
+        const rephIdx = stripAndIndex(rephrasedTexts as string[]);
         const allRedHaveIds = !requestRedaction || redIdx.length === 0 || redIdx.every(x => x.idx != null);
         const allRephHaveIds = !requestRephrase || rephIdx.length === 0 || rephIdx.every(x => x.idx != null);
         const allHaveIds = allRedHaveIds && allRephHaveIds;
