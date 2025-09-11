@@ -174,8 +174,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_REQUEST_TIMEOUT_MS); // configurable
     
+    const callStart = Date.now();
+    console.log(`[CALL_AI_TIMING] azure/${model} start`);
     try {
-      const callStart = Date.now();
       const AZ_ENDPOINT = ((globalThis as any).Deno?.env?.get('AZURE_OPENAI_ENDPOINT') as string) || '';
       const AZ_KEY = ((globalThis as any).Deno?.env?.get('AZURE_OPENAI_API_KEY') as string) || '';
       const response = await fetch(`${AZ_ENDPOINT}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -228,8 +229,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_REQUEST_TIMEOUT_MS); // configurable
     
     let response;
+    const callStart = Date.now();
+    console.log(`[CALL_AI_TIMING] openai/${model} start`);
     try {
-      const callStart = Date.now();
       response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -293,8 +295,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
   } else if (provider === 'bedrock') {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_BEDROCK_TIMEOUT_MS); // configurable
+    const callStart = Date.now();
+    console.log(`[CALL_AI_TIMING] bedrock/${model} start`);
     try {
-      const callStart = Date.now();
       const region = (((globalThis as any).Deno?.env?.get('AWS_REGION') as string) || 'us-east-1');
       const accessKeyId = (((globalThis as any).Deno?.env?.get('AWS_ACCESS_KEY_ID') as string) || undefined);
       const secretAccessKey = (((globalThis as any).Deno?.env?.get('AWS_SECRET_ACCESS_KEY') as string) || undefined);
