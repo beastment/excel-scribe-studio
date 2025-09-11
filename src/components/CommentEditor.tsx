@@ -64,7 +64,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [editText, setEditText] = useState('');
   const [showConcerningOnly, setShowConcerningOnly] = useState(false);
   const [showIdentifiableOnly, setShowIdentifiableOnly] = useState(false);
-  const [filteredComments, setFilteredComments] = useState<CommentData[]>(comments);
+  const [filteredComments, setFilteredComments] = useState<CommentData[]>(comments || []);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [defaultMode, setDefaultMode] = useState<'redact' | 'rephrase'>('redact');
@@ -319,7 +319,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       
       // Debug scan results
       if (data?.comments) {
-        console.log(`[DEBUG] Scan results - ${data.comments.length} comments:`);
+        console.log(`[DEBUG] Scan results - ${(data.comments || []).length} comments:`);
       }
 
       // Check for insufficient credits in the response data
@@ -419,11 +419,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               console.error('[PHASE2] Adjudicator error:', adjErr);
               break;
             }
-            if (adjData?.adjudicatedComments) {
+            if (adjData?.adjudicatedComments && Array.isArray(adjData.adjudicatedComments)) {
               const adjMap = new Map(adjData.adjudicatedComments.map((r: any) => [r.id, r]));
               (data as any).comments = (data.comments as any[]).map((c: any) => {
-                const r = adjMap.get(c.id);
-                return r ? { ...c, concerning: r.concerning, identifiable: r.identifiable, isAdjudicated: true, aiReasoning: r.reasoning || c.aiReasoning } : c;
+                const r = adjMap.get(c.id) as any;
+                if (r && typeof r === 'object' && r !== null) {
+                  return { 
+                    ...c, 
+                    concerning: Boolean(r.concerning), 
+                    identifiable: Boolean(r.identifiable), 
+                    isAdjudicated: true, 
+                    aiReasoning: r.reasoning || c.aiReasoning || '' 
+                  };
+                }
+                return c;
               });
             }
           }
@@ -437,7 +446,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       let didPostProcessUpdate = false;
       // Process comments that are identifiable OR concerning-only (per updated logic)
       // Also consider pre-adjudication flags from scanA/scanB to avoid skipping Phase 3 when adjudication logs are delayed
-      const commentsToProcess = data.comments.filter((c: any) => {
+      const commentsToProcess = (data.comments || []).filter((c: any) => {
         const identifiable = Boolean(c.identifiable);
         const concerning = Boolean(c.concerning);
         const preA = Boolean(c.scanAResult?.identifiable || c.scanAResult?.concerning || c.adjudicationData?.scanAResult?.identifiable || c.adjudicationData?.scanAResult?.concerning);
@@ -445,11 +454,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         return identifiable || concerning || preA || preB;
       });
       const phase3Counts = {
-        total: data.comments.length,
-        identifiable: data.comments.filter((c: any) => c.identifiable).length,
-        concerning: data.comments.filter((c: any) => c.concerning).length,
-        concerningOnly: data.comments.filter((c: any) => c.concerning && !c.identifiable).length,
-        preScanFlagged: data.comments.filter((c: any) => (c.scanAResult?.identifiable || c.scanAResult?.concerning || c.adjudicationData?.scanAResult?.identifiable || c.adjudicationData?.scanAResult?.concerning || c.scanBResult?.identifiable || c.scanBResult?.concerning || c.adjudicationData?.scanBResult?.identifiable || c.adjudicationData?.scanBResult?.concerning)).length,
+        total: (data.comments || []).length,
+        identifiable: (data.comments || []).filter((c: any) => c.identifiable).length,
+        concerning: (data.comments || []).filter((c: any) => c.concerning).length,
+        concerningOnly: (data.comments || []).filter((c: any) => c.concerning && !c.identifiable).length,
+        preScanFlagged: (data.comments || []).filter((c: any) => (c.scanAResult?.identifiable || c.scanAResult?.concerning || c.adjudicationData?.scanAResult?.identifiable || c.adjudicationData?.scanAResult?.concerning || c.scanBResult?.identifiable || c.scanBResult?.concerning || c.adjudicationData?.scanBResult?.identifiable || c.adjudicationData?.scanBResult?.concerning)).length,
         toProcess: commentsToProcess.length,
         adjudicationCompleted: Boolean((data as any).adjudicationCompleted)
       };
@@ -835,7 +844,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           console.log(`Created processedMap with ${processedMap.size} entries:`, Array.from(processedMap.keys()));
           
           // Merge post-processing results back into the scan data
-          const finalComments = data.comments.map((comment: any) => {
+          const finalComments = (data.comments || []).map((comment: any) => {
             // Process comments that are identifiable OR concerning-only
             if (comment.identifiable || comment.concerning) {
               let processed = processedMap.get(comment.id) as any;
@@ -942,9 +951,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       
       
       if (!didPostProcessUpdate) {
-        onCommentsUpdate(data.comments);
+        onCommentsUpdate(data.comments || []);
       }
-      toast.success(`Scan complete: ${data.comments.length} comments processed`);
+      toast.success(`Scan complete: ${(data.comments || []).length} comments processed`);
       
       // Refresh credits after successful scan completion
       if (onCreditsRefresh) {
@@ -1408,7 +1417,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       {/* Comments List - Scrollable Container */}
       <div ref={scrollContainerRef} className="h-[70vh] overflow-y-auto border rounded-lg bg-background/50 backdrop-blur-sm">
         <div className="space-y-4 p-4">
-        {filteredComments.map((comment, index) => <Card key={comment.id} className={`p-4 sm:p-6 hover:shadow-md transition-all duration-300 animate-fade-in ${comment.approved ? 'bg-green-50 border-green-300 dark:bg-green-950/30 dark:border-green-800/50' : comment.concerning ? 'bg-red-200 border-red-500 dark:bg-red-900/40 dark:border-red-700/60' : comment.identifiable && !comment.concerning ? 'bg-red-50 border-red-200 dark:bg-red-950/10 dark:border-red-800/20' : ''}`}>
+        {(filteredComments || []).map((comment, index) => <Card key={comment.id} className={`p-4 sm:p-6 hover:shadow-md transition-all duration-300 animate-fade-in ${comment.approved ? 'bg-green-50 border-green-300 dark:bg-green-950/30 dark:border-green-800/50' : comment.concerning ? 'bg-red-200 border-red-500 dark:bg-red-900/40 dark:border-red-700/60' : comment.identifiable && !comment.concerning ? 'bg-red-50 border-red-200 dark:bg-red-950/10 dark:border-red-800/20' : ''}`}>
             <div className="space-y-4">
               {/* Three Column Layout (with optional demographics) */}
               <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${hasDemographics ? 'xl:grid-cols-[200px_1fr_1fr] xl:gap-x-6' : 'xl:grid-cols-2'}`}>
