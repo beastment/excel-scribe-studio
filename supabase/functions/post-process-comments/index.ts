@@ -31,10 +31,9 @@ function seconds(ms: number): number {
   return Math.round(ms / 1000);
 }
 
-// Default timeouts can be overridden per function via env vars
-// Using 140s for OpenAI/Azure to remain below common 150s edge caps
+// Default timeouts can be overridden via env vars
+// Using 140s as default to remain below 150s edge caps
 const POSTPROCESS_REQUEST_TIMEOUT_MS = getTimeoutMs("POSTPROCESS_AI_REQUEST_TIMEOUT_MS", 140000);
-// Bedrock often sits behind 120s caps on some platforms; keep conservative default
 const POSTPROCESS_BEDROCK_TIMEOUT_MS = getTimeoutMs("POSTPROCESS_BEDROCK_REQUEST_TIMEOUT_MS", 140000);
 
 // Utility functions
@@ -176,6 +175,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_REQUEST_TIMEOUT_MS); // configurable
     
     try {
+      const callStart = Date.now();
       const AZ_ENDPOINT = ((globalThis as any).Deno?.env?.get('AZURE_OPENAI_ENDPOINT') as string) || '';
       const AZ_KEY = ((globalThis as any).Deno?.env?.get('AZURE_OPENAI_API_KEY') as string) || '';
       const response = await fetch(`${AZ_ENDPOINT}/openai/deployments/${model}/chat/completions?api-version=2024-02-15-preview`, {
@@ -189,6 +189,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       });
       
       clearTimeout(timeoutId);
+      console.log(`[CALL_AI_TIMING] azure/${model} took ${Date.now() - callStart}ms`);
 
       if (!response.ok) {
         const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
@@ -228,6 +229,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     let response;
     try {
+      const callStart = Date.now();
       response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -242,6 +244,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       });
       
       clearTimeout(timeoutId);
+      console.log(`[CALL_AI_TIMING] openai/${model} took ${Date.now() - callStart}ms`);
 
       if (!response.ok) {
         const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
@@ -291,6 +294,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_BEDROCK_TIMEOUT_MS); // configurable
     try {
+      const callStart = Date.now();
       const region = (((globalThis as any).Deno?.env?.get('AWS_REGION') as string) || 'us-east-1');
       const accessKeyId = (((globalThis as any).Deno?.env?.get('AWS_ACCESS_KEY_ID') as string) || undefined);
       const secretAccessKey = (((globalThis as any).Deno?.env?.get('AWS_SECRET_ACCESS_KEY') as string) || undefined);
@@ -341,6 +345,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       });
 
       clearTimeout(timeoutId);
+      console.log(`[CALL_AI_TIMING] bedrock/${modelId} took ${Date.now() - callStart}ms`);
       if (!response.ok) {
         const errorText = await response.text();
         const errorMessage = `Bedrock API error: ${response.status} ${response.statusText} ${errorText}`;

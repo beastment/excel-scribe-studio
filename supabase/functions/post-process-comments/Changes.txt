@@ -46,6 +46,9 @@
 - **Consistent Messaging**: Timeout errors report exact seconds from the configured value.
 - **AbortController**: All providers use AbortController with the configured timeouts.
 
+### Instrumentation
+- **Per-call timing logs**: Added `[CALL_AI_TIMING] <provider>/<model> took <ms>` around Azure/OpenAI/Bedrock calls to identify slow batches.
+
 ### Routing and Logging
 - **RoutingMode Support**: Backend respects `routingMode` and adjudicated flags to route each comment to the correct provider/model (Scan A vs Scan B) for both phases; evenly splits when both flagged.
 - **Detailed Chunk Logs**: Added per-chunk token logs showing input (incl. prompt), estimated output for redaction and rephrase using I/O ratios, and model limits used for gating.
