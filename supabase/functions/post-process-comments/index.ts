@@ -502,8 +502,7 @@ function arrayBufferToHex(buffer: ArrayBuffer): string {
 
 // Parse and normalize batch text responses
 function normalizeBatchTextParsed(parsed: any): string[] {
-  console.log('[NORMALIZE] Input type:', typeof parsed);
-  console.log('[NORMALIZE] Input content:', typeof parsed === 'string' ? parsed.substring(0, 200) : parsed);
+
   
   // Helper function to clean up any remaining sentinel markers
   const cleanSentinels = (text: string): string => {
@@ -1422,18 +1421,7 @@ serve(async (req) => {
             }
           }
         }
-        
-        console.log(`${logPrefix} [AI RESPONSE] ${group.provider}/${group.model} type=batch_text phase=redaction`);
-        console.log(`${logPrefix} [AI RESPONSE] rawRedacted=${JSON.stringify(rawRedacted).substring(0, 500)}...`);
-        console.log(`${logPrefix} [AI RESPONSE] ${group.provider}/${group.model} type=batch_text phase=rephrase`);
-        console.log(`${logPrefix} [AI RESPONSE] rawRephrased=${JSON.stringify(rawRephrased).substring(0, 500)}...`);
-        console.log(`${logPrefix} [AI RESPONSE] rawRephrased length: ${rawRephrased?.length || 0} characters`);
-        if (rawRephrased) {
-          console.log(`${logPrefix} [AI RESPONSE] rawRephrased ends with: "${rawRephrased.substring(Math.max(0, rawRephrased.length - 100))}"`);
-        }
-        
-        // Parse and normalize the responses
-        console.log(`${logPrefix} [POSTPROCESS] Parsing AI responses...`);
+
         
         // Validate AI responses before parsing
         if ((!requestRedaction || rawRedacted) || (!requestRephrase || rawRephrased)) {
@@ -1445,13 +1433,10 @@ serve(async (req) => {
         
         const expectedRedactCount = redactItems.length;
         const expectedRephraseCount = rephraseItems.length;
-        console.log(`${logPrefix} [DEBUG] rawRedacted type:`, typeof rawRedacted);
-        console.log(`${logPrefix} [DEBUG] rawRedacted content:`, rawRedacted?.substring(0, 200));
+
         let redactedTexts: string[] = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : [];
         let rephrasedTexts: string[] = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : [];
         // Debug: Log the parsed results (after initialization to avoid ReferenceError)
-        console.log(`${logPrefix} [DEBUG] Parsed redactedTexts:`, redactedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
-        console.log(`${logPrefix} [DEBUG] Parsed rephrasedTexts:`, rephrasedTexts.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
         if (requestRedaction && redactedTexts.length === 0) {
           console.warn(`${logPrefix} [POSTPROCESS] Redaction parse returned 0 items; filling ${expectedRedactCount} blanks`);
           redactedTexts = new Array(expectedRedactCount).fill('');
@@ -1461,8 +1446,6 @@ serve(async (req) => {
           rephrasedTexts = new Array(expectedRephraseCount).fill('');
         }
         
-        console.log(`${logPrefix} [POSTPROCESS] Parsed redactedTexts: ${redactedTexts.length} items`);
-        console.log(`${logPrefix} [POSTPROCESS] Parsed rephrasedTexts: ${rephrasedTexts.length} items`);
         
         // Validate parsed results
         if ((requestRedaction && redactedTexts.length === 0) || (requestRephrase && rephrasedTexts.length === 0)) {
@@ -1511,7 +1494,6 @@ serve(async (req) => {
           if (requestRephrase) {
             rephrasedTextsAligned = byId(rephIdx);
           }
-          console.log(`${logPrefix} [POSTPROCESS] Realigned by ID - redactedTextsAligned: ${redactedTextsAligned.length}, rephrasedTextsAligned: ${rephrasedTextsAligned.length}`);
         } else {
           // Sequential alignment per subset order: map outputs to the subset item positions
           if (requestRedaction) {
@@ -1536,8 +1518,6 @@ serve(async (req) => {
 
         // Process each comment in the chunk
         console.log(`${logPrefix} [POSTPROCESS] Processing ${chunk.length} comments in chunk...`);
-        console.log(`${logPrefix} [DEBUG] redactedTextsAligned:`, redactedTextsAligned.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
-        console.log(`${logPrefix} [DEBUG] rephrasedTextsAligned:`, rephrasedTextsAligned.map((text, idx) => ({ idx, text: text?.substring(0, 50) })));
         for (let i = 0; i < chunk.length; i++) {
           const comment = chunk[i];
           // Capture AI outputs for both phases for all flagged comments
