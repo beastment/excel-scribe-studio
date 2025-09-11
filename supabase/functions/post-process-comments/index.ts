@@ -537,7 +537,6 @@ function normalizeBatchTextParsed(parsed: any): string[] {
           return cleaned;
         }
         
-        console.log(`[NORMALIZE] No match found for part ${index}`);
         return null;
       })
       .filter(s => s && s.length > 0);
@@ -604,10 +603,8 @@ function normalizeBatchTextParsed(parsed: any): string[] {
   
   // Check if this is a JSON array (the AI might return the entire array as a string)
   if (content.trim().startsWith('[')) {
-    console.log('[NORMALIZE] Attempting JSON parse of:', content.substring(0, 200));
     try {
       const jsonArray = JSON.parse(content);
-      console.log('[NORMALIZE] JSON parse successful, type:', typeof jsonArray, 'isArray:', Array.isArray(jsonArray));
       if (Array.isArray(jsonArray)) {
         const result = jsonArray.map(item => {
           if (typeof item === 'string') {
@@ -635,11 +632,9 @@ function normalizeBatchTextParsed(parsed: any): string[] {
             return cleaned;
           }
         }).filter(s => s.length > 0);
-        console.log('[NORMALIZE] JSON array result:', result);
         return result;
       }
     } catch (e) {
-      console.warn('[NORMALIZE] Failed to parse JSON array, attempting to parse incomplete JSON:', e);
       
       // Try to parse incomplete JSON by recognizing comment boundaries
       // Pattern to match JSON objects with index and redacted/rephrased fields
@@ -648,14 +643,11 @@ function normalizeBatchTextParsed(parsed: any): string[] {
       const matches = [...content.matchAll(incompleteJsonPattern)];
       
       if (matches.length > 0) {
-        console.log('[NORMALIZE] Found', matches.length, 'incomplete JSON matches');
         const result = matches.map(match => {
           const text = match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
           const cleaned = cleanSentinels(text);
-          console.log('[NORMALIZE] Incomplete JSON match cleaned:', cleaned.substring(0, 100));
           return cleaned;
         }).filter(s => s.length > 0);
-        console.log('[NORMALIZE] Incomplete JSON result:', result);
         return result;
       }
       
@@ -670,19 +662,12 @@ function normalizeBatchTextParsed(parsed: any): string[] {
           const cleaned = cleanSentinels(text);
           return cleaned;
         }).filter(s => s.length > 0);
-        console.log('[NORMALIZE] Alternative pattern result:', result);
         return result;
       }
-      
-      console.warn('[NORMALIZE] No incomplete JSON patterns found, falling back to string parsing');
-      console.warn('[NORMALIZE] Content that failed to parse:', content.substring(0, 500));
-      console.warn('[NORMALIZE] Content length:', content.length);
     }
   }
 
   const result = [String(parsed || '')];
-  console.log('[NORMALIZE] Final result (fallback):', result);
-  console.log('[NORMALIZE] This means JSON parsing failed or input was not JSON array');
   return result;
 }
 
@@ -1447,9 +1432,7 @@ serve(async (req) => {
         const allRedHaveIds = !requestRedaction || redIdx.length === 0 || redIdx.every(x => x.idx != null);
         const allRephHaveIds = !requestRephrase || rephIdx.length === 0 || rephIdx.every(x => x.idx != null);
         const allHaveIds = allRedHaveIds && allRephHaveIds;
-        
-        console.log(`${logPrefix} [POSTPROCESS] ID handling - allHaveIds: ${allHaveIds}, redIdx: ${redIdx.length}, rephIdx: ${rephIdx.length}`);
-        
+                
         // Build full-length arrays aligned to chunk positions
         const expected = chunk.length;
         let redactedTextsAligned: string[] = Array(expected).fill('');
@@ -1495,7 +1478,6 @@ serve(async (req) => {
               }
             }
           }
-          console.log(`${logPrefix} [POSTPROCESS] Sequential subset alignment applied`);
         }
 
         // Process each comment in the chunk
