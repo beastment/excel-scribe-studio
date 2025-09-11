@@ -790,7 +790,7 @@ serve(async (req) => {
       .eq('provider', scanConfig.provider)
       .eq('model', scanConfig.model)
       .single();
-    
+    console.log(`${logPrefix} [DEBUG] Model config lookup result:`, { 
       found: !!modelCfg, 
       error: modelCfgError?.message, 
       output_token_limit: modelCfg?.output_token_limit,
@@ -1096,6 +1096,7 @@ serve(async (req) => {
         if (!groupModelCfgError && groupModelCfg) {
           groupMaxTokens = groupModelCfg.output_token_limit || groupMaxTokens;
           console.log(`${logPrefix} [POSTPROCESS] Group ${key} token limit from model_configurations: ${groupMaxTokens}`);
+          console.log(`${logPrefix} [DEBUG] Group ${key} modelCfg details:`, {
             provider: groupModelCfg.provider,
             model: groupModelCfg.model,
             output_token_limit: groupModelCfg.output_token_limit,
