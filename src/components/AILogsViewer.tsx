@@ -728,7 +728,7 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold">Recent Activity</h3>
                 <ScrollArea className="h-64">
-                  {logs.slice(0, 20).map((log) => (
+                  {logs.slice(0, 50).map((log) => (
                     <div
                       key={log.id}
                       className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
@@ -744,6 +744,9 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
                         <span className="text-sm text-muted-foreground">
                           {log.phase}
                         </span>
+                        <Badge variant="secondary" className="text-xs">
+                          {extractCommentsCount(log.request_input)} comments
+                        </Badge>
                         {extractBatchInfo(log) && (
                           <Badge variant="secondary" className="text-xs">
                             {extractBatchInfo(log)}
