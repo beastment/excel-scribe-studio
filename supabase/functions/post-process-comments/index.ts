@@ -1365,10 +1365,12 @@ serve(async (req) => {
         if (requestRedaction) {
           const idsForChunk = chunk.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
           const redKey = `pp|${runId}|${group.provider}/${group.model}|redaction|${idsForChunk}`;
+          console.log(`${logPrefix} [SUBMIT] redaction key=${redKey} ids=[${idsForChunk}] count=${chunk.length}`);
           if (ppBatches.has(redKey)) {
             console.warn(`${logPrefix} [DEDUP] Skipping duplicate redaction batch for key=${redKey}`);
           } else {
             ppBatches.add(redKey);
+          }
           await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
           try {
             const result = await callAI(
@@ -1393,15 +1395,16 @@ serve(async (req) => {
               await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'redaction', '', errMsg, undefined);
             }
           }
-          }
         }
         if (requestRephrase) {
           const idsForChunk = chunk.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
           const repKey = `pp|${runId}|${group.provider}/${group.model}|rephrase|${idsForChunk}`;
+          console.log(`${logPrefix} [SUBMIT] rephrase key=${repKey} ids=[${idsForChunk}] count=${chunk.length}`);
           if (ppBatches.has(repKey)) {
             console.warn(`${logPrefix} [DEDUP] Skipping duplicate rephrase batch for key=${repKey}`);
           } else {
             ppBatches.add(repKey);
+          }
           await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
           try {
             const result = await callAI(
@@ -1425,7 +1428,6 @@ serve(async (req) => {
             if (aiLogger && user && scanRunId) {
               await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'rephrase', '', errMsg, undefined);
             }
-          }
           }
         }
 
