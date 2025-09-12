@@ -1156,7 +1156,20 @@ serve(async (req) => {
 
         const phaseMode: 'both' | 'redaction' | 'rephrase' = (phase === 'both' || phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
         const capItemsByOutput = Math.max(1, Math.floor(conservativeOutputLimitSafe / Math.max(estimatedOutputTokensPerCommentRedact, estimatedOutputTokensPerCommentRephrase)));
-        const maxItemsCap = Math.max(1, Math.min(optimalBatchSize, capItemsByOutput));
+        let maxItemsCap = Math.max(1, Math.min(optimalBatchSize, capItemsByOutput));
+        // Provider/model-specific hard caps to avoid long-running chunks that risk 150s edge timeouts
+        const providerModelKey = `${group.provider}/${group.model}`.toLowerCase();
+        const hardCaps: Record<string, number> = {
+          'openai/gpt-4o-mini': 12,
+          'bedrock/anthropic.claude-3-haiku-20240307-v1:0': 10,
+        };
+        if (hardCaps[providerModelKey] && hardCaps[providerModelKey] > 0) {
+          const prev = maxItemsCap;
+          maxItemsCap = Math.min(maxItemsCap, hardCaps[providerModelKey]);
+          if (maxItemsCap !== prev) {
+            console.log(`${logPrefix} [BATCH_CALC] Applied provider cap for ${providerModelKey}: ${prev} → ${maxItemsCap}`);
+          }
+        }
         const inputDerivedLimitSafe = (() => {
           const redIn = Math.floor(sharedOutputLimitSafe / Math.max(1, redactionIoRatio));
           const repIn = Math.floor(sharedOutputLimitSafe / Math.max(1, rephraseIoRatio));
