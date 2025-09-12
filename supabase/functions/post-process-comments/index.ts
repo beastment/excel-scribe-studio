@@ -440,6 +440,23 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     }
   }
 
+  // Safeguard: ensure we finalize the log as error before throwing for unsupported providers
+  try {
+    if (aiLogger && userId && scanRunId && phase) {
+      await aiLogger.logResponse(
+        userId,
+        scanRunId,
+        'post-process-comments',
+        provider,
+        model,
+        responseType,
+        phase,
+        '',
+        `Unsupported provider: ${provider}`,
+        undefined
+      );
+    }
+  } catch (_) { /* ignore logging errors */ }
   throw new Error(`Unsupported provider: ${provider}`);
 }
 
