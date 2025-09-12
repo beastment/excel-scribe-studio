@@ -2463,37 +2463,37 @@ function arrayBufferToHex(buffer: ArrayBuffer): string {
     .join('');
 }
 
-+async function waitForDbRpmGate(supabase: any, provider: string, model: string, rpmLimit?: number, logPrefix?: string): Promise<void> {
-+  if (!rpmLimit || rpmLimit <= 0) return;
-+  const windowMs = 60000;
-+  const jitter = () => Math.floor(50 + Math.random() * 100);
-+  while (true) {
-+    try {
-+      const sinceIso = new Date(Date.now() - windowMs).toISOString();
-+      const { data, error } = await supabase
-+        .from('ai_logs')
-+        .select('id, created_at')
-+        .eq('provider', provider)
-+        .eq('model', model)
-+        .gte('created_at', sinceIso)
-+        .in('response_status', ['pending', 'success'])
-+        .order('created_at', { ascending: true });
-+      if (error) {
-+        console.warn(`${logPrefix || ''} [RPM_DB] Query error, proceeding without gate:`, error.message);
-+        return;
-+      }
-+      const recent = Array.isArray(data) ? data : [];
-+      if (recent.length < rpmLimit) return;
-+      const cutoffIdx = Math.max(0, recent.length - rpmLimit);
-+      const windowStart = new Date(recent[cutoffIdx].created_at).getTime();
-+      const waitMs = Math.max(0, windowMs - (Date.now() - windowStart)) + jitter();
-+      if (waitMs <= 0) return;
-+      console.log(`${logPrefix || ''} [RPM_DB] Throttling ${provider}/${model}: recent=${recent.length} >= rpm=${rpmLimit}, sleeping ${waitMs}ms`);
-+      await new Promise(r => setTimeout(r, waitMs));
-+    } catch (e) {
-+      console.warn(`${logPrefix || ''} [RPM_DB] Unexpected error, proceeding:`, e instanceof Error ? e.message : String(e));
-+      return;
-+    }
-+  }
-+}
+async function waitForDbRpmGate(supabase: any, provider: string, model: string, rpmLimit?: number, logPrefix?: string): Promise<void> {
+  if (!rpmLimit || rpmLimit <= 0) return;
+  const windowMs = 60000;
+  const jitter = () => Math.floor(50 + Math.random() * 100);
+  while (true) {
+    try {
+      const sinceIso = new Date(Date.now() - windowMs).toISOString();
+      const { data, error } = await supabase
+        .from('ai_logs')
+        .select('id, created_at')
+        .eq('provider', provider)
+        .eq('model', model)
+        .gte('created_at', sinceIso)
+        .in('response_status', ['pending', 'success'])
+        .order('created_at', { ascending: true });
+      if (error) {
+        console.warn(`${logPrefix || ''} [RPM_DB] Query error, proceeding without gate:`, error.message);
+        return;
+      }
+      const recent = Array.isArray(data) ? data : [];
+      if (recent.length < rpmLimit) return;
+      const cutoffIdx = Math.max(0, recent.length - rpmLimit);
+      const windowStart = new Date(recent[cutoffIdx].created_at).getTime();
+      const waitMs = Math.max(0, windowMs - (Date.now() - windowStart)) + jitter();
+      if (waitMs <= 0) return;
+      console.log(`${logPrefix || ''} [RPM_DB] Throttling ${provider}/${model}: recent=${recent.length} >= rpm=${rpmLimit}, sleeping ${waitMs}ms`);
+      await new Promise(r => setTimeout(r, waitMs));
+    } catch (e) {
+      console.warn(`${logPrefix || ''} [RPM_DB] Unexpected error, proceeding:`, e instanceof Error ? e.message : String(e));
+      return;
+    }
+  }
+}
 
