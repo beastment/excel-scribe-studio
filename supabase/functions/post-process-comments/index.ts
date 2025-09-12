@@ -1309,6 +1309,34 @@ serve(async (req) => {
           if (ppBatches.has(redKey)) {
             console.warn(`${logPrefix} [DEDUP] Skipping duplicate redaction batch for key=${redKey}`);
             effectiveRequestRedaction = false;
+            // Ensure dedup appears in Recent Activity: log a no-op request/response
+            try {
+              await aiLogger.logRequest({
+                userId: user.id,
+                scanRunId: String(runId),
+                functionName: 'post-process-comments',
+                provider: group.provider,
+                model: group.model,
+                requestType: 'batch_text',
+                phase: 'redaction',
+                requestPrompt: redactPrompt,
+                requestInput: sentinelInputRedact,
+                requestTemperature: groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                requestMaxTokens: sharedOutputLimitSafe
+              });
+              await aiLogger.logResponse(
+                user.id,
+                String(runId),
+                'post-process-comments',
+                group.provider,
+                group.model,
+                'batch_text',
+                'redaction',
+                '[DEDUP] Skipped duplicate batch',
+                undefined,
+                undefined
+              );
+            } catch (_) { /* ignore logging errors */ }
           } else {
             ppBatches.add(redKey);
             // DB-based dedup across isolates: skip if same request already pending/success
@@ -1328,6 +1356,33 @@ serve(async (req) => {
               if (!redErr && existingRed && existingRed.length > 0) {
                 console.warn(`${logPrefix} [DEDUP][DB] Existing redaction log found for this batch, skipping AI call`);
                 effectiveRequestRedaction = false;
+                try {
+                  await aiLogger.logRequest({
+                    userId: user.id,
+                    scanRunId: String(runId),
+                    functionName: 'post-process-comments',
+                    provider: group.provider,
+                    model: group.model,
+                    requestType: 'batch_text',
+                    phase: 'redaction',
+                    requestPrompt: redactPrompt,
+                    requestInput: sentinelInputRedact,
+                    requestTemperature: groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                    requestMaxTokens: sharedOutputLimitSafe
+                  });
+                  await aiLogger.logResponse(
+                    user.id,
+                    String(runId),
+                    'post-process-comments',
+                    group.provider,
+                    group.model,
+                    'batch_text',
+                    'redaction',
+                    '[DEDUP][DB] Skipped (existing log found)',
+                    undefined,
+                    undefined
+                  );
+                } catch (_) { /* ignore logging errors */ }
               }
             } catch (_) { /* ignore dedup errors */ }
             if (effectiveRequestRedaction) {
@@ -1365,9 +1420,37 @@ serve(async (req) => {
           if (ppBatches.has(repKey)) {
             console.warn(`${logPrefix} [DEDUP] Skipping duplicate rephrase batch for key=${repKey}`);
             effectiveRequestRephrase = false;
+            // Ensure dedup appears in Recent Activity: log a no-op request/response
+            try {
+              await aiLogger.logRequest({
+                userId: user.id,
+                scanRunId: String(runId),
+                functionName: 'post-process-comments',
+                provider: group.provider,
+                model: group.model,
+                requestType: 'batch_text',
+                phase: 'rephrase',
+                requestPrompt: rephrasePrompt,
+                requestInput: sentinelInputRephrase,
+                requestTemperature: groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                requestMaxTokens: sharedOutputLimitSafe
+              });
+              await aiLogger.logResponse(
+                user.id,
+                String(runId),
+                'post-process-comments',
+                group.provider,
+                group.model,
+                'batch_text',
+                'rephrase',
+                '[DEDUP] Skipped duplicate batch',
+                undefined,
+                undefined
+              );
+            } catch (_) { /* ignore logging errors */ }
           } else {
             ppBatches.add(repKey);
-            // DB-based dedup across isolates: skip if same request already pending/success
+            // DB-based dedup across isolates
             try {
               const { data: existingReph, error: rephErr } = await supabase
                 .from('ai_logs')
@@ -1384,6 +1467,33 @@ serve(async (req) => {
               if (!rephErr && existingReph && existingReph.length > 0) {
                 console.warn(`${logPrefix} [DEDUP][DB] Existing rephrase log found for this batch, skipping AI call`);
                 effectiveRequestRephrase = false;
+                try {
+                  await aiLogger.logRequest({
+                    userId: user.id,
+                    scanRunId: String(runId),
+                    functionName: 'post-process-comments',
+                    provider: group.provider,
+                    model: group.model,
+                    requestType: 'batch_text',
+                    phase: 'rephrase',
+                    requestPrompt: rephrasePrompt,
+                    requestInput: sentinelInputRephrase,
+                    requestTemperature: groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                    requestMaxTokens: sharedOutputLimitSafe
+                  });
+                  await aiLogger.logResponse(
+                    user.id,
+                    String(runId),
+                    'post-process-comments',
+                    group.provider,
+                    group.model,
+                    'batch_text',
+                    'rephrase',
+                    '[DEDUP][DB] Skipped (existing log found)',
+                    undefined,
+                    undefined
+                  );
+                } catch (_) { /* ignore logging errors */ }
               }
             } catch (_) { /* ignore dedup errors */ }
             if (effectiveRequestRephrase) {
