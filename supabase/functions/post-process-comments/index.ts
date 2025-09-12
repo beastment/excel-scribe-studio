@@ -1303,68 +1303,6 @@ serve(async (req) => {
         }
 
         if (requestRedaction) {
-          calls.push((async () => {
-            const outerStart = Date.now();
-            console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} start redaction`);
-            await enforceRpmDelay(group.provider, group.model, effectiveConfig.rpm_limit);
-            try {
-              const result = await callAI(
-                group.provider,
-                group.model,
-                redactPrompt,
-                sentinelInputRedact,
-                'batch_text',
-                sharedOutputLimitSafe,
-                user.id,
-                scanRunId,
-                'redaction',
-                aiLogger,
-                groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                logPrefix
-              );
-              console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} took ${Date.now() - outerStart}ms redaction`);
-              return result;
-            } catch (e) {
-              console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} failed after ${Date.now() - outerStart}ms redaction`);
-              throw e;
-            }
-          })());
-        }
-        if (requestRephrase) {
-          console.log(`${logPrefix} [AI_CALL_DEBUG] Rephrase call: ${group.provider}/${group.model} max_tokens=${sharedOutputLimitSafe} temperature=${groupModelCfg?.temperature ?? effectiveConfig.temperature}`);
-          calls.push((async () => {
-            const outerStart = Date.now();
-            console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} start rephrase`);
-            await enforceRpmDelay(group.provider, group.model, effectiveConfig.rpm_limit);
-            try {
-              const result = await callAI(
-                group.provider,
-                group.model,
-                rephrasePrompt,
-                sentinelInputRephrase,
-                'batch_text',
-                sharedOutputLimitSafe,
-                user.id,
-                scanRunId,
-                'rephrase',
-                aiLogger,
-                groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                logPrefix
-              );
-              console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} took ${Date.now() - outerStart}ms rephrase`);
-              return result;
-            } catch (e) {
-              console.log(`${logPrefix} [CALL_AI_TIMING] ${group.provider}/${group.model} failed after ${Date.now() - outerStart}ms rephrase`);
-              throw e;
-            }
-          })());
-        }
-        // Execute phase calls SEQUENTIALLY to respect RPM limits for the same model
-        let rawRedacted: string | null = null;
-        let rawRephrased: string | null = null;
-        let effectiveRequestRedaction = requestRedaction;
-        let effectiveRequestRephrase = requestRephrase;
-        if (requestRedaction) {
           const idsForChunk = chunk.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
           const redKey = `pp|${runId}|${group.provider}/${group.model}|redaction|${idsForChunk}`;
           console.log(`${logPrefix} [SUBMIT] redaction key=${redKey} ids=[${idsForChunk}] count=${chunk.length}`);
@@ -1373,28 +1311,49 @@ serve(async (req) => {
             effectiveRequestRedaction = false;
           } else {
             ppBatches.add(redKey);
-            await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
+            // DB-based dedup across isolates: skip if same request already pending/success
             try {
-              const result = await callAI(
-                group.provider,
-                group.model,
-                redactPrompt,
-                sentinelInputRedact,
-                'batch_text',
-                sharedOutputLimitSafe,
-                user.id,
-                scanRunId,
-                'redaction',
-                aiLogger,
-                groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                logPrefix
-              );
-              rawRedacted = result;
-            } catch (e) {
-              const errMsg = e instanceof Error ? e.message : String(e);
-              console.error(`${logPrefix} [POSTPROCESS][REDACTION] Error: ${errMsg}`);
-              if (aiLogger && user && scanRunId) {
-                await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'redaction', '', errMsg, undefined);
+              const { data: existingRed, error: redErr } = await supabase
+                .from('ai_logs')
+                .select('id')
+                .eq('scan_run_id', String(runId))
+                .eq('function_name', 'post-process-comments')
+                .eq('provider', group.provider)
+                .eq('model', group.model)
+                .eq('phase', 'redaction')
+                .eq('request_type', 'batch_text')
+                .eq('request_input', sentinelInputRedact)
+                .in('response_status', ['pending', 'success'])
+                .limit(1);
+              if (!redErr && existingRed && existingRed.length > 0) {
+                console.warn(`${logPrefix} [DEDUP][DB] Existing redaction log found for this batch, skipping AI call`);
+                effectiveRequestRedaction = false;
+              }
+            } catch (_) { /* ignore dedup errors */ }
+            if (effectiveRequestRedaction) {
+              await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
+              try {
+                const result = await callAI(
+                  group.provider,
+                  group.model,
+                  redactPrompt,
+                  sentinelInputRedact,
+                  'batch_text',
+                  sharedOutputLimitSafe,
+                  user.id,
+                  scanRunId,
+                  'redaction',
+                  aiLogger,
+                  groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                  logPrefix
+                );
+                rawRedacted = result;
+              } catch (e) {
+                const errMsg = e instanceof Error ? e.message : String(e);
+                console.error(`${logPrefix} [POSTPROCESS][REDACTION] Error: ${errMsg}`);
+                if (aiLogger && user && scanRunId) {
+                  await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'redaction', '', errMsg, undefined);
+                }
               }
             }
           }
@@ -1408,28 +1367,49 @@ serve(async (req) => {
             effectiveRequestRephrase = false;
           } else {
             ppBatches.add(repKey);
-            await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
+            // DB-based dedup across isolates: skip if same request already pending/success
             try {
-              const result = await callAI(
-                group.provider,
-                group.model,
-                rephrasePrompt,
-                sentinelInputRephrase,
-                'batch_text',
-                sharedOutputLimitSafe,
-                user.id,
-                scanRunId,
-                'rephrase',
-                aiLogger,
-                groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                logPrefix
-              );
-              rawRephrased = result;
-            } catch (e) {
-              const errMsg = e instanceof Error ? e.message : String(e);
-              console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
-              if (aiLogger && user && scanRunId) {
-                await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'rephrase', '', errMsg, undefined);
+              const { data: existingReph, error: rephErr } = await supabase
+                .from('ai_logs')
+                .select('id')
+                .eq('scan_run_id', String(runId))
+                .eq('function_name', 'post-process-comments')
+                .eq('provider', group.provider)
+                .eq('model', group.model)
+                .eq('phase', 'rephrase')
+                .eq('request_type', 'batch_text')
+                .eq('request_input', sentinelInputRephrase)
+                .in('response_status', ['pending', 'success'])
+                .limit(1);
+              if (!rephErr && existingReph && existingReph.length > 0) {
+                console.warn(`${logPrefix} [DEDUP][DB] Existing rephrase log found for this batch, skipping AI call`);
+                effectiveRequestRephrase = false;
+              }
+            } catch (_) { /* ignore dedup errors */ }
+            if (effectiveRequestRephrase) {
+              await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
+              try {
+                const result = await callAI(
+                  group.provider,
+                  group.model,
+                  rephrasePrompt,
+                  sentinelInputRephrase,
+                  'batch_text',
+                  sharedOutputLimitSafe,
+                  user.id,
+                  scanRunId,
+                  'rephrase',
+                  aiLogger,
+                  groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                  logPrefix
+                );
+                rawRephrased = result;
+              } catch (e) {
+                const errMsg = e instanceof Error ? e.message : String(e);
+                console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
+                if (aiLogger && user && scanRunId) {
+                  await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'rephrase', '', errMsg, undefined);
+                }
               }
             }
           }
