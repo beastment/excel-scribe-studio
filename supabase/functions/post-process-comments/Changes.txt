@@ -4,6 +4,8 @@
 
 - Respect RPM: serialize redaction and rephrase calls per model/group and use the actual group's `rpm_limit` for pacing via `enforceRpmDelay`. This avoids parallel hits to the same model that could trigger "Too Many Requests" on Bedrock Anthropic Claude (haiku).
 
+- Remove hard caps on batch size: Removed both `DEFAULT_POST_PROCESS_BATCH_SIZE = 100` limit and provider/model-specific hard caps (GPT-4o-mini: 12, Claude Haiku: 10). Batch size is now determined purely by token limits and RPM constraints, allowing larger batches when token capacity permits.
+
 Files impacted:
 - supabase/functions/post-process-comments/index.ts
 - src/components/CommentEditor.tsx

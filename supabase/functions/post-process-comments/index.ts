@@ -92,7 +92,7 @@ function getEffectiveMaxTokens(config: any, logPrefix?: string): number {
 }
 
 // Default batch size for post-processing - will be dynamically calculated based on model limits //
-const DEFAULT_POST_PROCESS_BATCH_SIZE = 100;
+// Note: Hard cap removed - batch size now determined purely by token limits and RPM constraints
 
 const buildBatchTextPrompt = (basePrompt: string, expectedLen: number): string => {
   const sentinels = `BOUNDING AND ORDER RULES:\n- Each comment is delimited by explicit sentinels: <<<ITEM k>>> ... <<<END k>>>.\n- Treat EVERYTHING between these sentinels as ONE single comment, even if multi-paragraph or contains lists/headings.\n- Do NOT split or merge any comment segments.\nOUTPUT RULES:\n- Return ONLY a JSON array of ${expectedLen} strings, aligned to ids (1..${expectedLen}).\n- CRITICAL: Each string MUST BEGIN with the exact prefix <<<ITEM k>>> followed by a space, then the full text for k.\n- Do NOT output any headers such as "Rephrased comment:" or "Here are...".\n- Do NOT include any <<<END k>>> markers in the output.\n- Do NOT emit standalone array tokens like "[" or "]" as array items.\n- No prose, no code fences, no explanations before/after the JSON array.\n- IMPORTANT: The <<<ITEM k>>> prefix is ONLY for identification - do NOT include <<<END k>>> markers anywhere in your output.\n- ALTERNATIVE FORMAT: If you prefer, you can also return results in this simple format:\n  <<<ITEM 1>>> [redacted/rephrased text]\n  <<<ITEM 2>>> [redacted/rephrased text]\n  ...\n  <<<ITEM ${expectedLen}>>> [redacted/rephrased text]`;
@@ -967,7 +967,7 @@ serve(async (req) => {
 
     try {
       // Calculate optimal batch size based on model limits and actual comment sizes
-      let optimalBatchSize = DEFAULT_POST_PROCESS_BATCH_SIZE;
+      let optimalBatchSize = maxBatchByTokens; // Start with token-based limit (no hard cap)
       
       // Calculate actual token usage for better batch sizing
       const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
@@ -1008,8 +1008,8 @@ serve(async (req) => {
       console.log(`${logPrefix} [BATCH_CALC] Max batch by input: ${maxBatchByInput}, Max batch by output: ${maxBatchByOutput} (redact=${maxBatchByOutputRedact}, rephrase=${maxBatchByOutputRephrase})`);
       console.log(`${logPrefix} [BATCH_CALC] Max batch by tokens: ${maxBatchByTokens}`);
       
-      // Start with token-based limit
-      optimalBatchSize = Math.min(DEFAULT_POST_PROCESS_BATCH_SIZE, maxBatchByTokens);
+      // Use token-based limit directly (no hard cap)
+      optimalBatchSize = maxBatchByTokens;
       
 
       
@@ -1022,7 +1022,7 @@ serve(async (req) => {
       }
       
       console.log(`${logPrefix} [BATCH_CALC] Final optimal batch size: ${optimalBatchSize}`);
-      console.log(`${logPrefix} [BATCH_CALC] Calculation breakdown: DEFAULT_POST_PROCESS_BATCH_SIZE=${DEFAULT_POST_PROCESS_BATCH_SIZE}, maxBatchByTokens=${maxBatchByTokens}, safetyMarginPercent=${safetyMarginPercent}%`);
+      console.log(`${logPrefix} [BATCH_CALC] Calculation breakdown: maxBatchByTokens=${maxBatchByTokens}, safetyMarginPercent=${safetyMarginPercent}%`);
       console.log(`${logPrefix} [BATCH_CALC] Token estimation summary: avgCommentLength=${Math.round(avgCommentLength)}, inputTokensPerComment=${estimatedInputTokensPerComment}, outputTokensPerCommentRedact=${estimatedOutputTokensPerCommentRedact}, outputTokensPerCommentRephrase=${estimatedOutputTokensPerCommentRephrase}`);
       
       // Route each comment to Scan A/B model based on identifiable flags; random if both; for concerning-only use concerning flags, else random
@@ -1202,19 +1202,7 @@ serve(async (req) => {
         const phaseMode: 'both' | 'redaction' | 'rephrase' = (phase === 'both' || phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
         const capItemsByOutput = Math.max(1, Math.floor(conservativeOutputLimitSafe / Math.max(estimatedOutputTokensPerCommentRedact, estimatedOutputTokensPerCommentRephrase)));
         let maxItemsCap = Math.max(1, Math.min(optimalBatchSize, capItemsByOutput));
-        // Provider/model-specific hard caps to avoid long-running chunks that risk 150s edge timeouts
-        const providerModelKey = `${group.provider}/${group.model}`.toLowerCase();
-        const hardCaps: Record<string, number> = {
-          'openai/gpt-4o-mini': 12,
-          'bedrock/anthropic.claude-3-haiku-20240307-v1:0': 10,
-        };
-        if (hardCaps[providerModelKey] && hardCaps[providerModelKey] > 0) {
-          const prev = maxItemsCap;
-          maxItemsCap = Math.min(maxItemsCap, hardCaps[providerModelKey]);
-          if (maxItemsCap !== prev) {
-            console.log(`${logPrefix} [BATCH_CALC] Applied provider cap for ${providerModelKey}: ${prev} → ${maxItemsCap}`);
-          }
-        }
+        // Provider/model-specific hard caps removed - batch size now determined by token limits and RPM constraints
         const inputDerivedLimitSafe = (() => {
           const redIn = Math.floor(sharedOutputLimitSafe / Math.max(1, redactionIoRatio));
           const repIn = Math.floor(sharedOutputLimitSafe / Math.max(1, rephraseIoRatio));
