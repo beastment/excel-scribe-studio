@@ -1350,32 +1350,57 @@ serve(async (req) => {
             }
           })());
         }
-        const settled = await Promise.allSettled(calls);
+        // Execute phase calls SEQUENTIALLY to respect RPM limits for the same model
         let rawRedacted: string | null = null;
         let rawRephrased: string | null = null;
-        let idx = 0;
         if (requestRedaction) {
-          const s = settled[idx++];
-          if (s.status === 'fulfilled') {
-            rawRedacted = s.value as string;
-          } else {
-            const errMsg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+          await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
+          try {
+            const result = await callAI(
+              group.provider,
+              group.model,
+              redactPrompt,
+              sentinelInputRedact,
+              'batch_text',
+              sharedOutputLimitSafe,
+              user.id,
+              scanRunId,
+              'redaction',
+              aiLogger,
+              groupModelCfg?.temperature ?? effectiveConfig.temperature,
+              logPrefix
+            );
+            rawRedacted = result;
+          } catch (e) {
+            const errMsg = e instanceof Error ? e.message : String(e);
             console.error(`${logPrefix} [POSTPROCESS][REDACTION] Error: ${errMsg}`);
             if (aiLogger && user && scanRunId) {
-              // Use the actual provider/model used for this group to ensure the pending entry is updated
               await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'redaction', '', errMsg, undefined);
             }
           }
         }
         if (requestRephrase) {
-          const s = settled[idx++];
-          if (s && s.status === 'fulfilled') {
-            rawRephrased = s.value as string;
-          } else if (s) {
-            const errMsg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+          await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
+          try {
+            const result = await callAI(
+              group.provider,
+              group.model,
+              rephrasePrompt,
+              sentinelInputRephrase,
+              'batch_text',
+              sharedOutputLimitSafe,
+              user.id,
+              scanRunId,
+              'rephrase',
+              aiLogger,
+              groupModelCfg?.temperature ?? effectiveConfig.temperature,
+              logPrefix
+            );
+            rawRephrased = result;
+          } catch (e) {
+            const errMsg = e instanceof Error ? e.message : String(e);
             console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
             if (aiLogger && user && scanRunId) {
-              // Use the actual provider/model used for this group to ensure the pending entry is updated
               await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'rephrase', '', errMsg, undefined);
             }
           }
