@@ -80,6 +80,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const scanInFlightRef = useRef(false);
   const lastScanTsRef = useRef<number>(0);
   const requestedBatchesRef = useRef<Set<number>>(new Set());
+  // Track de-duplication keys for post-process requests within a run
+  const postProcessDedupRef = useRef<Set<string>>(new Set());
   // Remove duplicate aiLogsViewerRef - using the one from props
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -540,17 +542,36 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             }
           }
         }
+        // Ensure the two routes are disjoint and de-duplicated by id to avoid double-submission
+        const uniqueById = (arr: any[]) => Array.from(new Map(arr.map((c: any) => [c.id, c])).values());
+        const commentsForAU = uniqueById(commentsForA);
+        const idsInA = new Set(commentsForAU.map((c: any) => c.id));
+        const commentsForBU = uniqueById(commentsForB.filter((c: any) => !idsInA.has(c.id)));
 
         console.log('[PHASE3] Launching redaction (scan_a, scan_b) ...', {
-          routeA: commentsForA.length,
-          routeB: commentsForB.length
+          routeA: commentsForAU.length,
+          routeB: commentsForBU.length
         });
         // 1) Run Redaction for Scan A and Scan B in parallel (route-specific)
         // Call post-process in parallel, but ensure we don't abort Phase 3 if one rejects
-        const [ppRedactA, ppRedactB] = await Promise.allSettled([
-          supabase.functions.invoke('post-process-comments', {
+        const buildBatchKey = (phaseKey: string, routeKey: 'scan_a' | 'scan_b', items: any[]) => {
+          const ids = items.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+          return `${phaseKey}|${routeKey}|${ids}`;
+        };
+
+        const redactAKey = buildBatchKey('redaction', 'scan_a', commentsForAU);
+        const redactBKey = buildBatchKey('redaction', 'scan_b', commentsForBU);
+
+        const redactAPromise = (async () => {
+          if (commentsForAU.length === 0) return { data: null } as any;
+          if (postProcessDedupRef.current.has(redactAKey)) {
+            console.warn('[PHASE3][DEDUP] Skipping duplicate redaction scan_a batch');
+            return { data: null } as any;
+          }
+          postProcessDedupRef.current.add(redactAKey);
+          return await supabase.functions.invoke('post-process-comments', {
             body: {
-              comments: commentsForA.map((c: any) => ({
+              comments: commentsForAU.map((c: any) => ({
                 id: c.id,
                 originalRow: c.originalRow,
                 scannedIndex: c.scannedIndex,
@@ -574,10 +595,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               phase: 'redaction',
               routingMode: 'scan_a'
             }
-          }),
-          supabase.functions.invoke('post-process-comments', {
+          });
+        })();
+
+        const redactBPromise = (async () => {
+          if (commentsForBU.length === 0) return { data: null } as any;
+          if (postProcessDedupRef.current.has(redactBKey)) {
+            console.warn('[PHASE3][DEDUP] Skipping duplicate redaction scan_b batch');
+            return { data: null } as any;
+          }
+          postProcessDedupRef.current.add(redactBKey);
+          return await supabase.functions.invoke('post-process-comments', {
             body: {
-              comments: commentsForB.map((c: any) => ({
+              comments: commentsForBU.map((c: any) => ({
                 id: c.id,
                 originalRow: c.originalRow,
                 scannedIndex: c.scannedIndex,
@@ -601,8 +631,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               phase: 'redaction',
               routingMode: 'scan_b'
             }
-          })
-        ]);
+          });
+        })();
+
+        const [ppRedactA, ppRedactB] = await Promise.allSettled([redactAPromise, redactBPromise]);
         const postRedactA = ppRedactA.status === 'fulfilled' ? ppRedactA.value.data : null;
         const postRedactB = ppRedactB.status === 'fulfilled' ? ppRedactB.value.data : null;
         if (ppRedactA.status === 'rejected') console.error('Post-processing (redaction A) error:', ppRedactA.reason);
@@ -610,10 +642,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
         console.log('[PHASE3] Redaction finished. Launching rephrase (scan_a, scan_b) ...');
         // 2) After both redaction calls complete, run Rephrase for A and B in parallel (same routing)
-        const [ppRephraseA, ppRephraseB] = await Promise.allSettled([
-          supabase.functions.invoke('post-process-comments', {
+        const rephraseAKey = buildBatchKey('rephrase', 'scan_a', commentsForAU);
+        const rephraseBKey = buildBatchKey('rephrase', 'scan_b', commentsForBU);
+
+        const rephraseAPromise = (async () => {
+          if (commentsForAU.length === 0) return { data: null } as any;
+          if (postProcessDedupRef.current.has(rephraseAKey)) {
+            console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase scan_a batch');
+            return { data: null } as any;
+          }
+          postProcessDedupRef.current.add(rephraseAKey);
+          return await supabase.functions.invoke('post-process-comments', {
             body: {
-              comments: commentsForA.map((c: any) => ({
+              comments: commentsForAU.map((c: any) => ({
                 id: c.id,
                 originalRow: c.originalRow,
                 scannedIndex: c.scannedIndex,
@@ -637,10 +678,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               phase: 'rephrase',
               routingMode: 'scan_a'
             }
-          }),
-          supabase.functions.invoke('post-process-comments', {
+          });
+        })();
+
+        const rephraseBPromise = (async () => {
+          if (commentsForBU.length === 0) return { data: null } as any;
+          if (postProcessDedupRef.current.has(rephraseBKey)) {
+            console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase scan_b batch');
+            return { data: null } as any;
+          }
+          postProcessDedupRef.current.add(rephraseBKey);
+          return await supabase.functions.invoke('post-process-comments', {
             body: {
-              comments: commentsForB.map((c: any) => ({
+              comments: commentsForBU.map((c: any) => ({
                 id: c.id,
                 originalRow: c.originalRow,
                 scannedIndex: c.scannedIndex,
@@ -664,8 +714,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               phase: 'rephrase',
               routingMode: 'scan_b'
             }
-          })
-        ]);
+          });
+        })();
+
+        const [ppRephraseA, ppRephraseB] = await Promise.allSettled([rephraseAPromise, rephraseBPromise]);
         const postRephraseA = ppRephraseA.status === 'fulfilled' ? ppRephraseA.value.data : null;
         const postRephraseB = ppRephraseB.status === 'fulfilled' ? ppRephraseB.value.data : null;
         if (ppRephraseA.status === 'rejected') console.error('Post-processing (rephrase A) error:', ppRephraseA.reason);
