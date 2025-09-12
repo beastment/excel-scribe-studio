@@ -776,6 +776,10 @@ serve(async (req) => {
     // Use scanRunId if provided, otherwise generate a new one
     const runId = scanRunId || Math.floor(Math.random() * 10000);
     const logPrefix = `[RUN ${runId}]`;
+    // Global per-process de-duplication set for batches within the same edge isolate
+    const gAny: any = globalThis as any;
+    if (!gAny.__ppBatches) gAny.__ppBatches = new Set<string>();
+    const ppBatches: Set<string> = gAny.__ppBatches as Set<string>;
 
     // Reduced scanConfig debug logging
 
@@ -1359,6 +1363,12 @@ serve(async (req) => {
         let rawRedacted: string | null = null;
         let rawRephrased: string | null = null;
         if (requestRedaction) {
+          const idsForChunk = chunk.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+          const redKey = `pp|${runId}|${group.provider}/${group.model}|redaction|${idsForChunk}`;
+          if (ppBatches.has(redKey)) {
+            console.warn(`${logPrefix} [DEDUP] Skipping duplicate redaction batch for key=${redKey}`);
+          } else {
+            ppBatches.add(redKey);
           await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
           try {
             const result = await callAI(
@@ -1383,8 +1393,15 @@ serve(async (req) => {
               await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'redaction', '', errMsg, undefined);
             }
           }
+          }
         }
         if (requestRephrase) {
+          const idsForChunk = chunk.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+          const repKey = `pp|${runId}|${group.provider}/${group.model}|rephrase|${idsForChunk}`;
+          if (ppBatches.has(repKey)) {
+            console.warn(`${logPrefix} [DEDUP] Skipping duplicate rephrase batch for key=${repKey}`);
+          } else {
+            ppBatches.add(repKey);
           await enforceRpmDelay(group.provider, group.model, (groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit));
           try {
             const result = await callAI(
@@ -1408,6 +1425,7 @@ serve(async (req) => {
             if (aiLogger && user && scanRunId) {
               await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'rephrase', '', errMsg, undefined);
             }
+          }
           }
         }
 

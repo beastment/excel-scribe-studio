@@ -215,6 +215,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       return;
     }
     setIsScanning(true);
+    // Reset per-run post-process de-duplication keys
+    postProcessDedupRef.current = new Set<string>();
     setScanProgress(0);
     toast.info(`Scanning ${comments.length} comments with AI...`);
 
@@ -569,6 +571,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             return { data: null } as any;
           }
           postProcessDedupRef.current.add(redactAKey);
+          try {
+            const ids = commentsForAU.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+            console.log(`[PHASE3][SUBMIT] redaction scan_a key=${redactAKey} ids=[${ids}] count=${commentsForAU.length}`);
+          } catch (e) {
+            console.warn('[PHASE3][SUBMIT] redaction scan_a logging failed:', e);
+          }
           return await supabase.functions.invoke('post-process-comments', {
             body: {
               comments: commentsForAU.map((c: any) => ({
@@ -605,6 +613,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             return { data: null } as any;
           }
           postProcessDedupRef.current.add(redactBKey);
+          try {
+            const ids = commentsForBU.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+            console.log(`[PHASE3][SUBMIT] redaction scan_b key=${redactBKey} ids=[${ids}] count=${commentsForBU.length}`);
+          } catch (e) {
+            console.warn('[PHASE3][SUBMIT] redaction scan_b logging failed:', e);
+          }
           return await supabase.functions.invoke('post-process-comments', {
             body: {
               comments: commentsForBU.map((c: any) => ({
@@ -652,6 +666,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             return { data: null } as any;
           }
           postProcessDedupRef.current.add(rephraseAKey);
+          try {
+            const ids = commentsForAU.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+            console.log(`[PHASE3][SUBMIT] rephrase scan_a key=${rephraseAKey} ids=[${ids}] count=${commentsForAU.length}`);
+          } catch (e) {
+            console.warn('[PHASE3][SUBMIT] rephrase scan_a logging failed:', e);
+          }
           return await supabase.functions.invoke('post-process-comments', {
             body: {
               comments: commentsForAU.map((c: any) => ({
@@ -688,6 +708,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             return { data: null } as any;
           }
           postProcessDedupRef.current.add(rephraseBKey);
+          try {
+            const ids = commentsForBU.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+            console.log(`[PHASE3][SUBMIT] rephrase scan_b key=${rephraseBKey} ids=[${ids}] count=${commentsForBU.length}`);
+          } catch (e) {
+            console.warn('[PHASE3][SUBMIT] rephrase scan_b logging failed:', e);
+          }
           return await supabase.functions.invoke('post-process-comments', {
             body: {
               comments: commentsForBU.map((c: any) => ({
