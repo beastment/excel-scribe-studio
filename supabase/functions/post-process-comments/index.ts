@@ -104,12 +104,17 @@ const buildSentinelInput = (texts: string[], comments?: any[]): string => {
     // Use the same ID system as scan-comments: originalRow if available, otherwise scannedIndex, fallback to i+1
     return `Comments to analyze (each bounded by sentinels):\n\n${texts.map((t, i) => {
       const comment = comments[i];
-      const itemId = comment?.originalRow || comment?.scannedIndex || (i + 1);
+      const orowRaw = comment?.originalRow;
+      const sidxRaw = comment?.scannedIndex;
+      const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
+      const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
+      const itemId = (typeof orow === 'number' && Number.isFinite(orow)) ? orow : (typeof sidx === 'number' && Number.isFinite(sidx) ? sidx : (i + 1));
       return `<<<ITEM ${itemId}>>>\n${t}\n<<<END ${itemId}>>>`;
     }).join('\n\n')}`;
   } else {
     // Fallback to sequential numbering if no comment objects provided
-    return `Comments to analyze (each bounded by sentinels):\n\n${texts.map((t, i) => `<<<ITEM ${i + 1}>>>\n${t}\n<<<END ${i + 1}>>>`).join('\n\n')}`;
+    // Align with UI row numbers starting at 2 (header at 1)
+    return `Comments to analyze (each bounded by sentinels):\n\n${texts.map((t, i) => `<<<ITEM ${i + 2}>>>\n${t}\n<<<END ${i + 2}>>>`).join('\n\n')}`;
   }
 };
 

@@ -43,7 +43,12 @@ const buildAdjudicationInput = (comments: any[]): string => {
   return comments.map(comment => {
     const scanA = comment.scanAResult || {};
     const scanB = comment.scanBResult || {};
-    return `<<<ITEM ${comment.scannedIndex || comment.id}>>>\nText: ${comment.originalText || comment.text}\nAI1:\nConcerning: ${scanA.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanA.identifiable ? 'Y' : 'N'}\nAI2:\nConcerning: ${scanB.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanB.identifiable ? 'Y' : 'N'}\n<<<END ${comment.scannedIndex || comment.id}>>>`;
+    const orowRaw = comment.originalRow;
+    const sidxRaw = comment.scannedIndex;
+    const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
+    const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
+    const itemId = (typeof orow === 'number' && Number.isFinite(orow)) ? orow : (typeof sidx === 'number' && Number.isFinite(sidx) ? sidx : (comment.id || 0));
+    return `<<<ITEM ${itemId}>>>\nText: ${comment.originalText || comment.text}\nAI1:\nConcerning: ${scanA.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanA.identifiable ? 'Y' : 'N'}\nAI2:\nConcerning: ${scanB.concerning ? 'Y' : 'N'}\nIdentifiable: ${scanB.identifiable ? 'Y' : 'N'}\n<<<END ${itemId}>>>`;
   }).join('\n\n');
 };
 
