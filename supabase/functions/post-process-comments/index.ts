@@ -967,7 +967,7 @@ serve(async (req) => {
 
     try {
       // Calculate optimal batch size based on model limits and actual comment sizes
-      let optimalBatchSize = maxBatchByTokens; // Start with token-based limit (no hard cap)
+      let optimalBatchSize = 1; // Initialize with minimum value, will be updated based on token limits
       
       // Calculate actual token usage for better batch sizing
       const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
