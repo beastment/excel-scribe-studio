@@ -685,6 +685,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               // Prefer AI-derived results if present; otherwise keep existing
               redactedText: item.redactedText !== undefined ? item.redactedText : existing.redactedText,
               rephrasedText: item.rephrasedText !== undefined ? item.rephrasedText : existing.rephrasedText,
+              // Preserve backend finalText/mode so UI can reliably fall back when specific fields are absent
+              finalText: typeof item.finalText === 'string' ? item.finalText : (existing as any).finalText,
+              mode: typeof item.mode === 'string' ? item.mode : (existing as any).mode,
               originalRow: typeof item.originalRow === 'string' ? parseInt(item.originalRow, 10) : (item.originalRow ?? existing.originalRow),
               scannedIndex: typeof item.scannedIndex === 'string' ? parseInt(item.scannedIndex, 10) : (item.scannedIndex ?? existing.scannedIndex),
             };

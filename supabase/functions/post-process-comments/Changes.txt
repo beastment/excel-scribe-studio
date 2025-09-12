@@ -1,3 +1,10 @@
+2025-09-12
+- Fix alignment bug for ID-tagged AI outputs: when mapping redaction/rephrase results back to comments, coerce `originalRow`/`scannedIndex` to numbers before comparison. This prevents misses when IDs arrive as strings (e.g., "10") while comments hold numbers (10), which could show original text instead of redacted for some rows.
+- Frontend merge now preserves backend `finalText` and `mode` fields so UI can reliably display AI-processed text even if `redactedText`/`rephrasedText` are omitted in some routes.
+
+Files impacted:
+- supabase/functions/post-process-comments/index.ts
+- src/components/CommentEditor.tsx
 # Post-Process Comments Edge Function - Recent Changes
 
 ## Latest Updates

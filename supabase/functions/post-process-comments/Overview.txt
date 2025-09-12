@@ -3,6 +3,10 @@
 ## Purpose
 The post-process-comments edge function applies AI-powered transformations to comments that have been flagged as concerning or containing personally identifiable information (PII). It provides redaction and rephrasing capabilities to make comments safe for sharing while preserving their core meaning.
 
+Implementation notes:
+- The function supports batch processing and expects AI responses that may include sentinel item IDs like `<<<ITEM 10>>>`. When present, outputs are aligned back to comments by matching these IDs against `originalRow` or `scannedIndex`. To avoid mismatches (e.g., "10" vs 10), the alignment coerces both sides to numbers before comparison.
+- The response includes `processedComments` entries containing optional `redactedText`/`rephrasedText`, along with a `finalText` and `mode` which should be preserved by the client for reliable display.
+
 ## Main Functionality
 
 ### 1. Content Transformation

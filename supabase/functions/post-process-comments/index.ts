@@ -1427,16 +1427,22 @@ serve(async (req) => {
         let redactedTextsAligned: string[] = Array(expected).fill('');
         let rephrasedTextsAligned: string[] = Array(expected).fill('');
         if (allHaveIds) {
+          // Align by numeric originalRow/scannedIndex to avoid type mismatches (e.g., "10" vs 10)
           const byId = (list: { idx: number|null; text: string }[]) => {
             const out: string[] = Array(expected).fill('');
             for (const it of list) {
               if (it.idx != null) {
-                const commentIndex = chunk.findIndex(c => 
-                  (c.originalRow && c.originalRow === it.idx) || 
-                  (c.scannedIndex && c.scannedIndex === it.idx)
-                );
-                if (commentIndex >= 0 && commentIndex < expected) {
-                  out[commentIndex] = it.text;
+                for (let j = 0; j < chunk.length; j++) {
+                  const orowRaw = (chunk[j] as any).originalRow;
+                  const sidxRaw = (chunk[j] as any).scannedIndex;
+                  const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
+                  const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
+                  const orowMatches = typeof orow === 'number' && Number.isFinite(orow) && orow === it.idx;
+                  const sidxMatches = typeof sidx === 'number' && Number.isFinite(sidx) && sidx === it.idx;
+                  if (orowMatches || sidxMatches) {
+                    out[j] = it.text;
+                    break;
+                  }
                 }
               }
             }
