@@ -1295,7 +1295,11 @@ serve(async (req) => {
         
 
         
-        const calls: Promise<string | null>[] = [];
+        // Execute phase calls SEQUENTIALLY to respect RPM limits and set effective flags for dedup skips
+        let rawRedacted: string | null = null;
+        let rawRephrased: string | null = null;
+        let effectiveRequestRedaction = requestRedaction;
+        let effectiveRequestRephrase = requestRephrase;
 
         // If nothing to do for this chunk under current phase, skip to next chunk
         if (!requestRedaction && !requestRephrase) {
