@@ -1362,7 +1362,8 @@ serve(async (req) => {
             const errMsg = s.reason instanceof Error ? s.reason.message : String(s.reason);
             console.error(`${logPrefix} [POSTPROCESS][REDACTION] Error: ${errMsg}`);
             if (aiLogger && user && scanRunId) {
-              await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', effectiveConfig.provider, effectiveConfig.model, 'batch_text', 'redaction', '', errMsg, undefined);
+              // Use the actual provider/model used for this group to ensure the pending entry is updated
+              await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'redaction', '', errMsg, undefined);
             }
           }
         }
@@ -1374,7 +1375,8 @@ serve(async (req) => {
             const errMsg = s.reason instanceof Error ? s.reason.message : String(s.reason);
             console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
             if (aiLogger && user && scanRunId) {
-              await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', effectiveConfig.provider, effectiveConfig.model, 'batch_text', 'rephrase', '', errMsg, undefined);
+              // Use the actual provider/model used for this group to ensure the pending entry is updated
+              await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'rephrase', '', errMsg, undefined);
             }
           }
         }
