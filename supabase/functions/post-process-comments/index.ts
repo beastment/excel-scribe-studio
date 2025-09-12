@@ -775,6 +775,7 @@ serve(async (req) => {
 
     // Use scanRunId if provided, otherwise generate a new one
     const runId = scanRunId || Math.floor(Math.random() * 10000);
+    const effectiveRunId = String(scanRunId ?? runId);
     const logPrefix = `[RUN ${runId}]`;
     // Global per-process de-duplication set for batches within the same edge isolate
     const gAny: any = globalThis as any;
@@ -1313,7 +1314,7 @@ serve(async (req) => {
             try {
               await aiLogger.logRequest({
                 userId: user.id,
-                scanRunId: String(runId),
+                scanRunId: effectiveRunId,
                 functionName: 'post-process-comments',
                 provider: group.provider,
                 model: group.model,
@@ -1326,7 +1327,7 @@ serve(async (req) => {
               });
               await aiLogger.logResponse(
                 user.id,
-                String(runId),
+                effectiveRunId,
                 'post-process-comments',
                 group.provider,
                 group.model,
@@ -1344,7 +1345,7 @@ serve(async (req) => {
               const { data: existingRed, error: redErr } = await supabase
                 .from('ai_logs')
                 .select('id')
-                .eq('scan_run_id', String(runId))
+                .eq('scan_run_id', effectiveRunId)
                 .eq('function_name', 'post-process-comments')
                 .eq('provider', group.provider)
                 .eq('model', group.model)
@@ -1359,7 +1360,7 @@ serve(async (req) => {
                 try {
                   await aiLogger.logRequest({
                     userId: user.id,
-                    scanRunId: String(runId),
+                    scanRunId: effectiveRunId,
                     functionName: 'post-process-comments',
                     provider: group.provider,
                     model: group.model,
@@ -1372,7 +1373,7 @@ serve(async (req) => {
                   });
                   await aiLogger.logResponse(
                     user.id,
-                    String(runId),
+                    effectiveRunId,
                     'post-process-comments',
                     group.provider,
                     group.model,
@@ -1424,7 +1425,7 @@ serve(async (req) => {
             try {
               await aiLogger.logRequest({
                 userId: user.id,
-                scanRunId: String(runId),
+                scanRunId: effectiveRunId,
                 functionName: 'post-process-comments',
                 provider: group.provider,
                 model: group.model,
@@ -1437,7 +1438,7 @@ serve(async (req) => {
               });
               await aiLogger.logResponse(
                 user.id,
-                String(runId),
+                effectiveRunId,
                 'post-process-comments',
                 group.provider,
                 group.model,
@@ -1455,7 +1456,7 @@ serve(async (req) => {
               const { data: existingReph, error: rephErr } = await supabase
                 .from('ai_logs')
                 .select('id')
-                .eq('scan_run_id', String(runId))
+                .eq('scan_run_id', effectiveRunId)
                 .eq('function_name', 'post-process-comments')
                 .eq('provider', group.provider)
                 .eq('model', group.model)
@@ -1470,7 +1471,7 @@ serve(async (req) => {
                 try {
                   await aiLogger.logRequest({
                     userId: user.id,
-                    scanRunId: String(runId),
+                    scanRunId: effectiveRunId,
                     functionName: 'post-process-comments',
                     provider: group.provider,
                     model: group.model,
@@ -1483,7 +1484,7 @@ serve(async (req) => {
                   });
                   await aiLogger.logResponse(
                     user.id,
-                    String(runId),
+                    effectiveRunId,
                     'post-process-comments',
                     group.provider,
                     group.model,
