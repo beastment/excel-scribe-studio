@@ -84,8 +84,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: temperature || 0,
-    max_tokens: maxTokens || 4096
+    temperature: temperature || 0
   };
 
   // Log the AI request if logger is provided

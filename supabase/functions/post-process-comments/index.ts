@@ -173,29 +173,31 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: temperature || 0,
-    max_tokens: maxTokens || 4096
+    temperature: temperature || 0
   };
 
   console.log(`${lp}[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 4096}, temperature=${temperature || 0}`);
   console.log(`${lp}[CALL_AI_DEBUG] Provider: ${provider}, Model: ${model}, MaxTokens: ${maxTokens}, Temperature: ${temperature}`);
 
-        // Log the AI request if logger is provided
-      if (aiLogger && userId && scanRunId && phase) {
-        await aiLogger.logRequest({
-          userId,
-          scanRunId: scanRunId,
-          functionName: 'post-process-comments',
-          provider,
-          model,
-          requestType: responseType,
-          phase,
-          requestPrompt: prompt,
-          requestInput: input,
-          requestTemperature: temperature || 0,
-          requestMaxTokens: maxTokens // Use the actual max_tokens passed from model_configurations
-        });
-      }
+  // Log the AI request if logger is provided and capture log id
+  let logId: string | null = null;
+  if (aiLogger && userId && scanRunId && phase) {
+    try {
+      logId = await aiLogger.logRequest({
+        userId,
+        scanRunId: scanRunId,
+        functionName: 'post-process-comments',
+        provider,
+        model,
+        requestType: responseType,
+        phase,
+        requestPrompt: prompt,
+        requestInput: input,
+        requestTemperature: temperature || 0,
+        requestMaxTokens: maxTokens
+      });
+    } catch (_) { /* ignore logging errors */ }
+  }
 
   if (provider === 'azure') {
     const controller = new AbortController();
@@ -241,9 +243,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       // Log the AI response if logger is provided
       if (aiLogger && userId && scanRunId && phase) {
         if (responseText) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined, logId);
         } else {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', 'Azure returned empty content', undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', 'Azure returned empty content', undefined, logId);
         }
       }
       
@@ -254,7 +256,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       if (error.name === 'AbortError') {
         const timeoutMessage = `Azure OpenAI API timeout after ${seconds(POSTPROCESS_REQUEST_TIMEOUT_MS)} seconds`;
         if (aiLogger && userId && scanRunId && phase) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined, logId);
         }
         throw new Error(timeoutMessage);
       }
@@ -295,7 +297,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       if (!response.ok) {
         const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
         if (aiLogger && userId && scanRunId && phase) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined, logId);
         }
         throw new Error(errorMessage);
       }
@@ -305,14 +307,14 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       if (error.name === 'AbortError') {
         const timeoutMessage = `OpenAI API timeout after ${seconds(POSTPROCESS_REQUEST_TIMEOUT_MS)} seconds`;
         if (aiLogger && userId && scanRunId && phase) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined, logId);
         }
         throw new Error(timeoutMessage);
       }
       // Log unexpected errors (e.g., network) before rethrow
       if (aiLogger && userId && scanRunId && phase) {
         const errMsg = (error instanceof Error) ? error.message : String(error);
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined);
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined, logId);
       }
       throw error;
     }
@@ -323,9 +325,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       // Log the AI response if logger is provided
       if (aiLogger && userId && scanRunId && phase) {
         if (responseText) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined, logId);
         } else {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', 'OpenAI returned empty content', undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', 'OpenAI returned empty content', undefined, logId);
         }
       }
       
@@ -333,7 +335,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     } catch (parseError) {
       const errMsg = (parseError instanceof Error) ? parseError.message : String(parseError);
       if (aiLogger && userId && scanRunId && phase) {
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', `OpenAI JSON parse error: ${errMsg}`, undefined);
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', `OpenAI JSON parse error: ${errMsg}`, undefined, logId);
       }
       throw (parseError instanceof Error) ? parseError : new Error(errMsg);
     }
@@ -367,7 +369,6 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       const userMessage = (payload as any).messages.find((m: any) => m.role === 'user')?.content || '';
       const bedrockPayload = {
         anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: (payload as any).max_tokens,
         system: systemMessage,
         messages: [
           { role: 'user', content: userMessage }
@@ -406,7 +407,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
         const errorText = await response.text();
         const errorMessage = `Bedrock API error: ${response.status} ${response.statusText} ${errorText}`;
         if (aiLogger && userId && scanRunId && phase) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errorMessage, undefined, logId);
         }
         throw new Error(errorMessage);
       }
@@ -415,9 +416,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       const responseText = result.content?.[0]?.text || null;
       if (aiLogger && userId && scanRunId && phase) {
         if (responseText) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, responseText, undefined, undefined, logId);
         } else {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', 'Bedrock returned empty content', undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', 'Bedrock returned empty content', undefined, logId);
         }
       }
       return responseText;
@@ -427,14 +428,14 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       if ((error as any)?.name === 'AbortError') {
         const timeoutMessage = `Bedrock API timeout after ${seconds(POSTPROCESS_BEDROCK_TIMEOUT_MS)} seconds`;
         if (aiLogger && userId && scanRunId && phase) {
-          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined);
+          await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', timeoutMessage, undefined, logId);
         }
         throw new Error(timeoutMessage);
       }
       // Log unexpected errors as well
       if (aiLogger && userId && scanRunId && phase) {
         const errMsg = (error instanceof Error) ? error.message : String(error);
-        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined);
+        await aiLogger.logResponse(userId, scanRunId, 'post-process-comments', provider, model, responseType, phase, '', errMsg, undefined, logId);
       }
       throw error;
     }
@@ -833,6 +834,28 @@ serve(async (req) => {
     const gAny: any = globalThis as any;
     if (!gAny.__ppBatches) gAny.__ppBatches = new Set<string>();
     const ppBatches: Set<string> = gAny.__ppBatches as Set<string>;
+
+    // Clean up stale pending logs for this run (fail-safe in case a prior invocation was terminated)
+    try {
+      const staleMs = Math.max(POSTPROCESS_BEDROCK_TIMEOUT_MS, POSTPROCESS_REQUEST_TIMEOUT_MS) + 10000;
+      const sinceIso = new Date(Date.now() - staleMs).toISOString();
+      const { error: cleanupErr } = await supabase
+        .from('ai_logs')
+        .update({
+          response_status: 'error',
+          response_error: `Stale pending cleanup after ${seconds(staleMs)}s with no response`,
+          time_finished: new Date().toISOString()
+        })
+        .eq('function_name', 'post-process-comments')
+        .eq('scan_run_id', effectiveRunId)
+        .eq('response_status', 'pending')
+        .lt('time_started', sinceIso);
+      if (cleanupErr) {
+        console.warn(`${logPrefix} [CLEANUP] Pending log cleanup failed:`, cleanupErr.message);
+      }
+    } catch (e) {
+      console.warn(`${logPrefix} [CLEANUP] Unexpected error during pending cleanup:`, e instanceof Error ? e.message : String(e));
+    }
 
     // Reduced scanConfig debug logging
 

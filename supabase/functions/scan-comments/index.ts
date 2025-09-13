@@ -2072,8 +2072,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       { role: 'system', content: prompt },
       { role: 'user', content: input }
     ],
-    temperature: temperature || 0,
-    max_tokens: maxTokens || 8192  // Use provided token limit or fallback to 8192
+    temperature: temperature || 0
   };
 
   console.log(`[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 8192}, temperature=${temperature || 0}`);
@@ -2256,13 +2255,15 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     console.log(`[BEDROCK] Secret Access Key: ${secretAccessKey ? '***' + secretAccessKey.slice(-4) : 'NOT SET'}`);
     
     if (!accessKeyId || !secretAccessKey) {
-      throw new Error('AWS credentials not configured');
+      const errorMessage = 'AWS credentials not configured';
+      if (aiLogger) {
+        await aiLogger.logResponse(userId, scanRunId, 'scan-comments', provider, model, responseType, phase, '', errorMessage, undefined);
+      }
+      throw new Error(errorMessage);
     }
-
-    // Extract model identifier from provider:model format
-    const modelId = model.includes('/') ? model.split('/')[1] : model;
     
     // Create AWS signature v4
+    const modelId = model.includes('/') ? model.split('/')[1] : model;
     const host = `bedrock-runtime.${region}.amazonaws.com`;
     const endpoint = `https://${host}/model/${encodeURIComponent(modelId)}/invoke`;
     
@@ -2272,29 +2273,23 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     console.log(`[BEDROCK] Using model: ${modelId}, region: ${region}, endpoint: ${endpoint}`);
     
     // For Anthropic Claude models in Bedrock, system message should be top-level, not in messages array
-    const systemMessage = payload.messages.find(msg => msg.role === 'system')?.content || '';
-    const userMessage = payload.messages.find(msg => msg.role === 'user')?.content || '';
+    const systemMessage = payload.messages.find((msg: any) => msg.role === 'system')?.content || '';
+    const userMessage = payload.messages.find((msg: any) => msg.role === 'user')?.content || '';
     
     const bedrockPayload = {
       anthropic_version: "bedrock-2023-05-31",
-      max_tokens: payload.max_tokens,  // Use actual AI configuration value
       system: systemMessage,
       messages: [
-        {
-          role: 'user',
-          content: userMessage
-        }
+        { role: 'user', content: userMessage }
       ],
       temperature: payload.temperature
     };
-
+    
     const date = new Date();
     const amzDate = date.toISOString().replace(/[:\-]|\.\d{3}/g, '');
     
-    console.log(`[BEDROCK] Request timestamp: ${date.toISOString()}, AMZ date: ${amzDate}`);
-    
     console.log(`[BEDROCK] Request payload:`, JSON.stringify(bedrockPayload, null, 2));
-    console.log(`[BEDROCK] Using max_tokens: ${bedrockPayload.max_tokens}, temperature: ${bedrockPayload.temperature}`);
+    console.log(`[BEDROCK] Using temperature: ${bedrockPayload.temperature}`);
     
     // Create signature using raw endpoint (without encoding) for canonical request
     const rawEndpoint = `https://${host}/model/${modelId}/invoke`;
