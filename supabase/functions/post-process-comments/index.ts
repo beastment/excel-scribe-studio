@@ -505,7 +505,7 @@ function arrayBufferToHex(buffer: ArrayBuffer): string {
     .join('');
 }
 
-// AWS Signature V4 utilities for Bedrock (used by callAI for provider 'bedrock')
+// AWS Signature V4 implementation for Bedrock
 async function createAWSSignature(
   method: string,
   url: string,
@@ -515,43 +515,58 @@ async function createAWSSignature(
   region: string,
   amzDate: string
 ): Promise<string> {
-  const parsed = new URL(url);
-  const hostname = parsed.hostname;
-  const pathname = parsed.pathname;
-  const search = parsed.search;
+  const { hostname, pathname, search } = new URL(url);
   const dateStamp = amzDate.substring(0, 8);
-
-  // Bedrock requires the model path segment to have colons double-encoded
+  
+  // For Bedrock, AWS expects the path to have double-encoded colons (%253A instead of %3A or :)
+  // This is specific to how Bedrock handles model names with colons
   const canonicalPath = pathname.replace(/:/g, '%3A').replace(/%3A/g, '%253A');
+  
+  // Create canonical request
   const canonicalHeaders = `content-type:application/json\nhost:${hostname}\nx-amz-date:${amzDate}\n`;
   const signedHeaders = 'content-type;host;x-amz-date';
   const payloadHash = await sha256(body);
   const canonicalRequest = `${method}\n${canonicalPath}${search}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
-
+  
+  console.log(`[SIGNATURE] Canonical request:`, canonicalRequest);
+  
+  // Create string to sign
   const algorithm = 'AWS4-HMAC-SHA256';
   const credentialScope = `${dateStamp}/${region}/bedrock/aws4_request`;
   const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${await sha256(canonicalRequest)}`;
-
+  
+  console.log(`[SIGNATURE] String to sign:`, stringToSign);
+  
+  // Calculate signature
   const kDate = await hmacSha256(`AWS4${secretAccessKey}`, dateStamp);
   const kRegion = await hmacSha256(kDate, region);
   const kService = await hmacSha256(kRegion, 'bedrock');
   const kSigning = await hmacSha256(kService, 'aws4_request');
   const signature = await hmacSha256(kSigning, stringToSign);
+  
+  // Create authorization header
   const authorization = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${arrayBufferToHex(signature)}`;
+  
+  console.log(`[SIGNATURE] Authorization header:`, authorization);
+  
   return authorization;
 }
 
 async function sha256(message: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const msgBuffer = encoder.encode(message);
+  const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
   return arrayBufferToHex(hashBuffer);
 }
 
 async function hmacSha256(key: string | ArrayBuffer, message: string): Promise<ArrayBuffer> {
-  const encoder = new TextEncoder();
-  const keyBuffer: ArrayBuffer = typeof key === 'string' ? encoder.encode(key) : key;
-  const msgBuffer = encoder.encode(message);
+  let keyBuffer: ArrayBuffer;
+  if (typeof key === 'string') {
+    keyBuffer = new TextEncoder().encode(key);
+  } else {
+    keyBuffer = key;
+  }
+  
+  const msgBuffer = new TextEncoder().encode(message);
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
     keyBuffer,
@@ -564,7 +579,7 @@ async function hmacSha256(key: string | ArrayBuffer, message: string): Promise<A
 
 function arrayBufferToHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
+    .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
@@ -1114,7 +1129,7 @@ serve(async (req) => {
         // Determine the primary flag type based on adjudicated result
         const preferIdent = Boolean(c.identifiable);
         const preferConc = !preferIdent && Boolean(c.concerning);
-
+        
         // If routingMode is forced, prefer that branch when possible
         if (routingMode === 'scan_a' && (aPM.provider && aPM.model)) {
           return { provider: aPM.provider, model: aPM.model };
@@ -1479,16 +1494,16 @@ serve(async (req) => {
               await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
               try {
                 const result = await callAI(
-                  group.provider,
-                  group.model,
-                  redactPrompt,
-                  sentinelInputRedact,
-                  'batch_text',
+              group.provider,
+              group.model,
+              redactPrompt,
+              sentinelInputRedact,
+              'batch_text',
                   groupModelCfg?.max_tokens,
-                  user.id,
-                  scanRunId,
-                  'redaction',
-                  aiLogger,
+              user.id,
+              scanRunId,
+              'redaction',
+              aiLogger,
                   groupModelCfg?.temperature ?? effectiveConfig.temperature,
                   logPrefix
                 );
@@ -1590,16 +1605,16 @@ serve(async (req) => {
               await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
               try {
                 const result = await callAI(
-                  group.provider,
-                  group.model,
-                  rephrasePrompt,
-                  sentinelInputRephrase,
-                  'batch_text',
+              group.provider,
+              group.model,
+              rephrasePrompt,
+              sentinelInputRephrase,
+              'batch_text',
                   groupModelCfg?.max_tokens,
-                  user.id,
-                  scanRunId,
-                  'rephrase',
-                  aiLogger,
+              user.id,
+              scanRunId,
+              'rephrase',
+              aiLogger,
                   groupModelCfg?.temperature ?? effectiveConfig.temperature,
                   logPrefix
                 );
@@ -1607,7 +1622,7 @@ serve(async (req) => {
               } catch (e) {
                 const errMsg = e instanceof Error ? e.message : String(e);
                 console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
-                if (aiLogger && user && scanRunId) {
+            if (aiLogger && user && scanRunId) {
                   await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'rephrase', '', errMsg, undefined);
                 }
               }
@@ -1657,7 +1672,7 @@ serve(async (req) => {
         const allRedHaveIds = !effectiveRequestRedaction || redIdx.length === 0 || redIdx.every(x => x.idx != null);
         const allRephHaveIds = !effectiveRequestRephrase || rephIdx.length === 0 || rephIdx.every(x => x.idx != null);
         const allHaveIds = allRedHaveIds && allRephHaveIds;
-                
+        
         // Build full-length arrays aligned to chunk positions
         const expected = chunk.length;
         let redactedTextsAligned: string[] = Array(expected).fill('');
