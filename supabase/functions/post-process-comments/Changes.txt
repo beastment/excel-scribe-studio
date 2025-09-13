@@ -15,6 +15,14 @@ Files impacted:
 
 Files impacted:
 - supabase/functions/post-process-comments/index.ts
+ 
+## 2025-09-13 (later)
+- Prevent "pending" AI logs on last batches by adding a dynamic timeout derived from remaining function time, passed into `callAI` (Azure/OpenAI/Bedrock). Avoids edge cap termination without response logging.
+- Fix ID realignment to coerce `originalRow`/`scannedIndex` to numbers and avoid skipping when values are 0-like; reliably maps `<<<ITEM k>>>` outputs back to correct rows.
+- Relax mode gating so redaction/rephrase apply when either `identifiable` or `concerning` is true, preventing misses where the preferred mode is unavailable and the other phase's output exists.
+
+Files impacted:
+- supabase/functions/post-process-comments/index.ts
 # Post-Process Comments Edge Function - Recent Changes
 
 ## Latest Updates

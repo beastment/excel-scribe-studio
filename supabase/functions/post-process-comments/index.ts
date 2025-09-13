@@ -1608,85 +1608,61 @@ serve(async (req) => {
             const out: string[] = Array(expected).fill('');
             for (const it of list) {
               if (it.idx != null) {
-                // Search chunk items for a matching originalRow or scannedIndex (coerce strings to numbers)
-                for (let j = 0; j < chunk.length; j++) {
-                  const orowRaw = (chunk[j] as any).originalRow;
-                  const sidxRaw = (chunk[j] as any).scannedIndex;
-                  const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
-                  const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
-                  const orowMatches = typeof orow === 'number' && Number.isFinite(orow) && orow === it.idx;
-                  const sidxMatches = typeof sidx === 'number' && Number.isFinite(sidx) && sidx === it.idx;
-                  if (orowMatches || sidxMatches) {
-                    out[j] = it.text;
-                    break;
+                // Find the comment in the chunk that matches this ID (coerce to numbers)
+                const matchIdx = (() => {
+                  for (let j = 0; j < chunk.length; j++) {
+                    const orowRaw = (chunk[j] as any).originalRow;
+                    const sidxRaw = (chunk[j] as any).scannedIndex;
+                    const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
+                    const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
+                    const orowMatches = typeof orow === 'number' && Number.isFinite(orow) && orow === it.idx;
+                    const sidxMatches = typeof sidx === 'number' && Number.isFinite(sidx) && sidx === it.idx;
+                    if (orowMatches || sidxMatches) return j;
                   }
+                  return -1;
+                })();
+                if (matchIdx >= 0 && matchIdx < expected) {
+                  out[matchIdx] = it.text;
                 }
               }
             }
             return out;
           };
-          if (effectiveRequestRedaction) {
-            redactedTextsAligned = byId(redIdx).map(enforceRedactionPolicy) as string[];
-          }
-          if (effectiveRequestRephrase) {
-            rephrasedTextsAligned = byId(rephIdx);
-          }
+          redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
+          rephrasedTexts = byId(rephIdx);
+          console.log(`${logPrefix} [POSTPROCESS] Realigned by ID - redactedTexts: ${redactedTexts.length}, rephrasedTexts: ${rephrasedTexts.length}`);
         } else {
-          // Sequential alignment per subset order: map outputs to the subset item positions
-          if (effectiveRequestRedaction) {
-            let k = 0;
-            for (let i = 0; i < expected; i++) {
-              if (chunk[i]?.identifiable || chunk[i]?.concerning) {
-                const val = redactedTexts[k++] ?? '';
-                redactedTextsAligned[i] = enforceRedactionPolicy(val) as string;
-              }
-            }
-          }
-          if (effectiveRequestRephrase) {
-            let k = 0;
-            for (let i = 0; i < expected; i++) {
-              if (chunk[i]?.identifiable || chunk[i]?.concerning) {
-                rephrasedTextsAligned[i] = rephrasedTexts[k++] ?? '';
-              }
-            }
-          }
+          redactedTexts = redactedTexts.map(enforceRedactionPolicy);
+          console.log(`${logPrefix} [POSTPROCESS] Using sequential alignment - redactedTexts: ${redactedTexts.length}`);
         }
 
         // Process each comment in the chunk
         console.log(`${logPrefix} [POSTPROCESS] Processing ${chunk.length} comments in chunk...`);
         for (let i = 0; i < chunk.length; i++) {
           const comment = chunk[i];
-          // Capture AI outputs for both phases for all flagged comments
-          const redCandidate = redactedTextsAligned[i] || '';
-          let redactedText = redCandidate.trim().length > 0
-            ? redCandidate
-            : (comment.identifiable ? (enforceRedactionPolicy(comment.text) || comment.text) : comment.text);
-          const rephCandidate = rephrasedTextsAligned[i] || '';
-          const rephrasedText = rephCandidate.trim().length > 0 ? rephCandidate : comment.text;
-          const hasAIRedaction = requestRedaction && redCandidate.trim().length > 0;
-          const hasAIRephrase = requestRephrase && rephCandidate.trim().length > 0;
-          
-          // Enforce policy-driven mode regardless of incoming mode
-          let mode: 'redact' | 'rephrase' | 'original';
-          if (comment.identifiable) {
-            mode = defaultMode; // honor user preference for identifiable
-          } else if (comment.concerning) {
-            mode = 'rephrase'; // concerning-only must be rephrase-only
-          } else {
-            mode = 'original';
+          const redactedText = redactedTexts[i] || comment.text;
+          const rephrasedText = rephrasedTexts[i] || comment.text;
+          let mode = comment.mode;
+
+          // Determine mode if not specified
+          if (!mode) {
+            mode = (comment.concerning || comment.identifiable) ? defaultMode : 'original'
           }
 
           let finalText = comment.text;
           
-          // Apply the appropriate transformation based on enforced mode
-          if (mode === 'redact') {
+          // Apply the appropriate transformation based on mode
+          if (mode === 'redact' && (comment.identifiable || comment.concerning)) {
             finalText = redactedText;
             redactedCount++;
-          } else if (mode === 'rephrase') {
+            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REDACTED: ${redactedText.substring(0, 100)}...`);
+          } else if (mode === 'rephrase' && (comment.identifiable || comment.concerning)) {
             finalText = rephrasedText;
             rephrasedCount++;
+            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REPHRASED: ${rephrasedText.substring(0, 100)}...`);
           } else {
             originalCount++;
+            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - ORIGINAL (mode: ${mode}, concerning: ${comment.concerning}, identifiable: ${comment.identifiable})`);
           }
 
           processedComments.push({
@@ -1694,9 +1670,9 @@ serve(async (req) => {
             originalRow: comment.originalRow, // Preserve originalRow for proper ID tracking
             scannedIndex: comment.scannedIndex, // Preserve scannedIndex
             // Include redactedText when AI provided it OR when deterministic fallback changed the text under redact mode
-            redactedText: (hasAIRedaction || (mode === 'redact' && redactedText.trim() !== comment.text.trim())) ? redactedText : undefined,
+            redactedText: (mode === 'redact' && redactedText.trim() !== comment.text.trim()) ? redactedText : undefined,
             // Include rephrasedText only when AI provided it (avoid echoing unchanged originals)
-            rephrasedText: hasAIRephrase ? rephrasedText : undefined,
+            rephrasedText: mode === 'rephrase' ? rephrasedText : undefined,
             finalText,
             mode
           });
