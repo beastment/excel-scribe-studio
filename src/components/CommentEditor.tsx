@@ -554,6 +554,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           routeA: commentsForAU.length,
           routeB: commentsForBU.length
         });
+        
+        // Create deduplication keys
+        const redactAKey = `redact-a-${scanRunId}-${commentsForAU.map(c => c.id).join(',')}`;
+        const redactBKey = `redact-b-${scanRunId}-${commentsForBU.map(c => c.id).join(',')}`;
+        const rephraseAKey = `rephrase-a-${scanRunId}-${commentsForAU.map(c => c.id).join(',')}`;
+        const rephraseBKey = `rephrase-b-${scanRunId}-${commentsForBU.map(c => c.id).join(',')}`;
+        
         // Make multiple calls to post-process-comments for different phases and routes
         // This ensures proper batching and respects TPM/RPM limits
         const redactAPromise = (async () => {
@@ -630,9 +637,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           });
         })();
 
-        // Wait for redaction to complete
-        const [redactAResult, redactBResult] = await Promise.all([redactAPromise, redactBPromise]);
-        
         console.log('[PHASE3] Redaction finished. Launching rephrase (scan_a, scan_b) ...');
 
         const rephraseAPromise = (async () => {
@@ -710,11 +714,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         })();
 
         // Wait for all post-processing to complete
-        const [rephraseAResult, rephraseBResult] = await Promise.all([rephraseAPromise, rephraseBPromise]);
+        const [redactAResult, redactBResult, rephraseAResult, rephraseBResult] = await Promise.all([
+          redactAPromise, redactBPromise, rephraseAPromise, rephraseBPromise
+        ]);
 
         // Merge all results
         const allResults = [redactAResult, redactBResult, rephraseAResult, rephraseBResult].filter(r => r.data);
         console.log(`Post-processing completed: merged ${allResults.length} results`);
+        
+        // Initialize variables for the safety processing
+        const processedCombined: { [key: string]: any } = {};
+        let mergedProcessed: any[] = [];
+        const processedByOriginalRow = new Map();
+        const processedByScannedIndex = new Map();
 
         // Create a map of processed comments by ID
         const processedMap = new Map();
@@ -750,16 +762,6 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         data.comments = finalComments;
         
         setScanProgress(95);
-              addResults(ppCombined.processedComments);
-              mergedProcessed = Object.values(processedCombined);
-              console.log('[PHASE3] Combined post-process fallback succeeded:', mergedProcessed.length);
-            } else if (ppCombinedErr) {
-              console.error('[PHASE3] Combined post-process fallback error:', ppCombinedErr);
-            }
-          } catch (ppCombinedEx) {
-            console.error('[PHASE3] Combined post-process fallback exception:', ppCombinedEx);
-          }
-        }
         // Safety: ensure concerning-only comments are present (rephrase-only) and route to the original scanner
         const concerningOnly = commentsToProcess.filter((c: any) => c.concerning && !c.identifiable);
         const missingConcerning = concerningOnly.filter((c: any) => !processedCombined[c.id]);
@@ -954,7 +956,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           setScanProgress(95);
         } else {
           console.warn('Post-processing returned no data, using scan results with placeholders');
-          console.log('Full post-process responses:', { postRephraseA, postRedactA });
+          console.log('Full post-process responses:', { rephraseAResult, rephraseBResult, redactAResult, redactBResult });
           console.log('[PHASE3] No processed results from split routes.');
         }
       } else {
