@@ -969,7 +969,7 @@ serve(async (req) => {
     let originalCount = 0
 
     try {
-      // Calculate optimal batch size based on model limits and actual comment sizes
+      // Calculate optimal batch size based on model limits and actual comment sizes //
       let optimalBatchSize = 1; // Initialize with minimum value, will be updated based on token limits
       
       // Calculate actual token usage for better batch sizing
