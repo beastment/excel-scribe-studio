@@ -1626,12 +1626,28 @@ serve(async (req) => {
         };
 
         if (redHasIds) {
-          redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
+          // Primary: by-ID alignment
+          let aligned = byId(redIdx);
+          // Secondary: fill blanks sequentially from any remaining items
+          const remaining = redIdx.map(x => x.text);
+          for (let i = 0; i < aligned.length; i++) {
+            if (!aligned[i] && remaining.length > 0) {
+              aligned[i] = remaining.shift() || '';
+            }
+          }
+          redactedTexts = aligned.map(enforceRedactionPolicy) as string[];
         } else {
           redactedTexts = redactedTexts.map(enforceRedactionPolicy);
         }
         if (rephHasIds) {
-          rephrasedTexts = byId(rephIdx);
+          let aligned = byId(rephIdx);
+          const remaining = rephIdx.map(x => x.text);
+          for (let i = 0; i < aligned.length; i++) {
+            if (!aligned[i] && remaining.length > 0) {
+              aligned[i] = remaining.shift() || '';
+            }
+          }
+          rephrasedTexts = aligned;
         }
         console.log(`${logPrefix} [POSTPROCESS] Alignment - redactedTexts: ${redactedTexts.length}, rephrasedTexts: ${rephrasedTexts.length}`);
 
