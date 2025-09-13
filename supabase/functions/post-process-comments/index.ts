@@ -166,7 +166,7 @@ function enforceRedactionPolicy(text: string | null | undefined): string {
 }
 
 // AI calling function (simplified version for post-processing)
-async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger, temperature?: number, logPrefix?: string) {
+async function callAI(provider: string, model: string, prompt: string, input: string, responseType: string, maxTokens?: number, userId?: string, scanRunId?: string, phase?: string, aiLogger?: AILogger, temperature?: number, logPrefix?: string, timeoutOverrideMs?: number) {
   const lp = logPrefix ? `${logPrefix} ` : '';
   const payload = {
     messages: [
@@ -198,8 +198,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       }
 
   if (provider === 'azure') {
+    const effectiveTimeoutMs = Math.max(1000, Math.min(POSTPROCESS_REQUEST_TIMEOUT_MS, timeoutOverrideMs || POSTPROCESS_REQUEST_TIMEOUT_MS));
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_REQUEST_TIMEOUT_MS); // configurable
+    const timeoutId = setTimeout(() => controller.abort(), effectiveTimeoutMs); // configurable
     
     const callStart = Date.now();
     console.log(`${lp}[CALL_AI_TIMING] azure/${model} start`);
@@ -261,8 +262,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       throw error;
     }
   } else if (provider === 'openai') {
+    const effectiveTimeoutMs = Math.max(1000, Math.min(POSTPROCESS_REQUEST_TIMEOUT_MS, timeoutOverrideMs || POSTPROCESS_REQUEST_TIMEOUT_MS));
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_REQUEST_TIMEOUT_MS); // configurable
+    const timeoutId = setTimeout(() => controller.abort(), effectiveTimeoutMs); // configurable
     
     let response;
     const callStart = Date.now();
@@ -338,8 +340,9 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       throw (parseError instanceof Error) ? parseError : new Error(errMsg);
     }
   } else if (provider === 'bedrock') {
+    const effectiveTimeoutMs = Math.max(1000, Math.min(POSTPROCESS_BEDROCK_TIMEOUT_MS, timeoutOverrideMs || POSTPROCESS_BEDROCK_TIMEOUT_MS));
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), POSTPROCESS_BEDROCK_TIMEOUT_MS); // configurable
+    const timeoutId = setTimeout(() => controller.abort(), effectiveTimeoutMs); // configurable
     const callStart = Date.now();
     console.log(`${lp}[CALL_AI_TIMING] bedrock/${model} start`);
     const heartbeatId = setInterval(() => {
