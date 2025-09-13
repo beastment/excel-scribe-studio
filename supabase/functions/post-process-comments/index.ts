@@ -1586,55 +1586,54 @@ serve(async (req) => {
           console.warn(`${logPrefix} [POSTPROCESS] WARNING: Parsed results empty after fill; proceeding with fallbacks`);
         }
 
-        // Handle ID-tagged responses and realign by index
+        // Handle ID-tagged responses and realign by index (per phase)
+        console.log(`${logPrefix} [POSTPROCESS] Handling ID-tagged responses...`);
         const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
         const stripAndIndex = (arr: string[]) => arr.map(s => {
           const m = idTag.exec(s || '');
           return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
         });
-        
-        const redIdx = stripAndIndex(redactedTexts as string[]);
-        const rephIdx = stripAndIndex(rephrasedTexts as string[]);
-        const allRedHaveIds = !effectiveRequestRedaction || redIdx.length === 0 || redIdx.every(x => x.idx != null);
-        const allRephHaveIds = !effectiveRequestRephrase || rephIdx.length === 0 || rephIdx.every(x => x.idx != null);
-        const allHaveIds = allRedHaveIds && allRephHaveIds;
-                
-        // Build full-length arrays aligned to chunk positions
+        const redIdx = stripAndIndex(redactedTexts);
+        const rephIdx = stripAndIndex(rephrasedTexts);
+        const redHasIds = redIdx.length > 0 && redIdx.every(x => x.idx != null);
+        const rephHasIds = rephIdx.length > 0 && rephIdx.every(x => x.idx != null);
+        console.log(`${logPrefix} [POSTPROCESS] ID handling - redHasIds: ${redHasIds}, rephHasIds: ${rephHasIds}, redIdx: ${redIdx.length}, rephIdx: ${rephIdx.length}`);
+
         const expected = chunk.length;
-        let redactedTextsAligned: string[] = Array(expected).fill('');
-        let rephrasedTextsAligned: string[] = Array(expected).fill('');
-        if (allHaveIds) {
-          const byId = (list: { idx: number|null; text: string }[]) => {
-            const out: string[] = Array(expected).fill('');
-            for (const it of list) {
-              if (it.idx != null) {
-                // Find the comment in the chunk that matches this ID (coerce to numbers)
-                const matchIdx = (() => {
-                  for (let j = 0; j < chunk.length; j++) {
-                    const orowRaw = (chunk[j] as any).originalRow;
-                    const sidxRaw = (chunk[j] as any).scannedIndex;
-                    const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
-                    const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
-                    const orowMatches = typeof orow === 'number' && Number.isFinite(orow) && orow === it.idx;
-                    const sidxMatches = typeof sidx === 'number' && Number.isFinite(sidx) && sidx === it.idx;
-                    if (orowMatches || sidxMatches) return j;
-                  }
-                  return -1;
-                })();
-                if (matchIdx >= 0 && matchIdx < expected) {
-                  out[matchIdx] = it.text;
+        const byId = (list: { idx: number|null; text: string }[]) => {
+          const out: string[] = Array(expected).fill('');
+          for (const it of list) {
+            if (it.idx != null) {
+              // Find the comment in the chunk that matches this ID (coerce to numbers)
+              const matchIdx = (() => {
+                for (let j = 0; j < chunk.length; j++) {
+                  const orowRaw = (chunk[j] as any).originalRow;
+                  const sidxRaw = (chunk[j] as any).scannedIndex;
+                  const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
+                  const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
+                  const orowMatches = typeof orow === 'number' && Number.isFinite(orow) && orow === it.idx;
+                  const sidxMatches = typeof sidx === 'number' && Number.isFinite(sidx) && sidx === it.idx;
+                  if (orowMatches || sidxMatches) return j;
                 }
+                return -1;
+              })();
+              if (matchIdx >= 0 && matchIdx < expected) {
+                out[matchIdx] = it.text;
               }
             }
-            return out;
-          };
+          }
+          return out;
+        };
+
+        if (redHasIds) {
           redactedTexts = byId(redIdx).map(enforceRedactionPolicy) as string[];
-          rephrasedTexts = byId(rephIdx);
-          console.log(`${logPrefix} [POSTPROCESS] Realigned by ID - redactedTexts: ${redactedTexts.length}, rephrasedTexts: ${rephrasedTexts.length}`);
         } else {
           redactedTexts = redactedTexts.map(enforceRedactionPolicy);
-          console.log(`${logPrefix} [POSTPROCESS] Using sequential alignment - redactedTexts: ${redactedTexts.length}`);
         }
+        if (rephHasIds) {
+          rephrasedTexts = byId(rephIdx);
+        }
+        console.log(`${logPrefix} [POSTPROCESS] Alignment - redactedTexts: ${redactedTexts.length}, rephrasedTexts: ${rephrasedTexts.length}`);
 
         // Process each comment in the chunk
         console.log(`${logPrefix} [POSTPROCESS] Processing ${chunk.length} comments in chunk...`);
