@@ -38,15 +38,15 @@ export class AILogger {
     this.functionStartTime = Date.now();
   }
   
-  // Log an AI request (call this before making the AI call). Returns inserted log id.
-  async logRequest(entry: Omit<AILogEntry, 'responseText' | 'responseTokens' | 'responseStatus' | 'responseError' | 'processingTimeMs'>): Promise<string | null> {
+  // Log an AI request (call this before making the AI call)
+  async logRequest(entry: Omit<AILogEntry, 'responseText' | 'responseTokens' | 'responseStatus' | 'responseError' | 'processingTimeMs'>): Promise<void> {
     try {
       // Count input tokens
       const tokenCounts = await countTokens(entry.provider, entry.model, entry.requestInput);
       
       const timeStarted = new Date().toISOString();
       
-      const { data, error } = await this.supabase
+      await this.supabase
         .from('ai_logs')
         .insert({
           user_id: entry.userId,
@@ -63,19 +63,12 @@ export class AILogger {
           request_max_tokens: entry.requestMaxTokens,
           response_status: 'pending',
           time_started: timeStarted
-        })
-        .select('id')
-        .single();
-      if (error) {
-        console.warn('[AI LOGGER] Insert failed (continuing):', error);
-      }
+        });
         
       console.log(`[AI REQUEST] ${entry.provider}/${entry.model} type=${entry.requestType} phase=${entry.phase} input_tokens=${tokenCounts.inputTokens}`);
-      return data?.id ?? null;
     } catch (error) {
       console.error('[AI LOGGER] Error logging request:', error);
       // Don't fail the main operation if logging fails
-      return null;
     }
   }
   
@@ -90,8 +83,7 @@ export class AILogger {
     phase: string,
     responseText: string,
     error?: string,
-    totalRunTimeMs?: number,
-    logId?: string | null
+    totalRunTimeMs?: number
   ): Promise<void> {
     try {
       const processingTimeMs = Date.now() - this.startTime;
@@ -104,50 +96,31 @@ export class AILogger {
       // Calculate total run time if not provided
       const calculatedTotalRunTimeMs = totalRunTimeMs || (Date.now() - this.functionStartTime);
       
-      // Update the existing log entry
-      let updateError: any = null;
-      if (logId) {
-        const { error: updErr } = await this.supabase
-          .from('ai_logs')
-          .update({
-            response_text: responseText,
-            response_tokens: tokenCounts.outputTokens,
-            response_status: responseStatus,
-            response_error: error,
-            processing_time_ms: processingTimeMs,
-            time_finished: new Date().toISOString(),
-            total_run_time_ms: calculatedTotalRunTimeMs
-          })
-          .eq('id', logId);
-        updateError = updErr;
-      } else {
-        // Fallback: find by fields
-        const baseQuery = this.supabase
-          .from('ai_logs')
-          .update({
-            response_text: responseText,
-            response_tokens: tokenCounts.outputTokens,
-            response_status: responseStatus,
-            response_error: error,
-            processing_time_ms: processingTimeMs,
-            time_finished: new Date().toISOString(),
-            total_run_time_ms: calculatedTotalRunTimeMs
-          })
-          .eq('user_id', userId)
-          .eq('function_name', functionName)
-          .eq('provider', provider)
-          .eq('model', model)
-          .eq('request_type', requestType)
-          .eq('phase', phase)
-          .eq('response_status', 'pending');
+      // Update the existing log entry - find the most recent pending log for this user/function/phase
+      const baseQuery = this.supabase
+        .from('ai_logs')
+        .update({
+          response_text: responseText,
+          response_tokens: tokenCounts.outputTokens,
+          response_status: responseStatus,
+          response_error: error,
+          processing_time_ms: processingTimeMs,
+          time_finished: new Date().toISOString(),
+          total_run_time_ms: calculatedTotalRunTimeMs
+        })
+        .eq('user_id', userId)
+        .eq('function_name', functionName)
+        .eq('provider', provider)
+        .eq('model', model)
+        .eq('request_type', requestType)
+        .eq('phase', phase)
+        .eq('response_status', 'pending');
 
-        const finalQuery = scanRunId
-          ? baseQuery.eq('scan_run_id', scanRunId)
-          : baseQuery.is('scan_run_id', null);
+      const finalQuery = scanRunId
+        ? baseQuery.eq('scan_run_id', scanRunId)
+        : baseQuery.is('scan_run_id', null);
 
-        const { error: updErr } = await finalQuery;
-        updateError = updErr;
-      }
+      const { error: updateError } = await finalQuery;
         
       if (updateError) {
         console.error('[AI LOGGER] Error updating response log:', updateError);
