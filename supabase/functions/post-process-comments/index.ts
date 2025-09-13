@@ -1690,8 +1690,9 @@ serve(async (req) => {
             id: comment.id,
             originalRow: comment.originalRow, // Preserve originalRow for proper ID tracking
             scannedIndex: comment.scannedIndex, // Preserve scannedIndex
-            // Only include AI-derived fields to prevent fallback from overwriting better results later
-            redactedText: hasAIRedaction ? redactedText : undefined,
+            // Include redactedText when AI provided it OR when deterministic fallback changed the text under redact mode
+            redactedText: (hasAIRedaction || (mode === 'redact' && redactedText.trim() !== comment.text.trim())) ? redactedText : undefined,
+            // Include rephrasedText only when AI provided it (avoid echoing unchanged originals)
             rephrasedText: hasAIRephrase ? rephrasedText : undefined,
             finalText,
             mode

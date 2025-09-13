@@ -6,6 +6,7 @@ The post-process-comments edge function applies AI-powered transformations to co
 Implementation notes:
 - The function supports batch processing and expects AI responses that may include sentinel item IDs like `<<<ITEM 10>>>`. When present, outputs are aligned back to comments by matching these IDs against `originalRow` or `scannedIndex`. To avoid mismatches (e.g., "10" vs 10), the alignment coerces both sides to numbers before comparison.
 - The response includes `processedComments` entries containing optional `redactedText`/`rephrasedText`, along with a `finalText` and `mode` which should be preserved by the client for reliable display.
+- When AI returns no redaction for a flagged item but deterministic policy-based redaction changes the text, the function now includes `redactedText` so the client can show the redacted value consistently (rather than falling back to the original text).
 
 ## Main Functionality
 

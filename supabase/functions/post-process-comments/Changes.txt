@@ -9,6 +9,12 @@
 Files impacted:
 - supabase/functions/post-process-comments/index.ts
 - src/components/CommentEditor.tsx
+# 2025-09-13
+- Ensure fallback redactions are surfaced to UI: when AI redaction output is empty but the deterministic policy redaction changes the text, include `redactedText` in the response. This fixes cases where the final column could show the original text due to missing `redactedText` despite a redacted `finalText`.
+- No change to `rephrasedText` behavior: still only included when AI produces a rephrase (to avoid echoing originals).
+
+Files impacted:
+- supabase/functions/post-process-comments/index.ts
 # Post-Process Comments Edge Function - Recent Changes
 
 ## Latest Updates
