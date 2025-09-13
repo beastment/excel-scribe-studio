@@ -367,6 +367,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       const userMessage = (payload as any).messages.find((m: any) => m.role === 'user')?.content || '';
       const bedrockPayload = {
         anthropic_version: 'bedrock-2023-05-31',
+        max_tokens: (payload as any).max_tokens,
         system: systemMessage,
         messages: [
           { role: 'user', content: userMessage }
@@ -499,7 +500,11 @@ async function hmacSha256(key: string | ArrayBuffer, message: string): Promise<A
   return await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
 }
 
-
+function arrayBufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 // Parse and normalize batch text responses
 function normalizeBatchTextParsed(parsed: any): string[] {
@@ -968,8 +973,8 @@ serve(async (req) => {
       const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
       const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 5); // ~5 chars per token (more realistic for post-processing)
       // Estimate outputs using configured I/O ratios (not scan-comments constants)
-      const estimatedOutputTokensPerCommentRedact = Math.ceil(estimatedInputTokensPerComment / redactionIoRatio);
-      const estimatedOutputTokensPerCommentRephrase = Math.ceil(estimatedInputTokensPerComment / rephraseIoRatio);
+      const estimatedOutputTokensPerCommentRedact = Math.ceil(estimatedInputTokensPerComment * redactionIoRatio);
+      const estimatedOutputTokensPerCommentRephrase = Math.ceil(estimatedInputTokensPerComment * rephraseIoRatio);
       const estimatedTotalTokensPerCommentRedact = estimatedInputTokensPerComment + estimatedOutputTokensPerCommentRedact;
       const estimatedTotalTokensPerCommentRephrase = estimatedInputTokensPerComment + estimatedOutputTokensPerCommentRephrase;
       
@@ -1047,7 +1052,7 @@ serve(async (req) => {
         // Determine the primary flag type based on adjudicated result
         const preferIdent = Boolean(c.identifiable);
         const preferConc = !preferIdent && Boolean(c.concerning);
-        
+
         // If routingMode is forced, prefer that branch when possible
         if (routingMode === 'scan_a' && (aPM.provider && aPM.model)) {
           return { provider: aPM.provider, model: aPM.model };
@@ -1412,16 +1417,16 @@ serve(async (req) => {
               await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
               try {
                 const result = await callAI(
-              group.provider,
-              group.model,
-              redactPrompt,
-              sentinelInputRedact,
-              'batch_text',
-                  groupModelCfg?.max_tokens,
-              user.id,
-              scanRunId,
-              'redaction',
-              aiLogger,
+                  group.provider,
+                  group.model,
+                  redactPrompt,
+                  sentinelInputRedact,
+                  'batch_text',
+                  sharedOutputLimitSafe,
+                  user.id,
+                  scanRunId,
+                  'redaction',
+                  aiLogger,
                   groupModelCfg?.temperature ?? effectiveConfig.temperature,
                   logPrefix
                 );
@@ -1523,16 +1528,16 @@ serve(async (req) => {
               await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
               try {
                 const result = await callAI(
-              group.provider,
-              group.model,
-              rephrasePrompt,
-              sentinelInputRephrase,
-              'batch_text',
-                  groupModelCfg?.max_tokens,
-              user.id,
-              scanRunId,
-              'rephrase',
-              aiLogger,
+                  group.provider,
+                  group.model,
+                  rephrasePrompt,
+                  sentinelInputRephrase,
+                  'batch_text',
+                  sharedOutputLimitSafe,
+                  user.id,
+                  scanRunId,
+                  'rephrase',
+                  aiLogger,
                   groupModelCfg?.temperature ?? effectiveConfig.temperature,
                   logPrefix
                 );
@@ -1540,7 +1545,7 @@ serve(async (req) => {
               } catch (e) {
                 const errMsg = e instanceof Error ? e.message : String(e);
                 console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
-            if (aiLogger && user && scanRunId) {
+                if (aiLogger && user && scanRunId) {
                   await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'rephrase', '', errMsg, undefined);
                 }
               }
@@ -1590,7 +1595,7 @@ serve(async (req) => {
         const allRedHaveIds = !effectiveRequestRedaction || redIdx.length === 0 || redIdx.every(x => x.idx != null);
         const allRephHaveIds = !effectiveRequestRephrase || rephIdx.length === 0 || rephIdx.every(x => x.idx != null);
         const allHaveIds = allRedHaveIds && allRephHaveIds;
-        
+                
         // Build full-length arrays aligned to chunk positions
         const expected = chunk.length;
         let redactedTextsAligned: string[] = Array(expected).fill('');
