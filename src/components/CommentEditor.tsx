@@ -938,44 +938,61 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 processed = processedByScannedIndex.get(sidx);
               }
               if (processed) {
-                
-                // Determine the final text based on the backend finalText first, then fallback logic
+                // Determine the final text with robust fallbacks
                 let finalText = comment.text; // Default to existing text
-                let finalMode = processed.mode || defaultMode; // Use backend mode if available, otherwise use default mode
-                
-                // Prefer computed redacted/rephrased based on policy; fall back to backend finalText last
+                let finalMode = processed.mode || defaultMode; // Use backend mode if available, otherwise default
+
+                // Identifiable: prefer default mode output, but fall back to the other if missing
                 if (comment.identifiable) {
-                  if (defaultMode === 'redact' && processed.redactedText) {
-                    finalText = processed.redactedText;
-                    finalMode = 'redact';
-                  } else if (defaultMode === 'rephrase' && processed.rephrasedText) {
-                    finalText = processed.rephrasedText;
-                    finalMode = 'rephrase';
+                  if (defaultMode === 'redact') {
+                    if (processed.redactedText && processed.redactedText.trim().length > 0) {
+                      finalText = processed.redactedText;
+                      finalMode = 'redact';
+                    } else if (processed.rephrasedText && processed.rephrasedText.trim().length > 0) {
+                      finalText = processed.rephrasedText;
+                      finalMode = 'rephrase';
+                    }
+                  } else if (defaultMode === 'rephrase') {
+                    if (processed.rephrasedText && processed.rephrasedText.trim().length > 0) {
+                      finalText = processed.rephrasedText;
+                      finalMode = 'rephrase';
+                    } else if (processed.redactedText && processed.redactedText.trim().length > 0) {
+                      finalText = processed.redactedText;
+                      finalMode = 'redact';
+                    }
                   }
                 } else if (comment.concerning && !comment.identifiable) {
-                  if (processed.rephrasedText) {
+                  // Concerning-only: prefer rephrase; if missing, fall back to redacted if available
+                  if (processed.rephrasedText && processed.rephrasedText.trim().length > 0) {
                     finalText = processed.rephrasedText;
+                    finalMode = 'rephrase';
+                  } else if (processed.redactedText && processed.redactedText.trim().length > 0) {
+                    finalText = processed.redactedText;
+                    // Keep mode as 'rephrase' to align with policy but show the safer redacted output
                     finalMode = 'rephrase';
                   }
                 }
-                if ((finalMode === defaultMode && finalText === comment.text) || (!processed.redactedText && !processed.rephrasedText)) {
+
+                // Last-resort: if still unchanged OR no AI outputs at all, fall back to backend finalText
+                if ((finalText === comment.text) || (!processed.redactedText && !processed.rephrasedText)) {
                   if (typeof processed.finalText === 'string' && processed.finalText.trim().length > 0) {
                     finalText = processed.finalText;
                     finalMode = processed.mode || finalMode;
                     console.log(`[MODE] Fallback to backend finalText for comment ${comment.id}`);
                   }
                 }
-                 const result = {
-                   ...comment,
-                   text: finalText,
-                   redactedText: processed.redactedText,
-                   rephrasedText: processed.rephrasedText,
-                   mode: finalMode, // Use the determined final mode
-                   needsPostProcessing: false, // Mark as processed
-                   isPostProcessed: true // Add flag to prevent re-processing
-                 };
-                 
-                 return result;
+
+                const result = {
+                  ...comment,
+                  text: finalText,
+                  redactedText: processed.redactedText,
+                  rephrasedText: processed.rephrasedText,
+                  mode: finalMode, // Use the determined final mode
+                  needsPostProcessing: false, // Mark as processed
+                  isPostProcessed: true // Add flag to prevent re-processing
+                };
+
+                return result;
               }
             }
             return comment;
