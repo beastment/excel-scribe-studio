@@ -743,26 +743,27 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const safetyB = [...missingBOnly, ...bothToB];
 
           const safetyMerged: any[] = [];
-          const safetyKey = (route: 'scan_a'|'scan_b', items: any[]) => {
-            const ids = items.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
-            return `safety|rephrase|${route}|${ids}`;
-          };
-          if (safetyA.length > 0) {
-            const kA = safetyKey('scan_a', safetyA);
-            if (!postProcessDedupRef.current.has(kA)) {
-              postProcessDedupRef.current.add(kA);
-              safetyMerged.push(...await invokeChunk(safetyA, 'rephrase', 'scan_a'));
-            } else {
-              console.warn('[PHASE3][DEDUP] Skipping duplicate safety rephrase (scan_a)', kA);
+          // Group safety items by provider/model and reuse the same dedup keying
+          const safetyGroups = new Map<string, { provider: string; model: string; route: 'scan_a'|'scan_b'; items: any[] }>();
+          const addSafety = (items: any[], route: 'scan_a'|'scan_b') => {
+            for (const it of items) {
+              const modelStr = route === 'scan_a' ? (it.adjudicationData?.scanAResult?.model || it.scanAResult?.model) : (it.adjudicationData?.scanBResult?.model || it.scanBResult?.model);
+              const pm = parseProviderModel(modelStr);
+              const key = `${pm.provider}/${pm.model}|${route}`;
+              if (!safetyGroups.has(key)) safetyGroups.set(key, { provider: pm.provider!, model: pm.model!, route, items: [] });
+              safetyGroups.get(key)!.items.push(it);
             }
-          }
-          if (safetyB.length > 0) {
-            const kB = safetyKey('scan_b', safetyB);
-            if (!postProcessDedupRef.current.has(kB)) {
-              postProcessDedupRef.current.add(kB);
-              safetyMerged.push(...await invokeChunk(safetyB, 'rephrase', 'scan_b'));
+          };
+          addSafety(safetyA, 'scan_a');
+          addSafety(safetyB, 'scan_b');
+
+          for (const grp of safetyGroups.values()) {
+            const k = buildKey(grp.provider, grp.model, 'rephrase', grp.items);
+            if (!postProcessDedupRef.current.has(k)) {
+              postProcessDedupRef.current.add(k);
+              safetyMerged.push(...await invokeChunk(grp.items, 'rephrase', grp.route));
             } else {
-              console.warn('[PHASE3][DEDUP] Skipping duplicate safety rephrase (scan_b)', kB);
+              console.warn('[PHASE3][DEDUP] Skipping duplicate safety rephrase', k);
             }
           }
           if (safetyMerged.length > 0) mergedProcessed = (mergedProcessed as any[]).concat(safetyMerged);
