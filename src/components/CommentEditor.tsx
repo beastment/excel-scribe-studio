@@ -743,8 +743,28 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const safetyB = [...missingBOnly, ...bothToB];
 
           const safetyMerged: any[] = [];
-          safetyMerged.push(...await invokeChunk(safetyA, 'rephrase', 'scan_a'));
-          safetyMerged.push(...await invokeChunk(safetyB, 'rephrase', 'scan_b'));
+          const safetyKey = (route: 'scan_a'|'scan_b', items: any[]) => {
+            const ids = items.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+            return `safety|rephrase|${route}|${ids}`;
+          };
+          if (safetyA.length > 0) {
+            const kA = safetyKey('scan_a', safetyA);
+            if (!postProcessDedupRef.current.has(kA)) {
+              postProcessDedupRef.current.add(kA);
+              safetyMerged.push(...await invokeChunk(safetyA, 'rephrase', 'scan_a'));
+            } else {
+              console.warn('[PHASE3][DEDUP] Skipping duplicate safety rephrase (scan_a)', kA);
+            }
+          }
+          if (safetyB.length > 0) {
+            const kB = safetyKey('scan_b', safetyB);
+            if (!postProcessDedupRef.current.has(kB)) {
+              postProcessDedupRef.current.add(kB);
+              safetyMerged.push(...await invokeChunk(safetyB, 'rephrase', 'scan_b'));
+            } else {
+              console.warn('[PHASE3][DEDUP] Skipping duplicate safety rephrase (scan_b)', kB);
+            }
+          }
           if (safetyMerged.length > 0) mergedProcessed = (mergedProcessed as any[]).concat(safetyMerged);
         }
 
