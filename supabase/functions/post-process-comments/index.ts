@@ -776,6 +776,44 @@ async function waitForDbRpmGate(supabase: any, provider: string, model: string, 
   }
 }
 
+// Recent-duplicate finder: skip identical request_input within a short TTL window, regardless of scanRunId
+async function findRecentDuplicateLog(
+  supabase: any,
+  provider: string,
+  model: string,
+  phase: string,
+  requestInput: string,
+  ttlMs: number,
+  logPrefix?: string
+): Promise<{ id: string } | null> {
+  try {
+    const sinceIso = new Date(Date.now() - Math.max(1000, ttlMs)).toISOString();
+    const { data, error } = await supabase
+      .from('ai_logs')
+      .select('id, created_at, response_status')
+      .eq('function_name', 'post-process-comments')
+      .eq('provider', provider)
+      .eq('model', model)
+      .eq('phase', phase)
+      .eq('request_type', 'batch_text')
+      .eq('request_input', requestInput)
+      .gte('created_at', sinceIso)
+      .in('response_status', ['pending', 'success'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (error) {
+      console.warn(`${logPrefix || ''} [DEDUP_DB] Query failed; proceeding without dedup:`, error.message);
+      return null;
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      return { id: String((data[0] as any).id) };
+    }
+  } catch (e) {
+    console.warn(`${logPrefix || ''} [DEDUP_DB] Unexpected error; proceeding:`, e instanceof Error ? e.message : String(e));
+  }
+  return null;
+}
+
 serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = buildCorsHeaders(origin);
@@ -1294,6 +1332,21 @@ serve(async (req) => {
             const dynamicTimeoutMs = Math.max(8000, Math.min(POSTPROCESS_BEDROCK_TIMEOUT_MS, remainingMs - 5000));
             await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
             try {
+              // Server-side TTL dedup irrespective of scanRunId
+              const dup = await findRecentDuplicateLog(
+                supabase,
+                group.provider,
+                group.model,
+                'redaction',
+                ctx.sentinelRed,
+                2 * 60 * 1000,
+                logPrefix
+              );
+              if (dup) {
+                console.log(`${logPrefix} [DEDUP] Skipping duplicate redaction for ${group.provider}/${group.model}; recent log id=${dup.id}`);
+                ctx.rawRed = null;
+                continue;
+              }
               ctx.rawRed = await callAI(
                 group.provider,
                 group.model,
@@ -1322,6 +1375,21 @@ serve(async (req) => {
             const dynamicTimeoutMs = Math.max(8000, Math.min(POSTPROCESS_BEDROCK_TIMEOUT_MS, remainingMs - 5000));
             await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
             try {
+              // Server-side TTL dedup irrespective of scanRunId
+              const dup = await findRecentDuplicateLog(
+                supabase,
+                group.provider,
+                group.model,
+                'rephrase',
+                ctx.sentinelReph,
+                2 * 60 * 1000,
+                logPrefix
+              );
+              if (dup) {
+                console.log(`${logPrefix} [DEDUP] Skipping duplicate rephrase for ${group.provider}/${group.model}; recent log id=${dup.id}`);
+                ctx.rawReph = null;
+                continue;
+              }
               ctx.rawReph = await callAI(
                 group.provider,
                 group.model,
