@@ -54,6 +54,7 @@ interface AILogsViewerProps {
 export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = false }: AILogsViewerProps) {
   const { user } = useAuth();
   const [logs, setLogs] = useState<AILog[]>([]);
+  const [modelFilter, setModelFilter] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
   const [showFullContent, setShowFullContent] = useState(true); // Auto-expand by default
@@ -522,6 +523,18 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
             </Badge>
           </CardTitle>
           <div className="flex items-center gap-2">
+            {/* Model Filter */}
+            <select
+              className="border rounded px-2 py-1 text-sm"
+              value={modelFilter}
+              onChange={(e) => setModelFilter(e.target.value)}
+              title="Filter by Provider/Model"
+            >
+              <option value="">All Models</option>
+              {Array.from(new Set(logs.map(l => `${l.provider}/${l.model}`))).sort().map(k => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
             {runStats && (
               <Badge variant="outline" className="bg-green-50 border-green-200 text-green-700">
                 <BarChart3 className="h-4 w-4 mr-1" />
@@ -728,7 +741,7 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold">Recent Activity</h3>
                 <ScrollArea className="h-64">
-                  {logs.slice(0, 50).map((log) => (
+                  {logs.filter(l => !modelFilter || `${l.provider}/${l.model}` === modelFilter).slice(0, 50).map((log) => (
                     <div
                       key={log.id}
                       className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
@@ -770,7 +783,7 @@ export function AILogsViewer({ debugMode = false, onRef, skipInitialFetch = fals
             
             <TabsContent value="detailed" className="space-y-4">
               <ScrollArea className="h-96">
-                {logs.map((log) => (
+                {logs.filter(l => !modelFilter || `${l.provider}/${l.model}` === modelFilter).map((log) => (
                   <Card key={log.id} className="mb-4">
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
