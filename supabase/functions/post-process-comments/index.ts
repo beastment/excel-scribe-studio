@@ -1272,440 +1272,154 @@ serve(async (req) => {
           chunks = guarded;
         }
         console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks (conservative limits applied, cap=${maxItemsCap})`);
-        for (const chunk of chunks) {
-        console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
 
-        // Determine which items should be processed by redaction vs rephrase
-        // Per requirements: every flagged comment should be processed for BOTH redaction and rephrase.
-        // Routing to a model is handled at the group level (chunk). For phase control, we just choose which calls to make.
-        const redactItems = chunk;
-        const rephraseItems = chunk;
+        // NEW: Enforce phase ordering per model/group: run ALL redactions first, then ALL rephrases
+        {
+          const aiLogger = new AILogger();
+          aiLogger.setFunctionStartTime(overallStartTime);
+          type Ctx = { chunk: any[]; sentinelRed: string; sentinelReph: string; promptRed: string; promptReph: string; rawRed?: string|null; rawReph?: string|null };
+          const contexts: Ctx[] = chunks.map((ch) => ({
+            chunk: ch,
+            sentinelRed: buildSentinelInput(ch.map((c: any) => c.originalText || c.text), ch),
+            sentinelReph: buildSentinelInput(ch.map((c: any) => c.originalText || c.text), ch),
+            promptRed: buildBatchTextPrompt(scanConfig.redact_prompt, ch.length),
+            promptReph: buildBatchTextPrompt(scanConfig.rephrase_prompt, ch.length)
+          }));
 
-        // Build sentinel inputs separately for each phase to honor concerning-only = rephrase-only
-        const sentinelInputRedact = buildSentinelInput(redactItems.map((c: any) => c.originalText || c.text), redactItems);
-        const sentinelInputRephrase = buildSentinelInput(rephraseItems.map((c: any) => c.originalText || c.text), rephraseItems);
-        
-        // Build prompts with expected lengths matching each phase's item count
-        const redactPrompt = buildBatchTextPrompt(scanConfig.redact_prompt, redactItems.length);
-        const rephrasePrompt = buildBatchTextPrompt(scanConfig.rephrase_prompt, rephraseItems.length);
-        
-        // Determine which phases to request for this chunk, respecting single-pass policy
-        const requestRedaction = (phase === 'both' || phase === 'redaction') && redactItems.length > 0;
-        const requestRephrase = (phase === 'both' || phase === 'rephrase') && rephraseItems.length > 0;
+          // Phase 1: Redactions (sequential)
+          for (const ctx of contexts) {
+            const elapsedMs = Date.now() - overallStartTime;
+            const HARD_CAP_MS = 148000;
+            const remainingMs = Math.max(0, HARD_CAP_MS - elapsedMs);
+            const dynamicTimeoutMs = Math.max(8000, Math.min(POSTPROCESS_BEDROCK_TIMEOUT_MS, remainingMs - 5000));
+            await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
+            try {
+              ctx.rawRed = await callAI(
+                group.provider,
+                group.model,
+                ctx.promptRed,
+                ctx.sentinelRed,
+                'batch_text',
+                sharedOutputLimitSafe,
+                user.id,
+                scanRunId,
+                'redaction',
+                aiLogger,
+                groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                logPrefix,
+                dynamicTimeoutMs
+              );
+            } catch (e) {
+              ctx.rawRed = null;
+            }
+          }
 
-        if (requestRedaction) {
-          console.log(`${logPrefix} [AI REQUEST] ${group.provider}/${group.model} type=batch_text phase=redaction`);
-          console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
-            provider: group.provider,
-            model: group.model,
-            prompt_length: redactPrompt.length,
-            input_length: sentinelInputRedact.length,
-            chunk_size: chunk.length
-          }).substring(0, 500)}...`);
-        }
-        if (requestRephrase) {
-          console.log(`${logPrefix} [AI REQUEST] ${group.provider}/${group.model} type=batch_text phase=rephrase`);
-          console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
-            provider: group.provider,
-            model: group.model,
-            prompt_length: rephrasePrompt.length,
-            input_length: sentinelInputRephrase.length,
-            chunk_size: chunk.length
-          }).substring(0, 500)}...`);
-        }
-        
-                 // Initialize AI logger
-         const aiLogger = new AILogger();
-         aiLogger.setFunctionStartTime(overallStartTime);
-        
-        // Estimate per-chunk tokens using configured I/O ratios (and include prompt reserve for input)
-        const chunkInputTokensNoPrompt = chunk.reduce((sum, c) => sum + Math.ceil(String(c.originalText || c.text || '').length / 5), 0);
-        const chunkEstimatedInputTokens = chunkInputTokensNoPrompt + basePromptReserve + (chunk.length * perItemPromptOverhead);
-        const chunkEstimatedOutputRedact = chunk.reduce((sum, c) => {
-          const ti = Math.ceil(String(c.originalText || c.text || '').length / 5);
-          return sum + Math.ceil(ti * redactionIoRatio);
-        }, 0);
-        const chunkEstimatedOutputRephrase = chunk.reduce((sum, c) => {
-          const ti = Math.ceil(String(c.originalText || c.text || '').length / 5);
-          return sum + Math.ceil(ti * rephraseIoRatio);
-        }, 0);
-        console.log(`${logPrefix} [CHUNK] Tokens (input≈${chunkEstimatedInputTokens} incl. prompt, output redact≈${chunkEstimatedOutputRedact}, rephrase≈${chunkEstimatedOutputRephrase}) limits (in=${inputDerivedLimitSafe}, out=${sharedOutputLimitSafe})`);
-        
+          // Phase 2: Rephrases (sequential, only after all redactions done)
+          for (const ctx of contexts) {
+            const elapsedMs = Date.now() - overallStartTime;
+            const HARD_CAP_MS = 148000;
+            const remainingMs = Math.max(0, HARD_CAP_MS - elapsedMs);
+            const dynamicTimeoutMs = Math.max(8000, Math.min(POSTPROCESS_BEDROCK_TIMEOUT_MS, remainingMs - 5000));
+            await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
+            try {
+              ctx.rawReph = await callAI(
+                group.provider,
+                group.model,
+                ctx.promptReph,
+                ctx.sentinelReph,
+                'batch_text',
+                sharedOutputLimitSafe,
+                user.id,
+                scanRunId,
+                'rephrase',
+                aiLogger,
+                groupModelCfg?.temperature ?? effectiveConfig.temperature,
+                logPrefix,
+                dynamicTimeoutMs
+              );
+            } catch (e) {
+              ctx.rawReph = null;
+            }
+          }
 
-        
-        // Execute phase calls SEQUENTIALLY to respect RPM limits and set effective flags for dedup skips
-        let rawRedacted: string | null = null;
-        let rawRephrased: string | null = null;
-        let effectiveRequestRedaction = requestRedaction;
-        let effectiveRequestRephrase = requestRephrase;
+          // Phase 3: Parse/align and push results
+          const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
+          const stripAndIndex = (arr: string[]) => arr.map(s => {
+            const m = idTag.exec(s || '');
+            return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
+          });
+          for (const ctx of contexts) {
+            let redTexts = ctx.rawRed ? normalizeBatchTextParsed(ctx.rawRed) : [];
+            let repTexts = ctx.rawReph ? normalizeBatchTextParsed(ctx.rawReph) : [];
+            const redIdx = stripAndIndex(redTexts);
+            const rephIdx = stripAndIndex(repTexts);
+            const redHasIds = redIdx.length > 0 && redIdx.every(x => x.idx != null);
+            const rephHasIds = rephIdx.length > 0 && rephIdx.every(x => x.idx != null);
+            const expected = ctx.chunk.length;
+            const byId = (list: { idx: number|null; text: string }[]) => {
+              const out: string[] = Array(expected).fill('');
+              for (const it of list) {
+                if (it.idx != null) {
+                  const matchIdx = (() => {
+                    for (let j = 0; j < ctx.chunk.length; j++) {
+                      const orowRaw = (ctx.chunk[j] as any).originalRow;
+                      const sidxRaw = (ctx.chunk[j] as any).scannedIndex;
+                      const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
+                      const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
+                      const orowMatches = typeof orow === 'number' && Number.isFinite(orow) && orow === it.idx;
+                      const sidxMatches = typeof sidx === 'number' && Number.isFinite(sidx) && sidx === it.idx;
+                      if (orowMatches || sidxMatches) return j;
+                    }
+                    return -1;
+                  })();
+                  if (matchIdx >= 0 && matchIdx < expected) out[matchIdx] = it.text;
+                }
+              }
+              return out;
+            };
+            if (redHasIds) {
+              let aligned = byId(redIdx);
+              const remaining = redIdx.map(x => x.text);
+              for (let i = 0; i < aligned.length; i++) if (!aligned[i] && remaining.length > 0) aligned[i] = remaining.shift() || '';
+              redTexts = aligned.map(enforceRedactionPolicy) as string[];
+            } else {
+              redTexts = redTexts.map(enforceRedactionPolicy);
+            }
+            if (rephHasIds) {
+              let aligned = byId(rephIdx);
+              const remaining = rephIdx.map(x => x.text);
+              for (let i = 0; i < aligned.length; i++) if (!aligned[i] && remaining.length > 0) aligned[i] = remaining.shift() || '';
+              repTexts = aligned;
+            }
+            for (let i = 0; i < ctx.chunk.length; i++) {
+              const comment = ctx.chunk[i];
+              const red = redTexts[i] || comment.text;
+              const rep = repTexts[i] || comment.text;
+              let mode = comment.mode || ((comment.concerning || comment.identifiable) ? defaultMode : 'original');
+              let finalText = comment.text;
+              if (mode === 'redact' && (comment.identifiable || comment.concerning)) finalText = red;
+              else if (mode === 'rephrase' && (comment.identifiable || comment.concerning)) finalText = rep;
+              const hasAIRedaction = red.trim().length > 0 && red.trim() !== (comment.text || '').trim();
+              const hasAIRephrase = rep.trim().length > 0 && rep.trim() !== (comment.text || '').trim();
+              processedComments.push({
+                id: comment.id,
+                originalRow: comment.originalRow,
+                scannedIndex: comment.scannedIndex,
+                redactedText: hasAIRedaction ? red : undefined,
+                rephrasedText: hasAIRephrase ? rep : undefined,
+                finalText,
+                mode
+              });
+            }
+          }
 
-        // If nothing to do for this chunk under current phase, skip to next chunk
-        if (!requestRedaction && !requestRephrase) {
-          console.log(`${logPrefix} [POSTPROCESS] Skipping chunk: no items for current phase (${phase})`);
+          // Skip the old per-chunk interleaving logic
           continue;
         }
 
-        if (requestRedaction) {
-          const idsForChunk = chunk.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
-          const redKey = `pp|${runId}|${group.provider}/${group.model}|redaction|${idsForChunk}`;
-          console.log(`${logPrefix} [SUBMIT] redaction key=${redKey} ids=[${idsForChunk}] count=${chunk.length}`);
-          if (ppBatches.has(redKey)) {
-            console.warn(`${logPrefix} [DEDUP] Skipping duplicate redaction batch for key=${redKey}`);
-            effectiveRequestRedaction = false;
-            // Ensure dedup appears in Recent Activity: log a no-op request/response
-            try {
-              await aiLogger.logRequest({
-                userId: user.id,
-                scanRunId: effectiveRunId,
-                functionName: 'post-process-comments',
-                provider: group.provider,
-                model: group.model,
-                requestType: 'batch_text',
-                phase: 'redaction',
-                requestPrompt: redactPrompt,
-                requestInput: sentinelInputRedact,
-                requestTemperature: groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                requestMaxTokens: sharedOutputLimitSafe
-              });
-              await aiLogger.logResponse(
-                user.id,
-                effectiveRunId,
-                'post-process-comments',
-                group.provider,
-                group.model,
-                'batch_text',
-                'redaction',
-                '[DEDUP] Skipped duplicate batch',
-                undefined,
-                undefined
-              );
-            } catch (_) { /* ignore logging errors */ }
-          } else {
-            ppBatches.add(redKey);
-            // DB-based dedup across isolates: skip if same request already pending/success
-            try {
-              const { data: existingRed, error: redErr } = await supabase
-                .from('ai_logs')
-                .select('id')
-                .eq('scan_run_id', effectiveRunId)
-                .eq('function_name', 'post-process-comments')
-                .eq('provider', group.provider)
-                .eq('model', group.model)
-                .eq('phase', 'redaction')
-                .eq('request_type', 'batch_text')
-                .eq('request_input', sentinelInputRedact)
-                .in('response_status', ['pending', 'success'])
-                .limit(1);
-              if (!redErr && existingRed && existingRed.length > 0) {
-                console.warn(`${logPrefix} [DEDUP][DB] Existing redaction log found for this batch, skipping AI call`);
-                effectiveRequestRedaction = false;
-                try {
-                  await aiLogger.logRequest({
-                    userId: user.id,
-                    scanRunId: effectiveRunId,
-                    functionName: 'post-process-comments',
-                    provider: group.provider,
-                    model: group.model,
-                    requestType: 'batch_text',
-                    phase: 'redaction',
-                    requestPrompt: redactPrompt,
-                    requestInput: sentinelInputRedact,
-                    requestTemperature: groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                    requestMaxTokens: sharedOutputLimitSafe
-                  });
-                  await aiLogger.logResponse(
-                    user.id,
-                    effectiveRunId,
-                    'post-process-comments',
-                    group.provider,
-                    group.model,
-                    'batch_text',
-                    'redaction',
-                    '[DEDUP][DB] Skipped (existing log found)',
-                    undefined,
-                    undefined
-                  );
-                } catch (_) { /* ignore logging errors */ }
-              }
-            } catch (_) { /* ignore dedup errors */ }
-            if (effectiveRequestRedaction) {
-              await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
-              try {
-                const result = await callAI(
-                  group.provider,
-                  group.model,
-                  redactPrompt,
-                  sentinelInputRedact,
-                  'batch_text',
-                  sharedOutputLimitSafe,
-                  user.id,
-                  scanRunId,
-                  'redaction',
-                  aiLogger,
-                  groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                  logPrefix
-                );
-                rawRedacted = result;
-              } catch (e) {
-                const errMsg = e instanceof Error ? e.message : String(e);
-                console.error(`${logPrefix} [POSTPROCESS][REDACTION] Error: ${errMsg}`);
-                if (aiLogger && user && scanRunId) {
-                  await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'redaction', '', errMsg, undefined);
-                }
-              }
-            }
-          }
-        }
-        if (requestRephrase) {
-          const idsForChunk = chunk.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
-          const repKey = `pp|${runId}|${group.provider}/${group.model}|rephrase|${idsForChunk}`;
-          console.log(`${logPrefix} [SUBMIT] rephrase key=${repKey} ids=[${idsForChunk}] count=${chunk.length}`);
-          if (ppBatches.has(repKey)) {
-            console.warn(`${logPrefix} [DEDUP] Skipping duplicate rephrase batch for key=${repKey}`);
-            effectiveRequestRephrase = false;
-            // Ensure dedup appears in Recent Activity: log a no-op request/response
-            try {
-              await aiLogger.logRequest({
-                userId: user.id,
-                scanRunId: effectiveRunId,
-                functionName: 'post-process-comments',
-                provider: group.provider,
-                model: group.model,
-                requestType: 'batch_text',
-                phase: 'rephrase',
-                requestPrompt: rephrasePrompt,
-                requestInput: sentinelInputRephrase,
-                requestTemperature: groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                requestMaxTokens: sharedOutputLimitSafe
-              });
-              await aiLogger.logResponse(
-                user.id,
-                effectiveRunId,
-                'post-process-comments',
-                group.provider,
-                group.model,
-                'batch_text',
-                'rephrase',
-                '[DEDUP] Skipped duplicate batch',
-                undefined,
-                undefined
-              );
-            } catch (_) { /* ignore logging errors */ }
-          } else {
-            ppBatches.add(repKey);
-            // DB-based dedup across isolates
-            try {
-              const { data: existingReph, error: rephErr } = await supabase
-                .from('ai_logs')
-                .select('id')
-                .eq('scan_run_id', effectiveRunId)
-                .eq('function_name', 'post-process-comments')
-                .eq('provider', group.provider)
-                .eq('model', group.model)
-                .eq('phase', 'rephrase')
-                .eq('request_type', 'batch_text')
-                .eq('request_input', sentinelInputRephrase)
-                .in('response_status', ['pending', 'success'])
-                .limit(1);
-              if (!rephErr && existingReph && existingReph.length > 0) {
-                console.warn(`${logPrefix} [DEDUP][DB] Existing rephrase log found for this batch, skipping AI call`);
-                effectiveRequestRephrase = false;
-                try {
-                  await aiLogger.logRequest({
-                    userId: user.id,
-                    scanRunId: effectiveRunId,
-                    functionName: 'post-process-comments',
-                    provider: group.provider,
-                    model: group.model,
-                    requestType: 'batch_text',
-                    phase: 'rephrase',
-                    requestPrompt: rephrasePrompt,
-                    requestInput: sentinelInputRephrase,
-                    requestTemperature: groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                    requestMaxTokens: sharedOutputLimitSafe
-                  });
-                  await aiLogger.logResponse(
-                    user.id,
-                    effectiveRunId,
-                    'post-process-comments',
-                    group.provider,
-                    group.model,
-                    'batch_text',
-                    'rephrase',
-                    '[DEDUP][DB] Skipped (existing log found)',
-                    undefined,
-                    undefined
-                  );
-                } catch (_) { /* ignore logging errors */ }
-              }
-            } catch (_) { /* ignore dedup errors */ }
-            if (effectiveRequestRephrase) {
-              await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
-              try {
-                const result = await callAI(
-                  group.provider,
-                  group.model,
-                  rephrasePrompt,
-                  sentinelInputRephrase,
-                  'batch_text',
-                  sharedOutputLimitSafe,
-                  user.id,
-                  scanRunId,
-                  'rephrase',
-                  aiLogger,
-                  groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                  logPrefix
-                );
-                rawRephrased = result;
-              } catch (e) {
-                const errMsg = e instanceof Error ? e.message : String(e);
-                console.error(`${logPrefix} [POSTPROCESS][REPHRASE] Error: ${errMsg}`);
-                if (aiLogger && user && scanRunId) {
-                  await aiLogger.logResponse(user.id, scanRunId, 'post-process-comments', group.provider, group.model, 'batch_text', 'rephrase', '', errMsg, undefined);
-                }
-              }
-            }
-          }
-        }
-
-        
-        // Validate AI responses before parsing
-        if ((!effectiveRequestRedaction || rawRedacted) || (!effectiveRequestRephrase || rawRephrased)) {
-          // At least one requested phase returned data (or phase not requested)
-        } else {
-          console.error(`${logPrefix} [POSTPROCESS] ERROR: Both AI responses are empty or null`);
-          throw new Error('AI responses are empty or null');
-        }
-        
-        const expectedRedactCount = redactItems.length;
-        const expectedRephraseCount = rephraseItems.length;
-
-        let redactedTexts: string[] = rawRedacted ? normalizeBatchTextParsed(rawRedacted) : [];
-        let rephrasedTexts: string[] = rawRephrased ? normalizeBatchTextParsed(rawRephrased) : [];
-        // Debug: Log the parsed results (after initialization to avoid ReferenceError)
-        if (effectiveRequestRedaction && redactedTexts.length === 0) {
-          console.warn(`${logPrefix} [POSTPROCESS] Redaction parse returned 0 items; filling ${expectedRedactCount} blanks`);
-          redactedTexts = new Array(expectedRedactCount).fill('');
-        }
-        if (effectiveRequestRephrase && rephrasedTexts.length === 0) {
-          console.warn(`${logPrefix} [POSTPROCESS] Rephrase parse returned 0 items; filling ${expectedRephraseCount} blanks`);
-          rephrasedTexts = new Array(expectedRephraseCount).fill('');
-        }
-        
-        
-        // Validate parsed results
-        if ((effectiveRequestRedaction && redactedTexts.length === 0) || (effectiveRequestRephrase && rephrasedTexts.length === 0)) {
-          console.warn(`${logPrefix} [POSTPROCESS] WARNING: Parsed results empty after fill; proceeding with fallbacks`);
-        }
-
-        // Handle ID-tagged responses and realign by index (per phase)
-        console.log(`${logPrefix} [POSTPROCESS] Handling ID-tagged responses...`);
-        const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
-        const stripAndIndex = (arr: string[]) => arr.map(s => {
-          const m = idTag.exec(s || '');
-          return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
-        });
-        const redIdx = stripAndIndex(redactedTexts);
-        const rephIdx = stripAndIndex(rephrasedTexts);
-        const redHasIds = redIdx.length > 0 && redIdx.every(x => x.idx != null);
-        const rephHasIds = rephIdx.length > 0 && rephIdx.every(x => x.idx != null);
-        console.log(`${logPrefix} [POSTPROCESS] ID handling - redHasIds: ${redHasIds}, rephHasIds: ${rephHasIds}, redIdx: ${redIdx.length}, rephIdx: ${rephIdx.length}`);
-
-        const expected = chunk.length;
-        const byId = (list: { idx: number|null; text: string }[]) => {
-          const out: string[] = Array(expected).fill('');
-          for (const it of list) {
-            if (it.idx != null) {
-              // Find the comment in the chunk that matches this ID (coerce to numbers)
-              const matchIdx = (() => {
-                for (let j = 0; j < chunk.length; j++) {
-                  const orowRaw = (chunk[j] as any).originalRow;
-                  const sidxRaw = (chunk[j] as any).scannedIndex;
-                  const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
-                  const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
-                  const orowMatches = typeof orow === 'number' && Number.isFinite(orow) && orow === it.idx;
-                  const sidxMatches = typeof sidx === 'number' && Number.isFinite(sidx) && sidx === it.idx;
-                  if (orowMatches || sidxMatches) return j;
-                }
-                return -1;
-              })();
-              if (matchIdx >= 0 && matchIdx < expected) {
-                out[matchIdx] = it.text;
-              }
-            }
-          }
-          return out;
-        };
-
-        if (redHasIds) {
-          // Primary: by-ID alignment
-          let aligned = byId(redIdx);
-          // Secondary: fill blanks sequentially from any remaining items
-          const remaining = redIdx.map(x => x.text);
-          for (let i = 0; i < aligned.length; i++) {
-            if (!aligned[i] && remaining.length > 0) {
-              aligned[i] = remaining.shift() || '';
-            }
-          }
-          redactedTexts = aligned.map(enforceRedactionPolicy) as string[];
-        } else {
-          redactedTexts = redactedTexts.map(enforceRedactionPolicy);
-        }
-        if (rephHasIds) {
-          let aligned = byId(rephIdx);
-          const remaining = rephIdx.map(x => x.text);
-          for (let i = 0; i < aligned.length; i++) {
-            if (!aligned[i] && remaining.length > 0) {
-              aligned[i] = remaining.shift() || '';
-            }
-          }
-          rephrasedTexts = aligned;
-        }
-        console.log(`${logPrefix} [POSTPROCESS] Alignment - redactedTexts: ${redactedTexts.length}, rephrasedTexts: ${rephrasedTexts.length}`);
-
-        // Process each comment in the chunk
-        console.log(`${logPrefix} [POSTPROCESS] Processing ${chunk.length} comments in chunk...`);
-        for (let i = 0; i < chunk.length; i++) {
-          const comment = chunk[i];
-          const redactedText = redactedTexts[i] || comment.text;
-          const rephrasedText = rephrasedTexts[i] || comment.text;
-          let mode = comment.mode;
-
-          // Determine mode if not specified
-          if (!mode) {
-            mode = (comment.concerning || comment.identifiable) ? defaultMode : 'original'
-          }
-
-          let finalText = comment.text;
-          
-          // Apply the appropriate transformation based on mode
-          if (mode === 'redact' && (comment.identifiable || comment.concerning)) {
-            finalText = redactedText;
-            redactedCount++;
-            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REDACTED: ${redactedText.substring(0, 100)}...`);
-          } else if (mode === 'rephrase' && (comment.identifiable || comment.concerning)) {
-            finalText = rephrasedText;
-            rephrasedCount++;
-            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - REPHRASED: ${rephrasedText.substring(0, 100)}...`);
-          } else {
-            originalCount++;
-            console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - ORIGINAL (mode: ${mode}, concerning: ${comment.concerning}, identifiable: ${comment.identifiable})`);
-          }
-
-          const hasAIRedaction = redactedText.trim().length > 0 && redactedText.trim() !== (comment.text || '').trim();
-          const hasAIRephrase = rephrasedText.trim().length > 0 && rephrasedText.trim() !== (comment.text || '').trim();
-
-          processedComments.push({
-            id: comment.id,
-            originalRow: comment.originalRow, // Preserve originalRow for proper ID tracking
-            scannedIndex: comment.scannedIndex, // Preserve scannedIndex
-            // Always include available AI outputs when they differ from original, regardless of selected mode
-            redactedText: hasAIRedaction ? redactedText : undefined,
-            rephrasedText: hasAIRephrase ? rephrasedText : undefined,
-            finalText,
-            mode
-          });
-        }
+        for (const chunk of chunks) {
+          console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
+          // ... existing code ...
         }
       }
     } catch (error) {
