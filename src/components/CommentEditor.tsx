@@ -467,7 +467,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         toProcess: commentsToProcess.length,
         adjudicationCompleted: Boolean((data as any).adjudicationCompleted)
       };
-      console.log('[PHASE3] Readiness:', phase3Counts);
+      console.log('[PHASE3] Readiness:', phase3Counts, 'scanRunId=', scanRunId);
       
       if (commentsToProcess.length > 0) {
         setScanProgress(70);
@@ -555,6 +555,21 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             const batch = items.slice(i, i + perChunk);
             const idsKey = batch.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
             const submitKey = `${providerModelKey || 'auto'}|${phase}|${routingMode}|${idsKey}`;
+            // Time-window dedup across runs (prevents duplicates even if scanRunId changes)
+            try {
+              const ttlKey = `pp:ttl:${submitKey}`;
+              const now = Date.now();
+              const ttlMs = 2 * 60 * 1000; // 2 minutes
+              const prev = window.localStorage.getItem(ttlKey);
+              if (prev) {
+                const ts = Number(prev);
+                if (!Number.isNaN(ts) && now - ts < ttlMs) {
+                  console.warn('[PHASE3][DEDUP][TTL] Skipping (recently submitted):', submitKey);
+                  continue;
+                }
+              }
+              window.localStorage.setItem(ttlKey, String(now));
+            } catch (_) {}
             // Cross-invocation dedup (persists even if component remounts)
             const storageKey = `pp:${scanRunId}:${submitKey}`;
             try {
