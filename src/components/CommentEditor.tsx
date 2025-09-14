@@ -589,7 +589,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           return out;
         };
 
-        // Run redaction first for both routes (sequential), then rephrase //
+        // Group by provider/model to enforce per-model ordering: all redactions, then all rephrases
         const processedCombined: Record<string, any> = {};
         const mergeInto = (arr: Proc[]) => {
           for (const item of arr) {
@@ -606,12 +606,39 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           }
         };
 
-        // Redaction
-        mergeInto(await invokeChunk(routeA, 'redaction', 'scan_a'));
-        mergeInto(await invokeChunk(routeB, 'redaction', 'scan_b'));
-        // Rephrase
-        mergeInto(await invokeChunk(routeA, 'rephrase', 'scan_a'));
-        mergeInto(await invokeChunk(routeB, 'rephrase', 'scan_b'));
+        const parseProviderModel = (modelStr?: string): { provider: string; model: string } => {
+          const ms = (modelStr || '').toLowerCase();
+          if (ms.startsWith('anthropic.') || ms.startsWith('mistral.') || ms.startsWith('amazon.titan')) {
+            return { provider: 'bedrock', model: modelStr || 'anthropic.claude-3-haiku-20240307-v1:0' };
+          }
+          if (ms.startsWith('gpt') || ms.includes('gpt-4') || ms.includes('gpt-4o')) {
+            return { provider: 'openai', model: modelStr || (aiConfigs?.model || 'gpt-4o-mini') };
+          }
+          return { provider: aiConfigs?.provider || 'openai', model: modelStr || (aiConfigs?.model || 'gpt-4o-mini') };
+        };
+
+        type ModelGroup = { key: string; provider: string; model: string; aItems: any[]; bItems: any[] };
+        const byModel = new Map<string, ModelGroup>();
+        const addToGroup = (item: any, route: 'scan_a'|'scan_b') => {
+          const modelStr = route === 'scan_a' ? (item.adjudicationData?.scanAResult?.model || item.scanAResult?.model) : (item.adjudicationData?.scanBResult?.model || item.scanBResult?.model);
+          const { provider, model } = parseProviderModel(modelStr);
+          const key = `${provider}/${model}`;
+          if (!byModel.has(key)) byModel.set(key, { key, provider, model, aItems: [], bItems: [] });
+          const grp = byModel.get(key)!;
+          if (route === 'scan_a') grp.aItems.push(item); else grp.bItems.push(item);
+        };
+        routeA.forEach(item => addToGroup(item, 'scan_a'));
+        routeB.forEach(item => addToGroup(item, 'scan_b'));
+
+        // Process per model: Redactions first (A then B), then Rephrases (A then B)
+        for (const grp of byModel.values()) {
+          if (grp.aItems.length > 0) mergeInto(await invokeChunk(grp.aItems, 'redaction', 'scan_a'));
+          if (grp.bItems.length > 0) mergeInto(await invokeChunk(grp.bItems, 'redaction', 'scan_b'));
+        }
+        for (const grp of byModel.values()) {
+          if (grp.aItems.length > 0) mergeInto(await invokeChunk(grp.aItems, 'rephrase', 'scan_a'));
+          if (grp.bItems.length > 0) mergeInto(await invokeChunk(grp.bItems, 'rephrase', 'scan_b'));
+        }
 
         let mergedProcessed = Object.values(processedCombined);
 
