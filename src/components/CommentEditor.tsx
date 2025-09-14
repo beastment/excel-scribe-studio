@@ -677,55 +677,55 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const ids = items.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
           return `${provider}/${model}|${phase}|${ids}`;
         };
-        // Run redactions across models in parallel, but keep per-model chunks sequential via invokeChunk
-        const redactionTasks: Array<Promise<Proc[]>> = [];
+        // Per-model pipelines in parallel: for each model, run redactions (A then B) then rephrases (A then B)
+        const pipelineTasks: Array<Promise<Proc[]>> = [];
         for (const grp of byModel.values()) {
-          if (grp.aItems.length > 0) {
-            const k = buildKey(grp.provider, grp.model, 'redaction', grp.aItems);
-            if (!postProcessDedupRef.current.has(k)) {
-              postProcessDedupRef.current.add(k);
-              redactionTasks.push(invokeChunk(grp.aItems, 'redaction', 'scan_a', `${grp.provider}/${grp.model}`));
-            } else {
-              console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_a)', k);
+          const pipeline = (async (): Promise<Proc[]> => {
+            const local: Proc[] = [];
+            // Redactions first for this model
+            if (grp.aItems.length > 0) {
+              const kA = buildKey(grp.provider, grp.model, 'redaction', grp.aItems);
+              if (!postProcessDedupRef.current.has(kA)) {
+                postProcessDedupRef.current.add(kA);
+                local.push(...await invokeChunk(grp.aItems, 'redaction', 'scan_a', `${grp.provider}/${grp.model}`));
+              } else {
+                console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_a)', kA);
+              }
             }
-          }
-          if (grp.bItems.length > 0) {
-            const k = buildKey(grp.provider, grp.model, 'redaction', grp.bItems);
-            if (!postProcessDedupRef.current.has(k)) {
-              postProcessDedupRef.current.add(k);
-              redactionTasks.push(invokeChunk(grp.bItems, 'redaction', 'scan_b', `${grp.provider}/${grp.model}`));
-            } else {
-              console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_b)', k);
+            if (grp.bItems.length > 0) {
+              const kB = buildKey(grp.provider, grp.model, 'redaction', grp.bItems);
+              if (!postProcessDedupRef.current.has(kB)) {
+                postProcessDedupRef.current.add(kB);
+                local.push(...await invokeChunk(grp.bItems, 'redaction', 'scan_b', `${grp.provider}/${grp.model}`));
+              } else {
+                console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_b)', kB);
+              }
             }
-          }
+            // After this model's redactions complete, run rephrases for this model
+            if (grp.aItems.length > 0) {
+              const kRA = buildKey(grp.provider, grp.model, 'rephrase', grp.aItems);
+              if (!postProcessDedupRef.current.has(kRA)) {
+                postProcessDedupRef.current.add(kRA);
+                local.push(...await invokeChunk(grp.aItems, 'rephrase', 'scan_a', `${grp.provider}/${grp.model}`));
+              } else {
+                console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_a)', kRA);
+              }
+            }
+            if (grp.bItems.length > 0) {
+              const kRB = buildKey(grp.provider, grp.model, 'rephrase', grp.bItems);
+              if (!postProcessDedupRef.current.has(kRB)) {
+                postProcessDedupRef.current.add(kRB);
+                local.push(...await invokeChunk(grp.bItems, 'rephrase', 'scan_b', `${grp.provider}/${grp.model}`));
+              } else {
+                console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_b)', kRB);
+              }
+            }
+            return local;
+          })();
+          pipelineTasks.push(pipeline);
         }
-        const redactionResults = await Promise.all(redactionTasks);
-        for (const arr of redactionResults) mergeInto(arr);
-
-        // After all redactions complete, run rephrases across models in parallel
-        const rephraseTasks: Array<Promise<Proc[]>> = [];
-        for (const grp of byModel.values()) {
-          if (grp.aItems.length > 0) {
-            const k = buildKey(grp.provider, grp.model, 'rephrase', grp.aItems);
-            if (!postProcessDedupRef.current.has(k)) {
-              postProcessDedupRef.current.add(k);
-              rephraseTasks.push(invokeChunk(grp.aItems, 'rephrase', 'scan_a', `${grp.provider}/${grp.model}`));
-            } else {
-              console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_a)', k);
-            }
-          }
-          if (grp.bItems.length > 0) {
-            const k = buildKey(grp.provider, grp.model, 'rephrase', grp.bItems);
-            if (!postProcessDedupRef.current.has(k)) {
-              postProcessDedupRef.current.add(k);
-              rephraseTasks.push(invokeChunk(grp.bItems, 'rephrase', 'scan_b', `${grp.provider}/${grp.model}`));
-            } else {
-              console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_b)', k);
-            }
-          }
-        }
-        const rephraseResults = await Promise.all(rephraseTasks);
-        for (const arr of rephraseResults) mergeInto(arr);
+        const pipelineResults = await Promise.all(pipelineTasks);
+        for (const arr of pipelineResults) mergeInto(arr);
 
         let mergedProcessed = Object.values(processedCombined);
 
