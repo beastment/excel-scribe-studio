@@ -83,6 +83,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   // Track de-duplication keys for post-process requests within a run
   const postProcessDedupRef = useRef<Set<string>>(new Set());
   const postProcessInFlightRef = useRef<Set<string>>(new Set());
+  // Per-model redaction barrier: ensures no rephrase requests are sent for a model
+  // until all redaction batches for that model have completed in this Phase 3 run
+  const modelRedactionGateRef = useRef<Map<string, { promise: Promise<void>; resolve: () => void }>>(new Map());
   // Remove duplicate aiLogsViewerRef - using the one from props
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -555,6 +558,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             const batch = items.slice(i, i + perChunk);
             const idsKey = batch.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
             const submitKey = `${providerModelKey || 'auto'}|${phase}|${routingMode}|${idsKey}`;
+            // If this is a rephrase call, wait for the model's redaction barrier to open
+            if (phase === 'rephrase' && providerModelKey) {
+              const gate = modelRedactionGateRef.current.get(providerModelKey);
+              if (gate) {
+                try { await gate.promise; } catch (_) {}
+              }
+            }
             // Time-window dedup across runs (prevents duplicates even if scanRunId changes)
             try {
               const ttlKey = `pp:ttl:${submitKey}`;
@@ -673,6 +683,21 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         routeA.forEach(item => addToGroup(item, 'scan_a'));
         routeB.forEach(item => addToGroup(item, 'scan_b'));
 
+        // Initialize per-model redaction barriers
+        for (const grp of byModel.values()) {
+          const key = `${grp.provider}/${grp.model}`;
+          if (!modelRedactionGateRef.current.has(key)) {
+            let resolveFn: () => void = () => {};
+            const promise = new Promise<void>((resolve) => { resolveFn = resolve; });
+            modelRedactionGateRef.current.set(key, { promise, resolve: resolveFn });
+          } else {
+            // Reset the barrier for this run
+            let resolveFn: () => void = () => {};
+            const promise = new Promise<void>((resolve) => { resolveFn = resolve; });
+            modelRedactionGateRef.current.set(key, { promise, resolve: resolveFn });
+          }
+        }
+
         const buildKey = (provider: string, model: string, phase: 'redaction'|'rephrase', items: any[]) => {
           const ids = items.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
           return `${provider}/${model}|${phase}|${ids}`;
@@ -700,6 +725,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               } else {
                 console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_b)', kB);
               }
+            }
+            // Open the redaction barrier for this model now that all redaction batches completed
+            const gateKey = `${grp.provider}/${grp.model}`;
+            const gate = modelRedactionGateRef.current.get(gateKey);
+            if (gate) {
+              try { gate.resolve(); } catch (_) {}
             }
             // After this model's redactions complete, run rephrases for this model
             if (grp.aItems.length > 0) {
