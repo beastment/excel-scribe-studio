@@ -1,3 +1,4 @@
+/// <reference path="./types.cursor.d.ts" />
 // @ts-nocheck
 // Prefer deno.json imports. Fallback to URL imports if editor ignores mappings.
 // @ts-ignore - Editor-only: URL/bare imports are resolved by Deno at runtime
@@ -9,6 +10,17 @@ import { AILogger } from './ai-logger.ts';
 // Editor-only ambient type to suppress "Cannot find name 'Deno'" in non-Deno TS servers
 declare const Deno: { env: { get: (key: string) => string | undefined } };
 
+// Ambient declarations for Cursor TS to understand Deno URL imports and globals
+// These do not affect runtime in Deno; they only quiet local TypeScript in the editor
+declare module "https://deno.land/std@0.168.0/http/server.ts" {
+  export const serve: any;
+}
+declare module "https://esm.sh/@supabase/supabase-js@2" {
+  export const createClient: any;
+}
+declare module "https://esm.sh/@supabase/supabase-js@2.7.1" {
+  export const createClient: any;
+}
 
 const buildCorsHeaders = (origin: string | null) => ({
   'Access-Control-Allow-Origin': origin || '*',
@@ -548,7 +560,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
         
         return null;
       })
-      .filter(s => s && s.length > 0);
+      .filter((s): s is string => typeof s === 'string' && s.length > 0);
     
     if (result.length > 0) {
       return result;
@@ -573,7 +585,7 @@ function normalizeBatchTextParsed(parsed: any): string[] {
           return cleanSentinels(String(v));
         }
       })
-      .filter((s) => s.length > 0)
+      .filter((s): s is string => typeof s === 'string' && s.length > 0)
       .filter((s) => !/^here\s+(?:is|are)[\s\S]*?:\s*$/i.test(s));
 
     // Handle ID-tagged responses
@@ -870,9 +882,9 @@ serve(async (req) => {
       console.log(`${logPrefix} [POSTPROCESS] Using max_tokens from model_configurations: ${actualMaxTokens}, model_temperature=${modelCfg?.temperature}`);
     }
 
-    const effectiveTemperature = (aiCfg && aiCfg.temperature !== null && aiCfg.temperature !== undefined)
+    const effectiveTemperature = (aiCfg && typeof aiCfg.temperature === 'number')
       ? aiCfg.temperature
-      : (modelCfg?.temperature ?? (scanConfig.temperature ?? 0));
+      : (typeof modelCfg?.temperature === 'number' ? modelCfg.temperature : (typeof (scanConfig as any).temperature === 'number' ? (scanConfig as any).temperature : 0));
 
     // Determine shared conservative output limit across BOTH scan models (scan_a and scan_b)
     // regardless of which model is being processed in this request
