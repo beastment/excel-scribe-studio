@@ -82,6 +82,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const requestedBatchesRef = useRef<Set<number>>(new Set());
   // Track de-duplication keys for post-process requests within a run
   const postProcessDedupRef = useRef<Set<string>>(new Set());
+  const postProcessInFlightRef = useRef<Set<string>>(new Set());
   // Remove duplicate aiLogsViewerRef - using the one from props
   // Save/Load dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -546,11 +547,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         // Helper: process items in chunks sequentially to ensure each call gets a fresh Edge invocation
         const perChunk = 40; // conservative chunk size
         type Proc = { redactedText?: string; rephrasedText?: string; finalText: string; mode: 'redact'|'rephrase'|'original'; id: string; originalRow?: number; scannedIndex?: number };
-        const invokeChunk = async (items: any[], phase: 'redaction'|'rephrase', routingMode: 'scan_a'|'scan_b'): Promise<Proc[]> => {
+        const invokeChunk = async (items: any[], phase: 'redaction'|'rephrase', routingMode: 'scan_a'|'scan_b', providerModelKey?: string): Promise<Proc[]> => {
           if (items.length === 0) return [];
           const out: Proc[] = [];
           for (let i = 0; i < items.length; i += perChunk) {
             const batch = items.slice(i, i + perChunk);
+            const idsKey = batch.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+            const submitKey = `${providerModelKey || 'auto'}|${phase}|${routingMode}|${idsKey}`;
+            if (postProcessInFlightRef.current.has(submitKey)) {
+              console.warn('[PHASE3][INFLIGHT] Skipping (already in flight):', submitKey);
+              continue;
+            }
+            postProcessInFlightRef.current.add(submitKey);
+            console.log('[PHASE3][SUBMIT] key=', submitKey);
             const { data: ppData, error: ppErr } = await supabase.functions.invoke('post-process-comments', {
               body: {
                 comments: batch.map((c: any) => ({
@@ -578,6 +587,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 routingMode
               }
             });
+            postProcessInFlightRef.current.delete(submitKey);
             if (ppErr) {
               console.error('[PHASE3] post-process error:', ppErr);
               continue;
@@ -639,7 +649,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             const k = buildKey(grp.provider, grp.model, 'redaction', grp.aItems);
             if (!postProcessDedupRef.current.has(k)) {
               postProcessDedupRef.current.add(k);
-              mergeInto(await invokeChunk(grp.aItems, 'redaction', 'scan_a'));
+              mergeInto(await invokeChunk(grp.aItems, 'redaction', 'scan_a', `${grp.provider}/${grp.model}`));
             } else {
               console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_a)', k);
             }
@@ -648,7 +658,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             const k = buildKey(grp.provider, grp.model, 'redaction', grp.bItems);
             if (!postProcessDedupRef.current.has(k)) {
               postProcessDedupRef.current.add(k);
-              mergeInto(await invokeChunk(grp.bItems, 'redaction', 'scan_b'));
+              mergeInto(await invokeChunk(grp.bItems, 'redaction', 'scan_b', `${grp.provider}/${grp.model}`));
             } else {
               console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_b)', k);
             }
@@ -659,7 +669,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             const k = buildKey(grp.provider, grp.model, 'rephrase', grp.aItems);
             if (!postProcessDedupRef.current.has(k)) {
               postProcessDedupRef.current.add(k);
-              mergeInto(await invokeChunk(grp.aItems, 'rephrase', 'scan_a'));
+              mergeInto(await invokeChunk(grp.aItems, 'rephrase', 'scan_a', `${grp.provider}/${grp.model}`));
             } else {
               console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_a)', k);
             }
@@ -668,7 +678,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             const k = buildKey(grp.provider, grp.model, 'rephrase', grp.bItems);
             if (!postProcessDedupRef.current.has(k)) {
               postProcessDedupRef.current.add(k);
-              mergeInto(await invokeChunk(grp.bItems, 'rephrase', 'scan_b'));
+              mergeInto(await invokeChunk(grp.bItems, 'rephrase', 'scan_b', `${grp.provider}/${grp.model}`));
             } else {
               console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_b)', k);
             }
@@ -725,7 +735,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             console.log('[PHASE3][DEDUP][SAFETY] key=', k);
             if (!postProcessDedupRef.current.has(k)) {
               postProcessDedupRef.current.add(k);
-              safetyMerged.push(...await invokeChunk(grp.items, 'rephrase', grp.route));
+              safetyMerged.push(...await invokeChunk(grp.items, 'rephrase', grp.route, `${grp.provider}/${grp.model}`));
             } else {
               console.warn('[PHASE3][DEDUP] Skipping duplicate safety rephrase', k);
             }
