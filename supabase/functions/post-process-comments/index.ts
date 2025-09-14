@@ -31,7 +31,7 @@ const buildCorsHeaders = (origin: string | null) => ({
   'Vary': 'Origin'
 });
 
-// Timeout utilities (configurable via environment)
+// Timeout utilities (configurable via environment) //
 function getTimeoutMs(envKey: string, fallbackMs: number): number {
   const raw = (((globalThis as any).Deno?.env?.get(envKey) as string) || undefined);
   const parsed = raw ? Number(raw) : NaN;

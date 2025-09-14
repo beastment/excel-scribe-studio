@@ -589,7 +589,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           return out;
         };
 
-        // Run redaction first for both routes (sequential), then rephrase
+        // Run redaction first for both routes (sequential), then rephrase //
         const processedCombined: Record<string, any> = {};
         const mergeInto = (arr: Proc[]) => {
           for (const item of arr) {
