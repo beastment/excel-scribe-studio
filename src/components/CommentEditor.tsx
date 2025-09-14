@@ -620,14 +620,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         };
 
         const parseProviderModel = (modelStr?: string): { provider: string; model: string } => {
-          const ms = (modelStr || '').toLowerCase();
+          const raw = modelStr || '';
+          if (raw.includes('/')) {
+            const [prov, ...rest] = raw.split('/');
+            const mdl = rest.join('/');
+            return { provider: prov || (aiConfigs?.provider || 'openai'), model: mdl || (aiConfigs?.model || 'gpt-4o-mini') };
+          }
+          const ms = raw.toLowerCase();
+          if (ms.startsWith('openai')) return { provider: 'openai', model: raw.replace(/^openai\//, '') || (aiConfigs?.model || 'gpt-4o-mini') };
+          if (ms.startsWith('bedrock')) return { provider: 'bedrock', model: raw.replace(/^bedrock\//, '') || 'anthropic.claude-3-haiku-20240307-v1:0' };
           if (ms.startsWith('anthropic.') || ms.startsWith('mistral.') || ms.startsWith('amazon.titan')) {
-            return { provider: 'bedrock', model: modelStr || 'anthropic.claude-3-haiku-20240307-v1:0' };
+            return { provider: 'bedrock', model: raw };
           }
-          if (ms.startsWith('gpt') || ms.includes('gpt-4') || ms.includes('gpt-4o')) {
-            return { provider: 'openai', model: modelStr || (aiConfigs?.model || 'gpt-4o-mini') };
-          }
-          return { provider: aiConfigs?.provider || 'openai', model: modelStr || (aiConfigs?.model || 'gpt-4o-mini') };
+          if (ms.startsWith('gpt') || ms.includes('gpt-4')) return { provider: 'openai', model: raw };
+          return { provider: aiConfigs?.provider || 'openai', model: raw || (aiConfigs?.model || 'gpt-4o-mini') };
         };
 
         type ModelGroup = { key: string; provider: string; model: string; aItems: any[]; bItems: any[] };
