@@ -21,6 +21,9 @@ Files impacted:
 - Fix ID realignment to coerce `originalRow`/`scannedIndex` to numbers and avoid skipping when values are 0-like; reliably maps `<<<ITEM k>>>` outputs back to correct rows.
 - Relax mode gating so redaction/rephrase apply when either `identifiable` or `concerning` is true, preventing misses where the preferred mode is unavailable and the other phase's output exists.
 
+### Include both AI outputs regardless of selected mode
+- `processedComments` now includes `redactedText` and `rephrasedText` whenever they differ from the original text, regardless of which mode produced the `finalText`. This ensures the UI can always switch to Redact/Rephrase and display the correct AI-generated alternative (fixes cases like Row 1 in run 1040).
+
 Files impacted:
 - supabase/functions/post-process-comments/index.ts
 # Post-Process Comments Edge Function - Recent Changes

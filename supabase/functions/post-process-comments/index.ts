@@ -1692,14 +1692,16 @@ serve(async (req) => {
             console.log(`${logPrefix} [POSTPROCESS] Comment ${i+1} (${comment.id}) - ORIGINAL (mode: ${mode}, concerning: ${comment.concerning}, identifiable: ${comment.identifiable})`);
           }
 
+          const hasAIRedaction = redactedText.trim().length > 0 && redactedText.trim() !== (comment.text || '').trim();
+          const hasAIRephrase = rephrasedText.trim().length > 0 && rephrasedText.trim() !== (comment.text || '').trim();
+
           processedComments.push({
             id: comment.id,
             originalRow: comment.originalRow, // Preserve originalRow for proper ID tracking
             scannedIndex: comment.scannedIndex, // Preserve scannedIndex
-            // Include redactedText when AI provided it OR when deterministic fallback changed the text under redact mode
-            redactedText: (mode === 'redact' && redactedText.trim() !== comment.text.trim()) ? redactedText : undefined,
-            // Include rephrasedText only when AI provided it (avoid echoing unchanged originals)
-            rephrasedText: mode === 'rephrase' ? rephrasedText : undefined,
+            // Always include available AI outputs when they differ from original, regardless of selected mode
+            redactedText: hasAIRedaction ? redactedText : undefined,
+            rephrasedText: hasAIRephrase ? rephrasedText : undefined,
             finalText,
             mode
           });
