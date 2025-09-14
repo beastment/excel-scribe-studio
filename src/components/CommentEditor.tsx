@@ -587,28 +587,28 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             postProcessInFlightRef.current.add(submitKey);
             console.log('[PHASE3][SUBMIT] key=', submitKey);
             const { data: ppData, error: ppErr } = await supabase.functions.invoke('post-process-comments', {
-              body: {
+            body: {
                 comments: batch.map((c: any) => ({
-                  id: c.id,
-                  originalRow: c.originalRow,
-                  scannedIndex: c.scannedIndex,
-                  originalText: c.originalText || c.text,
-                  text: c.text,
-                  concerning: c.concerning,
-                  identifiable: c.identifiable,
-                  mode: c.mode || (c.identifiable ? defaultMode : (c.concerning ? 'rephrase' : 'original')),
-                  scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
-                  scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
-                  adjudicationResult: c.adjudicationResult
-                })),
-                scanConfig: {
-                  provider: aiConfigs?.provider || 'openai',
-                  model: aiConfigs?.model || 'gpt-4o-mini',
-                  redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
-                  rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
-                },
-                defaultMode,
-                scanRunId,
+                id: c.id,
+                originalRow: c.originalRow,
+                scannedIndex: c.scannedIndex,
+                originalText: c.originalText || c.text,
+                text: c.text,
+                concerning: c.concerning,
+                identifiable: c.identifiable,
+                mode: c.mode || (c.identifiable ? defaultMode : (c.concerning ? 'rephrase' : 'original')),
+                scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
+                adjudicationResult: c.adjudicationResult
+              })),
+              scanConfig: {
+                provider: aiConfigs?.provider || 'openai',
+                model: aiConfigs?.model || 'gpt-4o-mini',
+                redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
+                rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+              },
+              defaultMode,
+              scanRunId,
                 phase,
                 routingMode
               }
@@ -677,12 +677,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const ids = items.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
           return `${provider}/${model}|${phase}|${ids}`;
         };
+        // Run redactions across models in parallel, but keep per-model chunks sequential via invokeChunk
+        const redactionTasks: Array<Promise<Proc[]>> = [];
         for (const grp of byModel.values()) {
           if (grp.aItems.length > 0) {
             const k = buildKey(grp.provider, grp.model, 'redaction', grp.aItems);
             if (!postProcessDedupRef.current.has(k)) {
               postProcessDedupRef.current.add(k);
-              mergeInto(await invokeChunk(grp.aItems, 'redaction', 'scan_a', `${grp.provider}/${grp.model}`));
+              redactionTasks.push(invokeChunk(grp.aItems, 'redaction', 'scan_a', `${grp.provider}/${grp.model}`));
             } else {
               console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_a)', k);
             }
@@ -691,18 +693,23 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             const k = buildKey(grp.provider, grp.model, 'redaction', grp.bItems);
             if (!postProcessDedupRef.current.has(k)) {
               postProcessDedupRef.current.add(k);
-              mergeInto(await invokeChunk(grp.bItems, 'redaction', 'scan_b', `${grp.provider}/${grp.model}`));
+              redactionTasks.push(invokeChunk(grp.bItems, 'redaction', 'scan_b', `${grp.provider}/${grp.model}`));
             } else {
               console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_b)', k);
             }
           }
         }
+        const redactionResults = await Promise.all(redactionTasks);
+        for (const arr of redactionResults) mergeInto(arr);
+
+        // After all redactions complete, run rephrases across models in parallel
+        const rephraseTasks: Array<Promise<Proc[]>> = [];
         for (const grp of byModel.values()) {
           if (grp.aItems.length > 0) {
             const k = buildKey(grp.provider, grp.model, 'rephrase', grp.aItems);
             if (!postProcessDedupRef.current.has(k)) {
               postProcessDedupRef.current.add(k);
-              mergeInto(await invokeChunk(grp.aItems, 'rephrase', 'scan_a', `${grp.provider}/${grp.model}`));
+              rephraseTasks.push(invokeChunk(grp.aItems, 'rephrase', 'scan_a', `${grp.provider}/${grp.model}`));
             } else {
               console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_a)', k);
             }
@@ -711,12 +718,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             const k = buildKey(grp.provider, grp.model, 'rephrase', grp.bItems);
             if (!postProcessDedupRef.current.has(k)) {
               postProcessDedupRef.current.add(k);
-              mergeInto(await invokeChunk(grp.bItems, 'rephrase', 'scan_b', `${grp.provider}/${grp.model}`));
+              rephraseTasks.push(invokeChunk(grp.bItems, 'rephrase', 'scan_b', `${grp.provider}/${grp.model}`));
             } else {
               console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_b)', k);
             }
           }
         }
+        const rephraseResults = await Promise.all(rephraseTasks);
+        for (const arr of rephraseResults) mergeInto(arr);
 
         let mergedProcessed = Object.values(processedCombined);
 
@@ -783,9 +792,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const processedMap = new Map(
             (mergedProcessed as any[]).map((c: any) => [c.id, c])
           );
-
+          
           console.log(`Created processedMap with ${processedMap.size} entries:`, Array.from(processedMap.keys()));
-
+          
           // Merge post-processing results back into the scan data
           const finalComments = (data.comments || []).map((comment: any) => {
             // Process comments that are identifiable OR concerning-only
@@ -838,80 +847,80 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                  };
                  
                  return result;
-             }
-           }
-           return comment;
-         });
-
-         // Update processedComments with the merged results and persist to UI state
-         data.comments = finalComments;
-         // Debug: log key rows to ensure processed values reached UI state
-         const rowsToCheck = new Set([1,3,5,7,9,12,14,18]);
-         console.log('[PHASE3][VERIFY] Final rows:', finalComments
-           .filter((c: any) => typeof c.originalRow === 'number' && rowsToCheck.has(c.originalRow))
-           .map((c: any) => ({
-             originalRow: c.originalRow,
-             id: c.id,
-             mode: c.mode,
-             hasRedacted: !!c.redactedText,
-             hasRephrased: !!c.rephrasedText,
-             textPreview: (c.text || '').substring(0, 80)
-           }))
-         );
-         console.log('[UPDATE] Calling onCommentsUpdate with finalComments sample:', 
-           finalComments.slice(0, 3).map((c: any) => ({ 
-             id: c.id, 
-             mode: c.mode, 
-             textPreview: c.text?.substring(0, 50),
-             isOriginal: c.text === c.originalText 
-           }))
-         );
-         onCommentsUpdate(finalComments);
-         didPostProcessUpdate = true;
-         
-         // Show success message with a computed summary based on final comments
-         const redactedSummaryCount = finalComments.filter((c: any) => (c.identifiable || c.concerning) && c.mode === 'redact').length;
-         const rephrasedSummaryCount = finalComments.filter((c: any) => (c.identifiable || c.concerning) && c.mode === 'rephrase').length;
-         const originalSummaryCount = finalComments.length - redactedSummaryCount - rephrasedSummaryCount;
-         toast.success(`Post-processing complete: ${redactedSummaryCount} redacted, ${rephrasedSummaryCount} rephrased, ${originalSummaryCount} unchanged`);
-
-         setScanProgress(95);
-       } else {
-         console.warn('Post-processing returned no data, using scan results with placeholders');
+              }
+            }
+            return comment;
+          });
+          
+          // Update processedComments with the merged results and persist to UI state
+          data.comments = finalComments;
+          // Debug: log key rows to ensure processed values reached UI state
+          const rowsToCheck = new Set([1,3,5,7,9,12,14,18]);
+          console.log('[PHASE3][VERIFY] Final rows:', finalComments
+            .filter((c: any) => typeof c.originalRow === 'number' && rowsToCheck.has(c.originalRow))
+            .map((c: any) => ({
+              originalRow: c.originalRow,
+              id: c.id,
+              mode: c.mode,
+              hasRedacted: !!c.redactedText,
+              hasRephrased: !!c.rephrasedText,
+              textPreview: (c.text || '').substring(0, 80)
+            }))
+          );
+          console.log('[UPDATE] Calling onCommentsUpdate with finalComments sample:', 
+            finalComments.slice(0, 3).map((c: any) => ({ 
+              id: c.id, 
+              mode: c.mode, 
+              textPreview: c.text?.substring(0, 50),
+              isOriginal: c.text === c.originalText 
+            }))
+          );
+          onCommentsUpdate(finalComments);
+          didPostProcessUpdate = true;
+          
+          // Show success message with a computed summary based on final comments
+          const redactedSummaryCount = finalComments.filter((c: any) => (c.identifiable || c.concerning) && c.mode === 'redact').length;
+          const rephrasedSummaryCount = finalComments.filter((c: any) => (c.identifiable || c.concerning) && c.mode === 'rephrase').length;
+          const originalSummaryCount = finalComments.length - redactedSummaryCount - rephrasedSummaryCount;
+          toast.success(`Post-processing complete: ${redactedSummaryCount} redacted, ${rephrasedSummaryCount} rephrased, ${originalSummaryCount} unchanged`);
+          
+          setScanProgress(95);
+        } else {
+          console.warn('Post-processing returned no data, using scan results with placeholders');
          console.log('Full post-process responses:', { /* removed vars due chunking */ });
-         console.log('[PHASE3] No processed results from split routes.');
-       }
-     } else {
-       setScanProgress(95);
-       // Explicit log note when Phase 3 is skipped (no identifiable items to post-process)
-       console.log(`[PHASE3] Skipped: 0 flagged comments after adjudication.`);
-       toast.info('Phase 3: No flagged comments to post-process');
-     }
+          console.log('[PHASE3] No processed results from split routes.');
+        }
+      } else {
+        setScanProgress(95);
+        // Explicit log note when Phase 3 is skipped (no identifiable items to post-process)
+        console.log(`[PHASE3] Skipped: 0 flagged comments after adjudication.`);
+        toast.info('Phase 3: No flagged comments to post-process');
+      }
 
-     // Final update with all processed comments
-     setScanProgress(100);
-     setHasScanRun(true);
-     
-     
-     if (!didPostProcessUpdate) {
-       onCommentsUpdate(data.comments || []);
-     }
-     toast.success(`Scan complete: ${(data.comments || []).length} comments processed`);
-     
-     // Refresh credits after successful scan completion
-     if (onCreditsRefresh) {
-       onCreditsRefresh();
-     }
-     
-   } catch (error) {
-     console.error('Scan failed:', error);
-     toast.error(`Scan failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-   } finally {
-     setIsScanning(false);
-     setScanProgress(0);
-     scanInFlightRef.current = false;
-   }
- };
+      // Final update with all processed comments
+      setScanProgress(100);
+      setHasScanRun(true);
+      
+      
+      if (!didPostProcessUpdate) {
+        onCommentsUpdate(data.comments || []);
+      }
+      toast.success(`Scan complete: ${(data.comments || []).length} comments processed`);
+      
+      // Refresh credits after successful scan completion
+      if (onCreditsRefresh) {
+        onCreditsRefresh();
+      }
+      
+    } catch (error) {
+      console.error('Scan failed:', error);
+      toast.error(`Scan failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsScanning(false);
+      setScanProgress(0);
+      scanInFlightRef.current = false;
+    }
+  };
   const handleSaveSession = async () => {
     if (!sessionName.trim()) {
       toast.error('Please enter a session name');
