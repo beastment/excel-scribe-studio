@@ -549,14 +549,22 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         const perChunk = 40; // conservative chunk size
         type Proc = { redactedText?: string; rephrasedText?: string; finalText: string; mode: 'redact'|'rephrase'|'original'; id: string; originalRow?: number; scannedIndex?: number };
         const invokeChunk = async (items: any[], phase: 'redaction'|'rephrase', routingMode: 'scan_a'|'scan_b', providerModelKey?: string): Promise<Proc[]> => {
-          console.log('[INVOKE OK]');
           if (items.length === 0) return [];
           const out: Proc[] = [];
           for (let i = 0; i < items.length; i += perChunk) {
-            console.log('[FOR OK]');
             const batch = items.slice(i, i + perChunk);
             const idsKey = batch.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
             const submitKey = `${providerModelKey || 'auto'}|${phase}|${routingMode}|${idsKey}`;
+            // Cross-invocation dedup (persists even if component remounts)
+            const storageKey = `pp:${scanRunId}:${submitKey}`;
+            try {
+              const existing = window.localStorage.getItem(storageKey);
+              if (existing === 'pending' || existing === 'done') {
+                console.warn('[PHASE3][DEDUP][LS] Skipping (seen before):', submitKey);
+                continue;
+              }
+              window.localStorage.setItem(storageKey, 'pending');
+            } catch (_) {}
             if (postProcessInFlightRef.current.has(submitKey)) {
               console.warn('[PHASE3][INFLIGHT] Skipping (already in flight):', submitKey);
               continue;
@@ -591,6 +599,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               }
             });
             postProcessInFlightRef.current.delete(submitKey);
+            try { window.localStorage.setItem(storageKey, 'done'); } catch (_) {}
             if (ppErr) {
               console.error('[PHASE3] post-process error:', ppErr);
               continue;
