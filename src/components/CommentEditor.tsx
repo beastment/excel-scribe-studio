@@ -545,12 +545,15 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         const routeB = uniqueById(commentsForB.filter((c: any) => !idsInA.has(c.id)));
 
         // Helper: process items in chunks sequentially to ensure each call gets a fresh Edge invocation
+        console.log('[HELPER OK]');
         const perChunk = 40; // conservative chunk size
         type Proc = { redactedText?: string; rephrasedText?: string; finalText: string; mode: 'redact'|'rephrase'|'original'; id: string; originalRow?: number; scannedIndex?: number };
         const invokeChunk = async (items: any[], phase: 'redaction'|'rephrase', routingMode: 'scan_a'|'scan_b', providerModelKey?: string): Promise<Proc[]> => {
+          console.log('[INVOKE OK]');
           if (items.length === 0) return [];
           const out: Proc[] = [];
           for (let i = 0; i < items.length; i += perChunk) {
+            console.log('[FOR OK]');
             const batch = items.slice(i, i + perChunk);
             const idsKey = batch.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
             const submitKey = `${providerModelKey || 'auto'}|${phase}|${routingMode}|${idsKey}`;
