@@ -630,14 +630,49 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         routeA.forEach(item => addToGroup(item, 'scan_a'));
         routeB.forEach(item => addToGroup(item, 'scan_b'));
 
-        // Process per model: Redactions first (A then B), then Rephrases (A then B)
+        const buildKey = (provider: string, model: string, phase: 'redaction'|'rephrase', items: any[]) => {
+          const ids = items.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
+          return `${provider}/${model}|${phase}|${ids}`;
+        };
         for (const grp of byModel.values()) {
-          if (grp.aItems.length > 0) mergeInto(await invokeChunk(grp.aItems, 'redaction', 'scan_a'));
-          if (grp.bItems.length > 0) mergeInto(await invokeChunk(grp.bItems, 'redaction', 'scan_b'));
+          if (grp.aItems.length > 0) {
+            const k = buildKey(grp.provider, grp.model, 'redaction', grp.aItems);
+            if (!postProcessDedupRef.current.has(k)) {
+              postProcessDedupRef.current.add(k);
+              mergeInto(await invokeChunk(grp.aItems, 'redaction', 'scan_a'));
+            } else {
+              console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_a)', k);
+            }
+          }
+          if (grp.bItems.length > 0) {
+            const k = buildKey(grp.provider, grp.model, 'redaction', grp.bItems);
+            if (!postProcessDedupRef.current.has(k)) {
+              postProcessDedupRef.current.add(k);
+              mergeInto(await invokeChunk(grp.bItems, 'redaction', 'scan_b'));
+            } else {
+              console.warn('[PHASE3][DEDUP] Skipping duplicate redaction chunk (scan_b)', k);
+            }
+          }
         }
         for (const grp of byModel.values()) {
-          if (grp.aItems.length > 0) mergeInto(await invokeChunk(grp.aItems, 'rephrase', 'scan_a'));
-          if (grp.bItems.length > 0) mergeInto(await invokeChunk(grp.bItems, 'rephrase', 'scan_b'));
+          if (grp.aItems.length > 0) {
+            const k = buildKey(grp.provider, grp.model, 'rephrase', grp.aItems);
+            if (!postProcessDedupRef.current.has(k)) {
+              postProcessDedupRef.current.add(k);
+              mergeInto(await invokeChunk(grp.aItems, 'rephrase', 'scan_a'));
+            } else {
+              console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_a)', k);
+            }
+          }
+          if (grp.bItems.length > 0) {
+            const k = buildKey(grp.provider, grp.model, 'rephrase', grp.bItems);
+            if (!postProcessDedupRef.current.has(k)) {
+              postProcessDedupRef.current.add(k);
+              mergeInto(await invokeChunk(grp.bItems, 'rephrase', 'scan_b'));
+            } else {
+              console.warn('[PHASE3][DEDUP] Skipping duplicate rephrase chunk (scan_b)', k);
+            }
+          }
         }
 
         let mergedProcessed = Object.values(processedCombined);
