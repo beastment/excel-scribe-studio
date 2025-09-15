@@ -702,12 +702,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const ids = items.map((c: any) => (c.originalRow ?? c.scannedIndex ?? c.id)).map((v: any) => String(v)).sort().join(',');
           return `${provider}/${model}|${phase}|${ids}`;
         };
-        // Per-model pipelines in parallel: for each model, run redactions (A then B) then rephrases (A then B)
-        const pipelineTasks: Array<Promise<Proc[]>> = [];
+        // Phase 1: run redactions for all models in parallel (sequential within each model)
+        const redactionTasks: Array<Promise<Proc[]>> = [];
         for (const grp of byModel.values()) {
-          const pipeline = (async (): Promise<Proc[]> => {
+          const task = (async (): Promise<Proc[]> => {
             const local: Proc[] = [];
-            // Redactions first for this model
             if (grp.aItems.length > 0) {
               const kA = buildKey(grp.provider, grp.model, 'redaction', grp.aItems);
               if (!postProcessDedupRef.current.has(kA)) {
@@ -732,7 +731,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             if (gate) {
               try { gate.resolve(); } catch (_) {}
             }
-            // After this model's redactions complete, run rephrases for this model
+            return local;
+          })();
+          redactionTasks.push(task);
+        }
+        const redactionResults = await Promise.all(redactionTasks);
+        for (const arr of redactionResults) mergeInto(arr);
+
+        // Phase 2: after all redactions complete, run rephrases for all models in parallel (sequential within each model)
+        const rephraseTasks: Array<Promise<Proc[]>> = [];
+        for (const grp of byModel.values()) {
+          const task = (async (): Promise<Proc[]> => {
+            const local: Proc[] = [];
             if (grp.aItems.length > 0) {
               const kRA = buildKey(grp.provider, grp.model, 'rephrase', grp.aItems);
               if (!postProcessDedupRef.current.has(kRA)) {
@@ -753,10 +763,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             }
             return local;
           })();
-          pipelineTasks.push(pipeline);
+          rephraseTasks.push(task);
         }
-        const pipelineResults = await Promise.all(pipelineTasks);
-        for (const arr of pipelineResults) mergeInto(arr);
+        const rephraseResults = await Promise.all(rephraseTasks);
+        for (const arr of rephraseResults) mergeInto(arr);
 
         let mergedProcessed = Object.values(processedCombined);
 
