@@ -15,6 +15,10 @@ Implementation notes:
 - **Rephrasing**: Rewrites identifiable information to maintain anonymity
 - **Original Preservation**: Keeps safe comments unchanged
 - **Policy Enforcement**: Applies consistent redaction policies
+ 
+#### Redaction Output Modes
+- `full_text` (default): Model returns fully redacted comment text per item.
+- `spans` (optional): Model returns a JSON array of objects `{ index, redact: string[] }` listing exact substrings to replace with `XXXX`. The server applies spans to the original and then enforces deterministic policy. This significantly reduces output tokens.
 
 ### 2. AI-Powered Processing
 - Uses advanced AI models for intelligent content transformation

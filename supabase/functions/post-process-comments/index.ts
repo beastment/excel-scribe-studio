@@ -713,6 +713,10 @@ interface PostProcessRequest {
     rephrase_prompt: string;
     max_tokens?: number;
     temperature?: number;
+    // New: choose redaction output mode: "full_text" (default) or "spans" to return substring lists
+    redaction_output_mode?: 'full_text' | 'spans';
+    // Optional: minimum substring length to accept when applying spans
+    span_min_length?: number;
   };
   defaultMode: 'redact' | 'rephrase';
   scanRunId?: string; // Add scanRunId to the interface
@@ -1305,13 +1309,25 @@ serve(async (req) => {
         }
         console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks (conservative limits applied, cap=${maxItemsCap})`);
 
-        const contexts: Ctx[] = chunks.map((ch) => ({
-          chunk: ch,
-          sentinelRed: buildSentinelInput(ch.map((c: any) => c.originalText || c.text), ch),
-          sentinelReph: buildSentinelInput(ch.map((c: any) => c.originalText || c.text), ch),
-          promptRed: buildBatchTextPrompt(scanConfig.redact_prompt, ch.length),
-          promptReph: buildBatchTextPrompt(scanConfig.rephrase_prompt, ch.length)
-        }));
+        const redactionMode = (scanConfig.redaction_output_mode === 'spans') ? 'spans' : 'full_text';
+        const contexts: Ctx[] = chunks.map((ch) => {
+          const baseSentinel = buildSentinelInput(ch.map((c: any) => c.originalText || c.text), ch);
+          const promptRed = (() => {
+            if (redactionMode === 'spans') {
+              // Request JSON spans format per item index to minimize output tokens
+              const instruction = `For each <<<ITEM k>>> return JSON array objects only with fields index and redact (array of exact substrings). Do not return rewritten text. Example: [{"index": 1, "redact": ["substring 1", "substring 2"]}, ...]`;
+              return buildBatchTextPrompt(`${scanConfig.redact_prompt}\n\n${instruction}\nReturn only valid JSON with no extra commentary.`, ch.length);
+            }
+            return buildBatchTextPrompt(scanConfig.redact_prompt, ch.length);
+          })();
+          return {
+            chunk: ch,
+            sentinelRed: baseSentinel,
+            sentinelReph: baseSentinel,
+            promptRed,
+            promptReph: buildBatchTextPrompt(scanConfig.rephrase_prompt, ch.length)
+          };
+        });
 
         groupStates.push({ key, group, groupModelCfg, contexts });
       }
@@ -1428,9 +1444,83 @@ serve(async (req) => {
           const m = idTag.exec(s || '');
           return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
         });
+        /**
+         * Apply redaction spans to a text using layered matching:
+         * - Filter out very short strings
+         * - Sort by length desc to reduce nested collisions
+         * - Try literal replacement; then case-insensitive; then whitespace-normalized regex
+         */
+        const applyRedactionSpansToText = (original: string, spans: string[], minLen: number): string => {
+          let out = String(original || "");
+          const filtered = spans
+            .map(s => String(s || "").trim())
+            .filter(s => s.length >= Math.max(1, minLen));
+          const sorted = filtered.sort((a, b) => b.length - a.length);
+          for (const span of sorted) {
+            if (!span) continue;
+            // 1) Literal exact
+            if (out.includes(span)) {
+              out = out.split(span).join("XXXX");
+              continue;
+            }
+            // 2) Case-insensitive
+            const esc = span.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const ci = new RegExp(esc, "gi");
+            if (ci.test(out)) {
+              out = out.replace(ci, "XXXX");
+              continue;
+            }
+            // 3) Whitespace-normalized: collapse multiple spaces
+            const wsNorm = span.replace(/\s+/g, "\\s+");
+            const re = new RegExp(wsNorm, "gi");
+            if (re.test(out)) {
+              out = out.replace(re, "XXXX");
+            }
+          }
+          return out;
+        };
+
+        const redactionMode = (scanConfig.redaction_output_mode === 'spans') ? 'spans' : 'full_text';
+        const spanMinLen = Number.isFinite(scanConfig.span_min_length) && (scanConfig.span_min_length as number) >= 1 ? (scanConfig.span_min_length as number) : 2;
         for (const state of groupStates) {
           for (const ctx of state.contexts) {
-            let redTexts = ctx.rawRed ? normalizeBatchTextParsed(ctx.rawRed) : [];
+            let redTexts: string[] = [];
+            if (redactionMode === 'spans') {
+              // Parse JSON of the form [{ index: k, redact: ["substring", ...] }, ...]
+              let spansByIdx = new Map<number, string[]>();
+              try {
+                const raw = String(ctx.rawRed || "");
+                // Extract JSON array if wrapped
+                const start = raw.indexOf("[");
+                const end = raw.lastIndexOf("]");
+                const jsonStr = (start >= 0 && end > start) ? raw.substring(start, end + 1) : raw;
+                const parsed = JSON.parse(jsonStr) as Array<{ index?: number; redact?: string[] }>;
+                if (Array.isArray(parsed)) {
+                  for (const obj of parsed) {
+                    const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
+                    const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
+                    const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
+                    if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
+                  }
+                }
+              } catch (e) {
+                console.warn("[POSTPROCESS][SPANS] Failed to parse JSON spans; falling back to policy only.", e);
+              }
+              // Build per-item redacted outputs by applying spans to the original text
+              redTexts = ctx.chunk.map((comment: any) => {
+                const orowRaw = comment?.originalRow;
+                const sidxRaw = comment?.scannedIndex;
+                const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
+                const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
+                const key = (typeof orow === 'number' && Number.isFinite(orow)) ? orow : ((typeof sidx === 'number' && Number.isFinite(sidx)) ? sidx : null);
+                const spans = (key !== null && spansByIdx.has(key)) ? (spansByIdx.get(key) as string[]) : [];
+                const applied = spans.length > 0 ? applyRedactionSpansToText(String(comment.originalText || comment.text || ""), spans, spanMinLen) : String(comment.originalText || comment.text || "");
+                // Always enforce deterministic policy last
+                return enforceRedactionPolicy(applied) as string;
+              });
+            } else {
+              redTexts = ctx.rawRed ? normalizeBatchTextParsed(ctx.rawRed) : [];
+            }
             let repTexts = ctx.rawReph ? normalizeBatchTextParsed(ctx.rawReph) : [];
             const redIdx = stripAndIndex(redTexts);
             const rephIdx = stripAndIndex(repTexts);

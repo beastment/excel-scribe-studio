@@ -77,6 +77,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const setHasScanRun = externalSetHasScanRun || setLocalHasScanRun;
   const [selectedDemographic, setSelectedDemographic] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
+  const [redactionOutputMode, setRedactionOutputMode] = useState<'spans' | 'full_text'>('spans');
   const scanInFlightRef = useRef(false);
   const lastScanTsRef = useRef<number>(0);
   const requestedBatchesRef = useRef<Set<number>>(new Set());
@@ -705,6 +706,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 model: aiConfigs?.model || 'gpt-4o-mini',
                 redact_prompt: aiConfigs?.redact_prompt || 'Redact any concerning content while preserving the general meaning and tone.',
                 rephrase_prompt: aiConfigs?.rephrase_prompt || 'Rephrase any personally identifiable information to make it anonymous while preserving the general meaning.',
+                redaction_output_mode: redactionOutputMode,
+                span_min_length: 2
               },
               defaultMode,
               scanRunId,
@@ -1404,6 +1407,31 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 </Button>
                 <Button variant={defaultMode === 'rephrase' ? 'default' : 'ghost'} size="sm" onClick={() => setDefaultMode('rephrase')} className="h-7 text-xs">
                   Rephrase
+                </Button>
+              </div>
+            </div>
+
+            {/* Redaction Output Mode */}
+            <div className="flex items-center gap-2 px-3 py-2 border rounded-md">
+              <span className="text-sm font-medium">Redaction Output:</span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={redactionOutputMode === 'spans' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setRedactionOutputMode('spans')}
+                  className="h-7 text-xs"
+                  title="Return JSON spans and apply locally (fewer output tokens)"
+                >
+                  Spans
+                </Button>
+                <Button
+                  variant={redactionOutputMode === 'full_text' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setRedactionOutputMode('full_text')}
+                  className="h-7 text-xs"
+                  title="Return full redacted text from the model"
+                >
+                  Full text
                 </Button>
               </div>
             </div>

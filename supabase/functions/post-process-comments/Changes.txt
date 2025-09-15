@@ -33,6 +33,13 @@ Files impacted:
 
 Files impacted:
 - supabase/functions/post-process-comments/index.ts
+ 
+2025-09-15
+- Add optional redaction spans mode to reduce output tokens. When `scanConfig.redaction_output_mode = "spans"`, the model returns JSON objects per `<<<ITEM k>>>` with `index` and `redact` substrings. The server applies spans to the original text using layered matching (literal, case-insensitive, whitespace-normalized) and then enforces deterministic policy. Fallback to policy-only if JSON cannot be parsed.
+- New optional `scanConfig.span_min_length` (default 2) filters ultra-short spans to avoid over-redaction.
+
+Files impacted:
+- supabase/functions/post-process-comments/index.ts
 # Post-Process Comments Edge Function - Recent Changes
 
 ## Latest Updates
