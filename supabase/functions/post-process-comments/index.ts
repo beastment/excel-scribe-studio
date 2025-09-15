@@ -1532,7 +1532,22 @@ serve(async (req) => {
               for (const tok of tokens) {
                 const tokEsc = tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
                 const tokRe = new RegExp(tokEsc, "gi");
-                if (tokRe.test(out)) out = out.replace(tokRe, "XXXX");
+                if (tokRe.test(out)) {
+                  out = out.replace(tokRe, "XXXX");
+                  continue;
+                }
+                // 4b) Unicode-tolerant token match: allow combining marks and zero-width chars between letters
+                const chars = tok.split("");
+                const between = "[\\u0300-\\u036f\\u200B\\u200C\\u200D]*"; // combining marks + zero-width chars
+                const uniPattern = chars.map(ch => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(between);
+                try {
+                  const uniRe = new RegExp(uniPattern, "giu");
+                  if (uniRe.test(out)) {
+                    out = out.replace(uniRe, "XXXX");
+                  }
+                } catch (_) {
+                  // ignore malformed unicode regex (shouldn't happen)
+                }
               }
             }
             // 5) Boundary safety for first/last token of any multi-word span
