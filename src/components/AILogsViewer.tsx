@@ -468,7 +468,6 @@ export function AILogsViewer({
               <option value="">All Models</option>
               {Array.from(new Set(logs.map(l => `${l.provider}/${l.model}`))).sort().map(k => <option key={k} value={k}>{k}</option>)}
             </select>
-            {runStats}
             <Button variant="outline" size="sm" onClick={() => setShowFullContent(!showFullContent)}>
               {showFullContent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               {showFullContent ? 'Hide Details' : 'Show Details'}

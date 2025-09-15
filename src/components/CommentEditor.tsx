@@ -338,10 +338,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
       const data = { comments: aggregated } as any;
 
-      console.log(`Scan response:`, { data, error });
-      console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
+      console.log(`Scan response:`, { data });
+      console.log(`[DEBUG] Data type:`, typeof data);
       console.log(`[DEBUG] Data keys:`, data ? Object.keys(data) : 'null');
-      console.log(`[DEBUG] Error keys:`, error ? Object.keys(error) : 'null');
       
       // Debug scan results
       if (data?.comments) {
@@ -389,11 +388,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
       }
 
-      // Handle other errors
-      if (error) {
-        console.error(`Scan error:`, error);
-        throw new Error(error.message || error.error || JSON.stringify(error));
-      }
+      // Handle other errors would go here if needed
 
       if (!data?.comments) {
         // Check if this is because of insufficient credits
