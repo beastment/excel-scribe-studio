@@ -1456,6 +1456,22 @@ serve(async (req) => {
             .map(s => String(s || "").trim())
             .filter(s => s.length >= Math.max(1, minLen));
           const sorted = filtered.sort((a, b) => b.length - a.length);
+          const quoteClass = "[\"\u201C\u201D]"; // straight and curly double quotes
+          const aposClass = "['\u2018\u2019]"; // straight and curly single quotes
+          const buildFlexibleRegex = (text: string): RegExp => {
+            // Escape regex meta
+            let esc = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            // Normalize whitespace to \s+
+            esc = esc.replace(/\s+/g, "\\s+");
+            // Allow either straight or curly quotes/apostrophes
+            esc = esc.replace(/\\\"/g, quoteClass); // escaped double quote becomes class
+            esc = esc.replace(/'/g, aposClass);
+            // Make surrounding quotes optional if present at both ends
+            if (/^\s*".*"\s*$/i.test(text)) {
+              esc = esc.replace(new RegExp(`^${quoteClass}`), `${quoteClass}?`).replace(new RegExp(`${quoteClass}$`), `${quoteClass}?`);
+            }
+            return new RegExp(esc, "gi");
+          };
           for (const span of sorted) {
             if (!span) continue;
             // 1) Literal exact
@@ -1470,11 +1486,20 @@ serve(async (req) => {
               out = out.replace(ci, "XXXX");
               continue;
             }
-            // 3) Whitespace-normalized: collapse multiple spaces
-            const wsNorm = span.replace(/\s+/g, "\\s+");
-            const re = new RegExp(wsNorm, "gi");
-            if (re.test(out)) {
-              out = out.replace(re, "XXXX");
+            // 3) Flexible regex: whitespace/quotes tolerant
+            const flex = buildFlexibleRegex(span);
+            if (flex.test(out)) {
+              out = out.replace(flex, "XXXX");
+              continue;
+            }
+            // 4) Token fallback: redact significant tokens when multi-word fails
+            const tokens = span.split(/\s+/).filter(t => t.length >= Math.max(minLen + 1, 4));
+            if (tokens.length >= 2) {
+              for (const tok of tokens) {
+                const tokEsc = tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const tokRe = new RegExp(tokEsc, "gi");
+                if (tokRe.test(out)) out = out.replace(tokRe, "XXXX");
+              }
             }
           }
           return out;

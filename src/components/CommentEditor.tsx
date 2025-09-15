@@ -78,6 +78,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [selectedDemographic, setSelectedDemographic] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const [redactionOutputMode, setRedactionOutputMode] = useState<'spans' | 'full_text'>('spans');
+  const [debugPrompts, setDebugPrompts] = useState<{ scanA?: string; scanB?: string; adjudicator?: string; redaction?: string; rephrase?: string }>({});
   const scanInFlightRef = useRef(false);
   const lastScanTsRef = useRef<number>(0);
   const requestedBatchesRef = useRef<Set<number>>(new Set());
@@ -249,6 +250,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       if (!scanA || !scanB) {
         throw new Error('Missing AI configurations for Scan A/B');
       }
+      setDebugPrompts(prev => ({ ...prev, scanA: String(scanA.analysis_prompt || ''), scanB: String(scanB.analysis_prompt || '') }));
 
       const { data: modelConfigsAll } = await supabase
         .from('model_configurations')
@@ -428,6 +430,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const model: string = (adjCfg?.model as string) || 'gpt-4o';
           const analysisPrompt: string = typeof adjCfg?.analysis_prompt === 'string' ? adjCfg.analysis_prompt : '';
           const tokensPerComment: number = Number.isFinite(adjCfg?.tokens_per_comment) && adjCfg.tokens_per_comment > 0 ? adjCfg.tokens_per_comment : 13;
+          setDebugPrompts(prev => ({ ...prev, adjudicator: analysisPrompt }));
 
           const { data: modelCfg } = await supabase
             .from('model_configurations')
@@ -574,6 +577,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
         
         console.log(`[BATCH] AI Config loaded for post-processing`);
+        // Prepare and record final prompts sent for post-processing
+        const baseRedPrompt = String(aiConfigs?.redact_prompt || '');
+        const baseRephPrompt = String(aiConfigs?.rephrase_prompt || '');
+        const spansInstruction = `For each <<<ITEM k>>> return JSON array objects only with fields index and redact (array of exact substrings). Do not return rewritten text. Example: [{"index": 1, "redact": ["substring 1", "substring 2"]}, ...]`;
+        const finalRedPrompt = redactionOutputMode === 'spans'
+          ? `${baseRedPrompt}\n\n${spansInstruction}\nReturn only valid JSON with no extra commentary.`
+          : baseRedPrompt;
+        setDebugPrompts(prev => ({ ...prev, redaction: finalRedPrompt, rephrase: baseRephPrompt }));
         
         // Build routing sets based on which scan flagged the comment
         const getScanResult = (c: any, key: 'scanAResult' | 'scanBResult') => (c.adjudicationData?.[key] || c[key]);
@@ -1518,6 +1529,45 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           }}
         />
       </div>
+
+      {/* Debug Raw Data: Final Prompts */}
+      {debugMode && isAdmin && (debugPrompts.scanA || debugPrompts.scanB || debugPrompts.adjudicator || debugPrompts.redaction || debugPrompts.rephrase) && (
+        <div className="mb-6">
+          <Card className="p-4">
+            <h4 className="text-sm font-semibold mb-3">Debug: Final Prompts Sent to AI</h4>
+            {debugPrompts.scanA && (
+              <div className="mb-3">
+                <p className="text-xs font-medium">Scan A Prompt:</p>
+                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.scanA}</pre>
+              </div>
+            )}
+            {debugPrompts.scanB && (
+              <div className="mb-3">
+                <p className="text-xs font-medium">Scan B Prompt:</p>
+                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.scanB}</pre>
+              </div>
+            )}
+            {debugPrompts.adjudicator && (
+              <div className="mb-3">
+                <p className="text-xs font-medium">Adjudication Prompt:</p>
+                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.adjudicator}</pre>
+              </div>
+            )}
+            {debugPrompts.redaction && (
+              <div className="mb-3">
+                <p className="text-xs font-medium">Redaction Prompt (final):</p>
+                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.redaction}</pre>
+              </div>
+            )}
+            {debugPrompts.rephrase && (
+              <div>
+                <p className="text-xs font-medium">Rephrase Prompt:</p>
+                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.rephrase}</pre>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
 
       {/* Comments List - Scrollable Container */}
       <div ref={scrollContainerRef} className="h-[70vh] overflow-y-auto border rounded-lg bg-background/50 backdrop-blur-sm">
