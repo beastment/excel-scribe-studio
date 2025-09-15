@@ -1601,42 +1601,84 @@ serve(async (req) => {
               // Parse JSON of the form [{ index: k, redact: ["substring", ...] }, ...]
               let spansByIdx = new Map<number, string[]>();
               try {
-                const raw = String(ctx.rawRed || "");
-                // Extract JSON array if wrapped
-                const start = raw.indexOf("[");
-                const end = raw.lastIndexOf("]");
-                let jsonStr = (start >= 0 && end > start) ? raw.substring(start, end + 1) : raw;
-                // Sanitize common issues: code fences, smart quotes, trailing commas
-                jsonStr = jsonStr
-                  .replace(/^[\u200B\s`]*json\s*/i, "")
-                  .replace(/^```|```$/g, "")
-                  .replace(/[\u201C\u201D]/g, '"')
-                  .replace(/[\u2018\u2019]/g, "'")
-                  .replace(/,(\s*[}\]])/g, '$1');
-                // Attempt parse
-                const parsed = JSON.parse(jsonStr) as Array<{ index?: number|string; redact?: string[] }>;
-                if (Array.isArray(parsed)) {
-                  for (const obj of parsed) {
-                    const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
-                    const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
-                    const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
-                    if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
+                const rawAny = ctx.rawRed;
+                let rawText = String(rawAny ?? "");
+                // Attempt direct JSON.parse
+                try {
+                  const parsedAny = JSON.parse(rawText);
+                  if (Array.isArray(parsedAny)) {
+                    for (const obj of parsedAny as Array<{ index?: number|string; redact?: string[] }>) {
+                      const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
+                      const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
+                      const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
+                      if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
+                    }
+                  } else if (typeof parsedAny === 'string') {
+                    rawText = parsedAny;
+                  }
+                } catch (_) {
+                  // keep rawText
+                }
+
+                // If still empty, extract JSON array region
+                if (spansByIdx.size === 0) {
+                  const start = rawText.indexOf("[");
+                  const end = rawText.lastIndexOf("]");
+                  let jsonStr = (start >= 0 && end > start) ? rawText.substring(start, end + 1) : rawText;
+                  // Sanitize common issues
+                  jsonStr = jsonStr
+                    .replace(/^[\u200B\s`]*json\s*/i, "")
+                    .replace(/^```|```$/g, "")
+                    .replace(/[\u201C\u201D]/g, '"')
+                    .replace(/[\u2018\u2019]/g, "'")
+                    .replace(/,(\s*[}\]])/g, '$1');
+                  // Try parse as array
+                  try {
+                    const parsed = JSON.parse(jsonStr) as Array<{ index?: number|string; redact?: string[] }>;
+                    if (Array.isArray(parsed)) {
+                      for (const obj of parsed) {
+                        const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
+                        const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
+                        const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
+                        if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
+                      }
+                    }
+                  } catch (_) {
+                    // If it looks like a JSON string containing an array (escaped quotes), unescape and retry
+                    const looksEscaped = /\\"index\\"|\\"redact\\"/.test(jsonStr) || /\\\[/.test(jsonStr);
+                    if (looksEscaped) {
+                      const unescaped = jsonStr
+                        .replace(/\\"/g, '"')
+                        .replace(/\\n/g, ' ')
+                        .replace(/\\r/g, ' ')
+                        .replace(/\\t/g, ' ')
+                        .replace(/\\\\/g, '\\');
+                      try {
+                        const parsed2 = JSON.parse(unescaped) as Array<{ index?: number|string; redact?: string[] }>;
+                        if (Array.isArray(parsed2)) {
+                          for (const obj of parsed2) {
+                            const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
+                            const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
+                            const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
+                            if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
+                          }
+                        }
+                      } catch (_) {
+                        // ignore; fall through to regex
+                      }
+                    }
                   }
                 }
               } catch (e) {
                 console.warn("[POSTPROCESS][SPANS] Failed to parse JSON spans; attempting regex fallback.", e);
               }
-              // Regex fallback if parse failed or empty
+              // Regex fallback if parse failed or empty – run on both raw and an unescaped view
               if (spansByIdx.size === 0) {
-                try {
-                  const raw = String(ctx.rawRed || "");
-                  // Find all objects, tolerant to missing quotes around keys
+                const tryRegexExtract = (source: string) => {
                   const objRe = /\{[\s\S]*?\}/g;
-                  const matches = raw.match(objRe) || [];
+                  const matches = source.match(objRe) || [];
                   for (const m of matches) {
-                    // index: number (quoted or not)
                     const idxMatch = /\b"?index"?\s*:\s*(\d+)/i.exec(m);
-                    // redact: [ ... ] with quoted strings
                     const redactMatch = /\b"?redact"?\s*:\s*\[(.*?)\]/is.exec(m);
                     if (!idxMatch || !redactMatch) continue;
                     const idx = parseInt(idxMatch[1], 10);
@@ -1656,11 +1698,15 @@ serve(async (req) => {
                     }
                     if (arr.length > 0) spansByIdx.set(idx, arr);
                   }
-                  if (spansByIdx.size === 0) {
-                    console.warn('[POSTPROCESS][SPANS] Regex fallback found no spans. Falling back to policy only.');
-                  }
-                } catch (rxErr) {
-                  console.warn('[POSTPROCESS][SPANS] Regex fallback failed:', rxErr);
+                };
+                const rawAll = String(ctx.rawRed || "");
+                tryRegexExtract(rawAll);
+                if (spansByIdx.size === 0) {
+                  const unesc = rawAll.replace(/\\"/g, '"');
+                  tryRegexExtract(unesc);
+                }
+                if (spansByIdx.size === 0) {
+                  console.warn('[POSTPROCESS][SPANS] Regex fallback found no spans. Falling back to policy only.');
                 }
               }
               // Build per-item redacted outputs by applying spans to the original text
