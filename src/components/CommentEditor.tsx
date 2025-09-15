@@ -402,7 +402,79 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           return Boolean(a.concerning !== b.concerning || a.identifiable !== b.identifiable);
         });
         if (needsAdj.length > 0) {
-          const perBatch = 50;
+          // Load adjudicator config and model limits from Dashboard
+          const { data: adjCfg, error: adjCfgErr } = await supabase
+            .from('ai_configurations')
+            .select('*')
+            .eq('scanner_type', 'adjudicator')
+            .single();
+          if (adjCfgErr || !adjCfg) {
+            console.warn('[PHASE2][CFG] Failed to load adjudicator config; defaulting to conservative batching');
+          }
+          const provider: string = (adjCfg?.provider as string) || 'openai';
+          const model: string = (adjCfg?.model as string) || 'gpt-4o';
+          const analysisPrompt: string = typeof adjCfg?.analysis_prompt === 'string' ? adjCfg.analysis_prompt : '';
+          const tokensPerComment: number = Number.isFinite(adjCfg?.tokens_per_comment) && adjCfg.tokens_per_comment > 0 ? adjCfg.tokens_per_comment : 13;
+
+          const { data: modelCfg } = await supabase
+            .from('model_configurations')
+            .select('*')
+            .eq('provider', provider)
+            .eq('model', model)
+            .single();
+          const inputTokenLimit: number = Number.isFinite(modelCfg?.input_token_limit) && modelCfg.input_token_limit > 0 ? modelCfg.input_token_limit : 128000;
+          const outputTokenLimit: number = Number.isFinite(modelCfg?.output_token_limit) && modelCfg.output_token_limit > 0 ? modelCfg.output_token_limit : 8192;
+
+          const { data: batchSizingData } = await supabase
+            .from('batch_sizing_config')
+            .select('*')
+            .single();
+          const safetyMarginPercent: number = Math.min(90, Math.max(0, Number.isFinite(batchSizingData?.safety_margin_percent) ? batchSizingData.safety_margin_percent : 15));
+          const safetyMultiplier = 1 - (safetyMarginPercent / 100);
+
+          // Local token estimator mirroring server logic
+          const estimateTokens = (text: string): number => {
+            const t = String(text || '');
+            const ms = model.toLowerCase();
+            if (provider === 'bedrock') {
+              if (ms.includes('claude')) return Math.ceil(t.length / 3.5);
+              if (ms.includes('llama')) return Math.ceil(t.length / 4);
+              if (ms.includes('titan')) return Math.ceil(t.length / 3.2);
+              return Math.ceil(t.length / 3.8);
+            }
+            if (provider === 'openai' || provider === 'azure') {
+              if (ms.includes('gpt-4')) return Math.ceil(t.length / 3.2);
+              if (ms.includes('gpt-3.5')) return Math.ceil(t.length / 3.3);
+              return Math.ceil(t.length / 4);
+            }
+            return Math.ceil(t.length / 4);
+          };
+
+          // Calculate per-batch size based on token limits
+          const maxIn = Math.floor(inputTokenLimit * safetyMultiplier);
+          const maxOut = Math.floor(outputTokenLimit * safetyMultiplier);
+          const promptTokens = estimateTokens(analysisPrompt);
+          const availableForComments = Math.max(0, maxIn - promptTokens);
+          let perBatch = 0;
+          let usedInput = 0;
+          for (let i = 0; i < needsAdj.length; i++) {
+            const ct = estimateTokens(String(needsAdj[i].originalText || needsAdj[i].text || ''));
+            if (usedInput + ct <= availableForComments) {
+              usedInput += ct;
+              perBatch += 1;
+            } else {
+              break;
+            }
+          }
+          // Enforce output token constraint
+          if (perBatch > 0) {
+            const maxByOutput = Math.floor(maxOut / Math.max(1, tokensPerComment));
+            perBatch = Math.max(1, Math.min(perBatch, maxByOutput));
+          } else {
+            perBatch = 1;
+          }
+          console.log(`[ADJ][BATCH_CALC] provider=${provider} model=${model} safety=${safetyMarginPercent}% promptTokens=${promptTokens} perBatch=${perBatch}`);
+
           // Ensure Authorization header is included for adjudicator invoke
           const { data: sessionData } = await supabase.auth.getSession();
           const accessToken = sessionData?.session?.access_token;
@@ -432,12 +504,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               (data as any).comments = (data.comments as any[]).map((c: any) => {
                 const r = adjMap.get(c.id) as any;
                 if (r && typeof r === 'object' && r !== null) {
-                  return { 
-                    ...c, 
-                    concerning: Boolean(r.concerning), 
-                    identifiable: Boolean(r.identifiable), 
-                    isAdjudicated: true, 
-                    aiReasoning: r.reasoning || c.aiReasoning || '' 
+                  return {
+                    ...c,
+                    concerning: Boolean(r.concerning),
+                    identifiable: Boolean(r.identifiable),
+                    isAdjudicated: true,
+                    aiReasoning: r.reasoning || c.aiReasoning || ''
                   };
                 }
                 return c;
