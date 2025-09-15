@@ -28,6 +28,13 @@ Implementation notes:
 - Implements safety margins to prevent token limit violations
 - Supports large-scale processing with timeout protection
 
+### 4. Phase Sequencing and Orchestration
+- The function accepts a `phase` parameter: `"redaction" | "rephrase" | "both"`.
+- When `phase = "redaction"`, only redaction AI calls are performed.
+- When `phase = "rephrase"`, only rephrase AI calls are performed.
+- When `phase = "both"`, the function executes in two phases: all redactions complete across models first, then all rephrases begin. This guarantees rephrase will not start before redaction completion.
+- In client-driven multi-invocation flows (separate redaction then rephrase calls), the client should start rephrase invocations only after all models have completed redaction.
+
 ### 4. Policy Enforcement
 - Enforces redaction policies for job levels, tenure, and identifiers
 - Replaces specific patterns with "XXXX" placeholders

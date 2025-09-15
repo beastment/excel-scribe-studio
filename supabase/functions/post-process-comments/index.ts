@@ -1316,7 +1316,13 @@ serve(async (req) => {
         groupStates.push({ key, group, groupModelCfg, contexts });
       }
 
+      // Determine requested phase behavior (guard execution of phases)
+      const requestPhaseMode: 'redaction' | 'rephrase' | 'both' = (phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
+      const runRedactionPhase = requestPhaseMode !== 'rephrase';
+      const runRephrasePhase = requestPhaseMode !== 'redaction';
+
       // Phase 1: run redactions for all models in parallel (sequential within each model)
+      if (runRedactionPhase) {
       await Promise.all(groupStates.map(async (state) => {
         const aiLogger = new AILogger();
         aiLogger.setFunctionStartTime(overallStartTime);
@@ -1361,8 +1367,12 @@ serve(async (req) => {
           }
         }
       }));
+      } else {
+        console.log(`${logPrefix} [POSTPROCESS] Skipping redaction phase per requestPhaseMode='${requestPhaseMode}'`);
+      }
 
       // Phase 2: after all redactions complete, run rephrases for all models in parallel (sequential within each model)
+      if (runRephrasePhase) {
       await Promise.all(groupStates.map(async (state) => {
         const aiLogger = new AILogger();
         aiLogger.setFunctionStartTime(overallStartTime);
@@ -1407,6 +1417,9 @@ serve(async (req) => {
           }
         }
       }));
+      } else {
+        console.log(`${logPrefix} [POSTPROCESS] Skipping rephrase phase per requestPhaseMode='${requestPhaseMode}'`);
+      }
 
       // Phase 3: parse/align and push results for all groups
       {
