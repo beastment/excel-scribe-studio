@@ -1505,6 +1505,21 @@ serve(async (req) => {
                 if (tokRe.test(out)) out = out.replace(tokRe, "XXXX");
               }
             }
+            // 5) Boundary safety for first/last token of any multi-word span
+            const words = span.trim().split(/\s+/);
+            if (words.length >= 2) {
+              const firstTok = words[0];
+              const lastTok = words[words.length - 1];
+              const bEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              if (firstTok.length >= minLen) {
+                const re = new RegExp(`(^|[^A-Za-z])${bEsc(firstTok)}(?=[^A-Za-z]|$)`, "gi");
+                out = out.replace(re, (m, p1) => `${p1}XXXX`);
+              }
+              if (lastTok.length >= minLen) {
+                const re = new RegExp(`(^|[^A-Za-z])${bEsc(lastTok)}(?=[^A-Za-z]|$)`, "gi");
+                out = out.replace(re, (m, p1) => `${p1}XXXX`);
+              }
+            }
           }
           return out;
         };
