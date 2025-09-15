@@ -66,6 +66,42 @@ export async function countTokens(
   };
 }
 
+// NEW: Get precise token counts similar to scan-comments/token-counter.ts
+export async function getPreciseTokenCount(
+  provider: string,
+  model: string,
+  text: string,
+  apiKey?: string,
+  region?: string
+): Promise<number> {
+  try {
+    if (provider === "openai" || provider === "azure") {
+      // More accurate approximations per model family
+      if (model.includes("gpt-4")) {
+        return Math.ceil(text.length / 3.2);
+      } else if (model.includes("gpt-3.5")) {
+        return Math.ceil(text.length / 3.3);
+      } else {
+        return Math.ceil(text.length / 4);
+      }
+    } else if (provider === "bedrock") {
+      if (model.includes("claude")) {
+        return Math.ceil(text.length / 2.8);
+      } else if (model.includes("llama")) {
+        return Math.ceil(text.length / 3.8);
+      } else if (model.includes("titan")) {
+        return Math.ceil(text.length / 3.0);
+      } else {
+        return Math.ceil(text.length / 3.5);
+      }
+    }
+    // Fallback
+    return Math.ceil(text.length / 4);
+  } catch (_) {
+    return Math.ceil(text.length / 4);
+  }
+}
+
 // Log token usage to console with [AI REQUEST] and [AI RESPONSE] prefixes
 export function logTokenUsage(
   provider: string,

@@ -1,3 +1,11 @@
+## Batch Sizing
+- Batch sizes are computed using the same logic as `scan-comments`:
+  - Read input/output token limits from Dashboard `model_configurations` for the adjudicator model.
+  - Apply the configured safety margin from `batch_sizing_config`.
+  - Use the Adjudicator "Tokens per Comment" setting to estimate output tokens.
+  - Count prompt and per-comment input tokens using precise estimators to maximize batch size within limits.
+  - Small datasets that fully fit within token limits are processed in a single batch.
+
 # Adjudicator Edge Function Overview
 
 ## Purpose

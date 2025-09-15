@@ -1,6 +1,14 @@
 # Adjudicator Edge Function - Recent Changes
 
 ## Latest Updates
+2025-09-15
+- Adopted scan-comments batch sizing in adjudicator: batch sizes are now determined by Dashboard model limits (input/output token limits), safety margin, and the Adjudicator "Tokens per Comment" setting. Uses precise token estimates for prompt and comments to maximize per-batch throughput while staying within limits. Small-dataset single-batch override retained when everything fits.
+- Added precise token counting helper mirroring scan-comments to improve sizing accuracy.
+
+Files impacted:
+- supabase/functions/adjudicator/index.ts
+- supabase/functions/adjudicator/token-counter.ts
+
 
 ### Enhanced Batch Processing
 - **Batch Key System**: Implemented unique batch keys to prevent duplicate processing
