@@ -1458,11 +1458,12 @@ serve(async (req) => {
           const sorted = filtered.sort((a, b) => b.length - a.length);
           const quoteClass = "[\"\u201C\u201D]"; // straight and curly double quotes
           const aposClass = "['\u2018\u2019]"; // straight and curly single quotes
+          const wsClass = "[\\s\\u00A0\\u202F\\u2007]+"; // include common unicode spaces
           const buildFlexibleRegex = (text: string): RegExp => {
             // Escape regex meta
             let esc = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            // Normalize whitespace to \s+
-            esc = esc.replace(/\s+/g, "\\s+");
+            // Normalize whitespace to a Unicode-aware class
+            esc = esc.replace(/\s+/g, wsClass);
             // Allow either straight or curly quotes/apostrophes
             esc = esc.replace(/\\\"/g, quoteClass); // escaped double quote becomes class
             esc = esc.replace(/'/g, aposClass);
@@ -1492,9 +1493,12 @@ serve(async (req) => {
               out = out.replace(flex, "XXXX");
               continue;
             }
-            // 4) Token fallback: redact significant tokens when multi-word fails
-            const tokens = span.split(/\s+/).filter(t => t.length >= Math.max(minLen + 1, 4));
-            if (tokens.length >= 2) {
+            // 4) Token fallback: redact significant tokens when multi-word fails (longest-first)
+            const tokens = span
+              .split(/\s+/)
+              .filter(t => t.length >= Math.max(minLen + 1, 4))
+              .sort((a, b) => b.length - a.length);
+            if (tokens.length >= 1) {
               for (const tok of tokens) {
                 const tokEsc = tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
                 const tokRe = new RegExp(tokEsc, "gi");
