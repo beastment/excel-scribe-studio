@@ -1181,6 +1181,10 @@ serve(async (req) => {
       console.log(`${logPrefix} [BATCH_CALC] Conservative limits across models: input=${conservativeInputLimit}, output=${conservativeOutputLimit}`);
       console.log(`${logPrefix} [BATCH_CALC] Safety-adjusted conservative limits: input=${conservativeInputLimitSafe}, output=${conservativeOutputLimitSafe} (margin=${safetyMarginPercent}%)`);
 
+      // Build per-model state with contexts and chunks first
+      type Ctx = { chunk: any[]; sentinelRed: string; sentinelReph: string; promptRed: string; promptReph: string; rawRed?: string|null; rawReph?: string|null };
+      const groupStates: Array<{ key: string; group: Group; groupModelCfg: any; contexts: Ctx[] }> = [];
+
       for (const [key, group] of groups.entries()) {
         const cached = groupCfgCache.get(key) as { cfg: any, err: any } | undefined;
         const groupModelCfg = cached?.cfg;
@@ -1188,14 +1192,10 @@ serve(async (req) => {
         let groupMaxTokens = getEffectiveMaxTokens({ provider: group.provider, model: group.model });
         if (!groupModelCfgError && groupModelCfg) {
           groupMaxTokens = groupModelCfg.output_token_limit || groupMaxTokens;
-
-        } else {
-          if (groupModelCfgError) {
-            console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError?.message);
-          }
+        } else if (groupModelCfgError) {
+          console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError?.message);
         }
 
-        // Build token-aware chunks: greedily pack items until input/output token limits would be exceeded (using conservative limits)
         const buildTokenAwareChunks = (
           items: any[],
           phaseMode: 'both' | 'redaction' | 'rephrase',
@@ -1218,7 +1218,7 @@ serve(async (req) => {
             while (i < items.length) {
               const item = items[i];
               const text = String(item.originalText || item.text || "");
-              const inputTokens = Math.ceil(text.length / 5); // consistent with earlier estimate
+              const inputTokens = Math.ceil(text.length / 5);
               const outRedact = Math.ceil(inputTokens * ioRedact);
               const outRephrase = Math.ceil(inputTokens * ioRephrase);
               const nextSumInput = sumInput + inputTokens;
@@ -1230,16 +1230,13 @@ serve(async (req) => {
               const rephraseOk = (phaseMode !== 'redaction') ? (nextSumOutRephrase <= outputLimit) : true;
               const bothOk = phaseMode === 'both' ? (nextSumOutRedact <= outputLimit && nextSumOutRephrase <= outputLimit) : true;
               if (inputOk && redactOk && rephraseOk && bothOk) {
-                // Add item to chunk
                 chunk.push(item);
                 sumInput = nextSumInput;
                 sumOutRedact = nextSumOutRedact;
                 sumOutRephrase = nextSumOutRephrase;
                 i += 1;
-                // Guardrail to prevent overly large chunks even if limits are high
                 if (chunk.length >= maxItemsCap) break;
               } else {
-                // If chunk is empty, force single item to avoid infinite loop
                 if (chunk.length === 0) {
                   chunk.push(item);
                   i += 1;
@@ -1255,7 +1252,6 @@ serve(async (req) => {
         const phaseMode: 'both' | 'redaction' | 'rephrase' = (phase === 'both' || phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
         const capItemsByOutput = Math.max(1, Math.floor(conservativeOutputLimitSafe / Math.max(estimatedOutputTokensPerCommentRedact, estimatedOutputTokensPerCommentRephrase)));
         let maxItemsCap = Math.max(1, Math.min(optimalBatchSize, capItemsByOutput));
-        // Provider/model-specific hard caps removed - batch size now determined by token limits and RPM constraints
         const inputDerivedLimitSafe = (() => {
           const redIn = Math.floor(sharedOutputLimitSafe / Math.max(1, redactionIoRatio));
           const repIn = Math.floor(sharedOutputLimitSafe / Math.max(1, rephraseIoRatio));
@@ -1264,11 +1260,10 @@ serve(async (req) => {
           return Math.min(conservativeInputLimitSafe, repIn);
         })();
 
-        // Estimate prompt reserve dynamically: base + per-item overhead tied to provider
         const isClaude = group.model.toLowerCase().includes('claude');
-        const charsPerToken = isClaude ? 3.5 : 4; // rough cpt for prompt estimation
+        const charsPerToken = isClaude ? 3.5 : 4;
         const basePromptReserve = Math.min(1000, Math.max(300, Math.ceil(scanConfig.redact_prompt.length / charsPerToken)));
-        const perItemPromptOverhead = 8; // tokens for sentinels/markers per item
+        const perItemPromptOverhead = 8;
 
         let chunks = buildTokenAwareChunks(
           group.items,
@@ -1282,7 +1277,6 @@ serve(async (req) => {
           maxItemsCap,
           perItemPromptOverhead
         );
-        // As an extra guard, if both phases are requested, further split any chunk whose estimated phase output exceeds the model output limit
         if (phaseMode === 'both') {
           const guarded: any[][] = [];
           for (const ch of chunks) {
@@ -1311,112 +1305,118 @@ serve(async (req) => {
         }
         console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks (conservative limits applied, cap=${maxItemsCap})`);
 
-        // NEW: Enforce phase ordering per model/group: run ALL redactions first, then ALL rephrases
-        {
-          const aiLogger = new AILogger();
-          aiLogger.setFunctionStartTime(overallStartTime);
-          type Ctx = { chunk: any[]; sentinelRed: string; sentinelReph: string; promptRed: string; promptReph: string; rawRed?: string|null; rawReph?: string|null };
-          const contexts: Ctx[] = chunks.map((ch) => ({
-            chunk: ch,
-            sentinelRed: buildSentinelInput(ch.map((c: any) => c.originalText || c.text), ch),
-            sentinelReph: buildSentinelInput(ch.map((c: any) => c.originalText || c.text), ch),
-            promptRed: buildBatchTextPrompt(scanConfig.redact_prompt, ch.length),
-            promptReph: buildBatchTextPrompt(scanConfig.rephrase_prompt, ch.length)
-          }));
+        const contexts: Ctx[] = chunks.map((ch) => ({
+          chunk: ch,
+          sentinelRed: buildSentinelInput(ch.map((c: any) => c.originalText || c.text), ch),
+          sentinelReph: buildSentinelInput(ch.map((c: any) => c.originalText || c.text), ch),
+          promptRed: buildBatchTextPrompt(scanConfig.redact_prompt, ch.length),
+          promptReph: buildBatchTextPrompt(scanConfig.rephrase_prompt, ch.length)
+        }));
 
-          // Phase 1: Redactions (sequential)
-          for (const ctx of contexts) {
-            const elapsedMs = Date.now() - overallStartTime;
-            const HARD_CAP_MS = 148000;
-            const remainingMs = Math.max(0, HARD_CAP_MS - elapsedMs);
-            const dynamicTimeoutMs = Math.max(8000, Math.min(POSTPROCESS_BEDROCK_TIMEOUT_MS, remainingMs - 5000));
-            await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
-            try {
-              // Server-side TTL dedup irrespective of scanRunId
-              const dup = await findRecentDuplicateLog(
-                supabase,
-                group.provider,
-                group.model,
-                'redaction',
-                ctx.sentinelRed,
-                2 * 60 * 1000,
-                logPrefix
-              );
-              if (dup) {
-                console.log(`${logPrefix} [DEDUP] Skipping duplicate redaction for ${group.provider}/${group.model}; recent log id=${dup.id}`);
-                ctx.rawRed = null;
-                continue;
-              }
-              ctx.rawRed = await callAI(
-                group.provider,
-                group.model,
-                ctx.promptRed,
-                ctx.sentinelRed,
-                'batch_text',
-                sharedOutputLimitSafe,
-                user.id,
-                scanRunId,
-                'redaction',
-                aiLogger,
-                groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                logPrefix,
-                dynamicTimeoutMs
-              );
-            } catch (e) {
+        groupStates.push({ key, group, groupModelCfg, contexts });
+      }
+
+      // Phase 1: run redactions for all models in parallel (sequential within each model)
+      await Promise.all(groupStates.map(async (state) => {
+        const aiLogger = new AILogger();
+        aiLogger.setFunctionStartTime(overallStartTime);
+        for (const ctx of state.contexts) {
+          const elapsedMs = Date.now() - overallStartTime;
+          const HARD_CAP_MS = 148000;
+          const remainingMs = Math.max(0, HARD_CAP_MS - elapsedMs);
+          const dynamicTimeoutMs = Math.max(8000, Math.min(POSTPROCESS_BEDROCK_TIMEOUT_MS, remainingMs - 5000));
+          await waitForDbRpmGate(supabase, state.group.provider, state.group.model, state.groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
+          try {
+            const dup = await findRecentDuplicateLog(
+              supabase,
+              state.group.provider,
+              state.group.model,
+              'redaction',
+              ctx.sentinelRed,
+              2 * 60 * 1000,
+              logPrefix
+            );
+            if (dup) {
+              console.log(`${logPrefix} [DEDUP] Skipping duplicate redaction for ${state.group.provider}/${state.group.model}; recent log id=${dup.id}`);
               ctx.rawRed = null;
+              continue;
             }
+            ctx.rawRed = await callAI(
+              state.group.provider,
+              state.group.model,
+              ctx.promptRed,
+              ctx.sentinelRed,
+              'batch_text',
+              sharedOutputLimitSafe,
+              user.id,
+              scanRunId,
+              'redaction',
+              aiLogger,
+              state.groupModelCfg?.temperature ?? effectiveConfig.temperature,
+              logPrefix,
+              dynamicTimeoutMs
+            );
+          } catch (_) {
+            ctx.rawRed = null;
           }
+        }
+      }));
 
-          // Phase 2: Rephrases (sequential, only after all redactions done)
-          for (const ctx of contexts) {
-            const elapsedMs = Date.now() - overallStartTime;
-            const HARD_CAP_MS = 148000;
-            const remainingMs = Math.max(0, HARD_CAP_MS - elapsedMs);
-            const dynamicTimeoutMs = Math.max(8000, Math.min(POSTPROCESS_BEDROCK_TIMEOUT_MS, remainingMs - 5000));
-            await waitForDbRpmGate(supabase, group.provider, group.model, groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
-            try {
-              // Server-side TTL dedup irrespective of scanRunId
-              const dup = await findRecentDuplicateLog(
-                supabase,
-                group.provider,
-                group.model,
-                'rephrase',
-                ctx.sentinelReph,
-                2 * 60 * 1000,
-                logPrefix
-              );
-              if (dup) {
-                console.log(`${logPrefix} [DEDUP] Skipping duplicate rephrase for ${group.provider}/${group.model}; recent log id=${dup.id}`);
-                ctx.rawReph = null;
-                continue;
-              }
-              ctx.rawReph = await callAI(
-                group.provider,
-                group.model,
-                ctx.promptReph,
-                ctx.sentinelReph,
-                'batch_text',
-                sharedOutputLimitSafe,
-                user.id,
-                scanRunId,
-                'rephrase',
-                aiLogger,
-                groupModelCfg?.temperature ?? effectiveConfig.temperature,
-                logPrefix,
-                dynamicTimeoutMs
-              );
-            } catch (e) {
+      // Phase 2: after all redactions complete, run rephrases for all models in parallel (sequential within each model)
+      await Promise.all(groupStates.map(async (state) => {
+        const aiLogger = new AILogger();
+        aiLogger.setFunctionStartTime(overallStartTime);
+        for (const ctx of state.contexts) {
+          const elapsedMs = Date.now() - overallStartTime;
+          const HARD_CAP_MS = 148000;
+          const remainingMs = Math.max(0, HARD_CAP_MS - elapsedMs);
+          const dynamicTimeoutMs = Math.max(8000, Math.min(POSTPROCESS_BEDROCK_TIMEOUT_MS, remainingMs - 5000));
+          await waitForDbRpmGate(supabase, state.group.provider, state.group.model, state.groupModelCfg?.rpm_limit ?? effectiveConfig.rpm_limit, logPrefix);
+          try {
+            const dup = await findRecentDuplicateLog(
+              supabase,
+              state.group.provider,
+              state.group.model,
+              'rephrase',
+              ctx.sentinelReph,
+              2 * 60 * 1000,
+              logPrefix
+            );
+            if (dup) {
+              console.log(`${logPrefix} [DEDUP] Skipping duplicate rephrase for ${state.group.provider}/${state.group.model}; recent log id=${dup.id}`);
               ctx.rawReph = null;
+              continue;
             }
+            ctx.rawReph = await callAI(
+              state.group.provider,
+              state.group.model,
+              ctx.promptReph,
+              ctx.sentinelReph,
+              'batch_text',
+              sharedOutputLimitSafe,
+              user.id,
+              scanRunId,
+              'rephrase',
+              aiLogger,
+              state.groupModelCfg?.temperature ?? effectiveConfig.temperature,
+              logPrefix,
+              dynamicTimeoutMs
+            );
+          } catch (_) {
+            ctx.rawReph = null;
           }
+        }
+      }));
 
-          // Phase 3: Parse/align and push results
-          const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
-          const stripAndIndex = (arr: string[]) => arr.map(s => {
-            const m = idTag.exec(s || '');
-            return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
-          });
-          for (const ctx of contexts) {
+      // Phase 3: parse/align and push results for all groups
+      {
+        const idTag = /^\s*<<<(?:ID|ITEM)\s+(\d+)>>>\s*/i;
+        const stripAndIndex = (arr: string[]) => arr.map(s => {
+          const m = idTag.exec(s || '');
+          return { idx: m ? parseInt(m[1], 10) : null, text: m ? s.replace(idTag, '').trim() : (s || '').trim() };
+        });
+        for (const state of groupStates) {
+          for (const ctx of state.contexts) {
             let redTexts = ctx.rawRed ? normalizeBatchTextParsed(ctx.rawRed) : [];
             let repTexts = ctx.rawReph ? normalizeBatchTextParsed(ctx.rawReph) : [];
             const redIdx = stripAndIndex(redTexts);
@@ -1480,14 +1480,6 @@ serve(async (req) => {
               });
             }
           }
-
-          // Skip the old per-chunk interleaving logic
-          continue;
-        }
-
-        for (const chunk of chunks) {
-          console.log(`${logPrefix} [POSTPROCESS] Processing chunk of ${chunk.length} comments`);
-          // ... existing code ...
         }
       }
     } catch (error) {

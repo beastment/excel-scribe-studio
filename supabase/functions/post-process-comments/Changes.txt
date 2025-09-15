@@ -63,7 +63,7 @@ Files impacted:
 - **Robust Recovery**: Better handling of partial failures
 
 ### Performance Optimizations
-- **Parallel Processing**: Redaction and rephrasing run concurrently
+- **Parallel Processing**: Redaction across models now runs in parallel (sequential per model). Rephrase across models runs in parallel only after all redactions complete.
 - **Efficient Batching**: Optimized batch sizes for different models
 - **Token Optimization**: Better token usage and limit management
 - **Memory Efficiency**: Improved memory usage patterns
