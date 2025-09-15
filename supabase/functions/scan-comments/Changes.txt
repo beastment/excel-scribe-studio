@@ -1,3 +1,6 @@
+2025-09-15
+- Disable server-side adjudication execution; adjudication is now client-managed with per-batch invocations sized by Dashboard token limits to avoid Edge timeouts.
+
 # Scan Comments Edge Function - Recent Changes
 
 - 2025-09-07: Prevent duplicate submissions during adjudication polling

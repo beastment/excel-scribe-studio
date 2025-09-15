@@ -1488,8 +1488,13 @@ serve(async (req) => {
       }
       // Process adjudication for all comments that need it
       console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
-        
-      try {
+
+      // Client-driven adjudication: skip server-side adjudication to avoid long-running edge invocations
+      const CLIENT_MANAGED_ADJUDICATION = true;
+      if (CLIENT_MANAGED_ADJUDICATION) {
+        console.log('[ADJUDICATION] Skipped: client-managed adjudication enabled');
+      } else {
+        try {
           // Filter comments that need adjudication
           const commentsNeedingAdjudication = allScannedComments.filter(comment => {
             const scanAResult = comment.adjudicationData?.scanAResult;
@@ -1564,6 +1569,7 @@ serve(async (req) => {
           console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
           // Continue without failing the entire scan
         }
+      }
 
         const response = { 
           comments: allScannedComments,
