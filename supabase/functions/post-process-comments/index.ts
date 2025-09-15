@@ -1565,6 +1565,29 @@ serve(async (req) => {
                 out = out.replace(re, (m, p1) => `${p1}XXXX`);
               }
             }
+            // 6) Last-chance word-level fallback: replace any alphabetic word pieces from span (length>=3)
+            try {
+              const alphaWords = (span.match(/[A-Za-z]{3,}/g) || []).sort((a, b) => b.length - a.length);
+              const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              for (const w of alphaWords) {
+                // ASCII word boundary
+                const asciiRe = new RegExp(`(^|[^A-Za-z])${esc(w)}(?=[^A-Za-z]|$)`, "gi");
+                out = out.replace(asciiRe, (m, p1) => `${p1}XXXX`);
+                // Unicode-tolerant boundary with allowed zero-width/combining between letters
+                const between = "[\\u0300-\\u036f\\u200B\\u200C\\u200D]*";
+                const chars = w.split("").map(c => esc(c)).join(between);
+                try {
+                  const uniRe = new RegExp(`(^|[^\\p{L}])${chars}(?=[^\\p{L}]|$)`, "giu");
+                  out = out.replace(uniRe, (m, p1) => `${p1}XXXX`);
+                } catch (_) {
+                  // environments without Unicode property escapes
+                  const uniAsciiRe = new RegExp(`(^|[^A-Za-z])${chars}(?=[^A-Za-z]|$)`, "gi");
+                  out = out.replace(uniAsciiRe, (m, p1) => `${p1}XXXX`);
+                }
+              }
+            } catch (_) {
+              // ignore
+            }
           }
           return out;
         };
@@ -1582,8 +1605,16 @@ serve(async (req) => {
                 // Extract JSON array if wrapped
                 const start = raw.indexOf("[");
                 const end = raw.lastIndexOf("]");
-                const jsonStr = (start >= 0 && end > start) ? raw.substring(start, end + 1) : raw;
-                const parsed = JSON.parse(jsonStr) as Array<{ index?: number; redact?: string[] }>;
+                let jsonStr = (start >= 0 && end > start) ? raw.substring(start, end + 1) : raw;
+                // Sanitize common issues: code fences, smart quotes, trailing commas
+                jsonStr = jsonStr
+                  .replace(/^[\u200B\s`]*json\s*/i, "")
+                  .replace(/^```|```$/g, "")
+                  .replace(/[\u201C\u201D]/g, '"')
+                  .replace(/[\u2018\u2019]/g, "'")
+                  .replace(/,(\s*[}\]])/g, '$1');
+                // Attempt parse
+                const parsed = JSON.parse(jsonStr) as Array<{ index?: number|string; redact?: string[] }>;
                 if (Array.isArray(parsed)) {
                   for (const obj of parsed) {
                     const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
@@ -1593,7 +1624,44 @@ serve(async (req) => {
                   }
                 }
               } catch (e) {
-                console.warn("[POSTPROCESS][SPANS] Failed to parse JSON spans; falling back to policy only.", e);
+                console.warn("[POSTPROCESS][SPANS] Failed to parse JSON spans; attempting regex fallback.", e);
+              }
+              // Regex fallback if parse failed or empty
+              if (spansByIdx.size === 0) {
+                try {
+                  const raw = String(ctx.rawRed || "");
+                  // Find all objects, tolerant to missing quotes around keys
+                  const objRe = /\{[\s\S]*?\}/g;
+                  const matches = raw.match(objRe) || [];
+                  for (const m of matches) {
+                    // index: number (quoted or not)
+                    const idxMatch = /\b"?index"?\s*:\s*(\d+)/i.exec(m);
+                    // redact: [ ... ] with quoted strings
+                    const redactMatch = /\b"?redact"?\s*:\s*\[(.*?)\]/is.exec(m);
+                    if (!idxMatch || !redactMatch) continue;
+                    const idx = parseInt(idxMatch[1], 10);
+                    if (!Number.isFinite(idx)) continue;
+                    const inner = redactMatch[1];
+                    const strRe = /"([^"\\]*(?:\\.[^"\\]*)*)"/g;
+                    const arr: string[] = [];
+                    let sm: RegExpExecArray | null;
+                    while ((sm = strRe.exec(inner)) !== null) {
+                      try {
+                        const s = JSON.parse('"' + sm[1] + '"');
+                        if (typeof s === 'string' && s.trim().length > 0) arr.push(s);
+                      } catch (_) {
+                        const unescaped = sm[1].replace(/\\"/g, '"');
+                        if (unescaped.trim().length > 0) arr.push(unescaped);
+                      }
+                    }
+                    if (arr.length > 0) spansByIdx.set(idx, arr);
+                  }
+                  if (spansByIdx.size === 0) {
+                    console.warn('[POSTPROCESS][SPANS] Regex fallback found no spans. Falling back to policy only.');
+                  }
+                } catch (rxErr) {
+                  console.warn('[POSTPROCESS][SPANS] Regex fallback failed:', rxErr);
+                }
               }
               // Build per-item redacted outputs by applying spans to the original text
               redTexts = ctx.chunk.map((comment: any) => {
