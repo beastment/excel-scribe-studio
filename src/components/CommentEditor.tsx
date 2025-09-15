@@ -238,87 +238,104 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         toast.info('Phase 1: Scanning comments for concerning/identifiable content...');
       }
       
-      console.log('[SCAN] Starting initial scan-comments call...');
-      const { data, error } = await supabase.functions.invoke('scan-comments', {
-        body: {
-          comments,
-          defaultMode,
-          scanRunId,
-          isDemoScan: isDemoData,
-          skipAdjudication: true,
-          maxBatchesPerRequest: 1,
-          maxRunMs: 140000
-        }
-      });
-
-      // Aggregate multi-batch responses until complete
-      if (data?.hasMore) {
-        let accumulated = Array.isArray(data.comments) ? [...data.comments] : [];
-        let nextBatchStart = (data.nextBatchStart ?? data.batchStart ?? accumulated.length) as number;
-        let loops = 0;
-        const expectedTotal = (data.totalComments as number) || comments.length;
-        
-        console.log(`[BATCH_CLIENT] Starting batch aggregation: accumulated=${accumulated.length}, nextStart=${nextBatchStart}, expectedTotal=${expectedTotal}`);
-        
-        // Continue requesting until server reports no more or we reach the expected total
-        // Use a generous cap to avoid premature stop on large datasets
-        const MAX_FOLLOWUPS = 200;
-        while (data.hasMore && loops < MAX_FOLLOWUPS && accumulated.length < expectedTotal) {
-          console.log(`[BATCH_CLIENT] Loop ${loops + 1}: requesting batch starting at ${nextBatchStart}`);
-          if (requestedBatchesRef.current.has(nextBatchStart)) {
-            console.warn(`[BATCH_CLIENT] Suppressing duplicate request for batchStart=${nextBatchStart}`);
-            break;
-          }
-          requestedBatchesRef.current.add(nextBatchStart);
-          
-          console.log(`[SCAN] Requesting follow-up batch at start=${nextBatchStart}...`);
-          const { data: nextData, error: nextError } = await supabase.functions.invoke('scan-comments', {
-            body: {
-              comments,
-              defaultMode,
-              scanRunId,
-              isDemoScan: isDemoData,
-              batchStart: nextBatchStart,
-              useCachedAnalysis: true,
-              skipAdjudication: true,
-              maxBatchesPerRequest: 1,
-              maxRunMs: 140000
-            }
-          });
-
-          if (nextError) {
-            console.error('Scan follow-up error:', nextError);
-            break;
-          }
-          
-          if (!nextData?.comments || nextData.comments.length === 0) {
-            console.log(`[BATCH_CLIENT] No more comments in batch ${loops + 1}, stopping`);
-            break;
-          }
-
-          const newCommentsCount = nextData.comments.length;
-          accumulated = accumulated.concat(nextData.comments);
-          
-          // Calculate next batch start based on server hint or actual items
-          nextBatchStart = typeof nextData.nextBatchStart === 'number'
-            ? nextData.nextBatchStart
-            : nextBatchStart + newCommentsCount;
-          data.hasMore = Boolean(nextData.hasMore) && accumulated.length < expectedTotal;
-          
-          console.log(`[BATCH_CLIENT] Batch ${loops + 1} complete: received=${newCommentsCount}, accumulated=${accumulated.length}, nextStart=${nextBatchStart}, hasMore=${data.hasMore}`);
-          
-          loops += 1;
-          
-          // Small delay to prevent overwhelming the server
-          if (data.hasMore) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-        }
-        
-        console.log(`[BATCH_CLIENT] Batch aggregation complete: total=${accumulated.length}, expected=${expectedTotal}`);
-        // Replace original comments with the full set for downstream steps
-        (data as any).comments = accumulated;
+      // Client-managed batch sizing for scan-comments
+      // 1) Load Scan A/B configs and model limits
+      const { data: aiConfigsAll } = await supabase
+        .from('ai_configurations')
+        .select('*');
+      const scanA = Array.isArray(aiConfigsAll) ? aiConfigsAll.find((c: any) => c.scanner_type === 'scan_a') : undefined;
+      const scanB = Array.isArray(aiConfigsAll) ? aiConfigsAll.find((c: any) => c.scanner_type === 'scan_b') : undefined;
+      if (!scanA || !scanB) {
+        throw new Error('Missing AI configurations for Scan A/B');
       }
+
+      const { data: modelConfigsAll } = await supabase
+        .from('model_configurations')
+        .select('*');
+      const modelA = Array.isArray(modelConfigsAll) ? modelConfigsAll.find((m: any) => m.provider === scanA.provider && m.model === scanA.model) : undefined;
+      const modelB = Array.isArray(modelConfigsAll) ? modelConfigsAll.find((m: any) => m.provider === scanB.provider && m.model === scanB.model) : undefined;
+      if (!modelA?.output_token_limit || !modelB?.output_token_limit) {
+        throw new Error('Model token limits missing for Scan A/B');
+      }
+
+      const { data: batchSizingData } = await supabase
+        .from('batch_sizing_config')
+        .select('*')
+        .single();
+      const safetyMarginPercent = Math.min(90, Math.max(0, Number.isFinite(batchSizingData?.safety_margin_percent) ? batchSizingData.safety_margin_percent : 15));
+      const safetyMultiplier = 1 - (safetyMarginPercent / 100);
+
+      // 2) Local token estimator
+      const estimateTokens = (provider: string, model: string, text: string): number => {
+        const t = String(text || '');
+        const ms = model.toLowerCase();
+        if (provider === 'bedrock') {
+          if (ms.includes('claude')) return Math.ceil(t.length / 3.5);
+          if (ms.includes('llama')) return Math.ceil(t.length / 4);
+          if (ms.includes('titan')) return Math.ceil(t.length / 3.2);
+          return Math.ceil(t.length / 3.8);
+        }
+        if (provider === 'openai' || provider === 'azure') {
+          if (ms.includes('gpt-4')) return Math.ceil(t.length / 3.2);
+          if (ms.includes('gpt-3.5')) return Math.ceil(t.length / 3.3);
+          return Math.ceil(t.length / 4);
+        }
+        return Math.ceil(t.length / 4);
+      };
+
+      // 3) Compute per-model batch size
+      const computeBatchSize = (phase: 'scan_a'|'scan_b', cfg: any, modelCfg: any): number => {
+        const inLimit = Number.isFinite(modelCfg?.input_token_limit) && modelCfg.input_token_limit > 0 ? modelCfg.input_token_limit : 128000;
+        const outLimit = Number.isFinite(modelCfg?.output_token_limit) && modelCfg.output_token_limit > 0 ? modelCfg.output_token_limit : 8192;
+        const maxIn = Math.floor(inLimit * safetyMultiplier);
+        const maxOut = Math.floor(outLimit * safetyMultiplier);
+        const tokensPerComment = Number.isFinite(cfg?.tokens_per_comment) && cfg.tokens_per_comment > 0 ? cfg.tokens_per_comment : 13;
+        const promptTokens = estimateTokens(cfg.provider, cfg.model, String(cfg.analysis_prompt || ''));
+        const available = Math.max(0, maxIn - promptTokens);
+        let count = 0;
+        let used = 0;
+        for (let i = 0; i < comments.length; i++) {
+          const ct = estimateTokens(cfg.provider, cfg.model, String(comments[i].originalText || comments[i].text || ''));
+          if (used + ct <= available) { used += ct; count += 1; } else { break; }
+        }
+        const maxByOutput = Math.floor(maxOut / Math.max(1, tokensPerComment));
+        count = Math.max(1, Math.min(count, maxByOutput));
+        console.log(`[SCAN][BATCH_CALC] ${phase} provider=${cfg.provider} model=${cfg.model} safety=${safetyMarginPercent}% perBatch=${count}`);
+        return count;
+      };
+
+      const batchSizeA = computeBatchSize('scan_a', scanA, modelA);
+      const batchSizeB = computeBatchSize('scan_b', scanB, modelB);
+      const finalBatchSize = Math.max(1, Math.min(batchSizeA, batchSizeB));
+      console.log(`[SCAN][BATCH_CALC] finalBatchSize=min(${batchSizeA}, ${batchSizeB})=${finalBatchSize}`);
+
+      // 4) Invoke scan-comments sequentially per batch; server runs A/B in parallel per batch
+      const aggregated: any[] = [];
+      for (let i = 0; i < comments.length; i += finalBatchSize) {
+        const batch = comments.slice(i, i + finalBatchSize);
+        console.log(`[SCAN][SUBMIT] Batch ${Math.floor(i / finalBatchSize) + 1} sending ${batch.length} comments`);
+        const { data: sData, error: sErr } = await supabase.functions.invoke('scan-comments', {
+          body: {
+            comments: batch,
+            defaultMode,
+            scanRunId,
+            isDemoScan: isDemoData,
+            skipAdjudication: true,
+            clientManagedBatching: true,
+            maxBatchesPerRequest: 1,
+            maxRunMs: 140000
+          }
+        });
+        if (sErr) {
+          console.error('[SCAN][BATCH] Error:', sErr);
+          throw new Error(sErr.message || 'Scan batch failed');
+        }
+        if (Array.isArray(sData?.comments) && sData.comments.length > 0) {
+          aggregated.push(...sData.comments);
+        }
+      }
+
+      const data = { comments: aggregated } as any;
 
       console.log(`Scan response:`, { data, error });
       console.log(`[DEBUG] Data type:`, typeof data, 'Error type:', typeof error);
