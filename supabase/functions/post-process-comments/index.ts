@@ -1473,6 +1473,30 @@ serve(async (req) => {
             }
             return new RegExp(esc, "gi");
           };
+          const normalizeWithMap = (s: string): { norm: string; map: number[] } => {
+            const map: number[] = [];
+            let norm = "";
+            for (let i = 0; i < s.length; i++) {
+              const ch = s[i];
+              const stripped = ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+              const lower = stripped.toLowerCase();
+              norm += lower;
+              for (let k = 0; k < lower.length; k++) map.push(i);
+            }
+            return { norm, map };
+          };
+          const replaceNormalizedOnce = (orig: string, target: string): string => {
+            const { norm: nOrig, map } = normalizeWithMap(orig);
+            const { norm: nTgt } = normalizeWithMap(target);
+            const idx = nOrig.indexOf(nTgt);
+            if (idx < 0) return orig;
+            const start = map[idx] ?? 0;
+            const end = (map[idx + nTgt.length - 1] ?? (start - 1)) + 1;
+            if (end > start) {
+              return orig.slice(0, start) + "XXXX" + orig.slice(end);
+            }
+            return orig;
+          };
           for (const span of sorted) {
             if (!span) continue;
             // 1) Literal exact
@@ -1491,6 +1515,12 @@ serve(async (req) => {
             const flex = buildFlexibleRegex(span);
             if (flex.test(out)) {
               out = out.replace(flex, "XXXX");
+              continue;
+            }
+            // 3b) Diacritic-insensitive normalized find/replace
+            const replaced = replaceNormalizedOnce(out, span);
+            if (replaced !== out) {
+              out = replaced;
               continue;
             }
             // 4) Token fallback: redact significant tokens when multi-word fails (longest-first)
