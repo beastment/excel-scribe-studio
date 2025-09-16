@@ -1768,6 +1768,18 @@ serve(async (req) => {
                   });
                 }
               }
+              // Fallback: if still no change, apply spans to any comment whose text contains any span substring
+              if (!redTexts.some((t, i) => (t || '').trim() !== String((ctx.chunk[i]?.text) || '').trim()) && spansByIdx.size > 0) {
+                console.warn('[POSTPROCESS][SPANS][DEBUG] Applying substring fallback within chunk');
+                redTexts = ctx.chunk.map((comment: any) => {
+                  const base = String(comment.originalText || comment.text || '');
+                  // Merge all spans arrays
+                  const allSpans: string[] = Array.from(spansByIdx.values()).flat();
+                  const hasHit = allSpans.some(s => base.includes(String(s)));
+                  const applied = hasHit ? applyRedactionSpansToText(base, allSpans, spanMinLen) : base;
+                  return enforceRedactionPolicy(applied) as string;
+                });
+              }
             } else {
               redTexts = ctx.rawRed ? normalizeBatchTextParsed(ctx.rawRed) : [];
             }
