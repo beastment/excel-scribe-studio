@@ -1240,8 +1240,10 @@ serve(async (req) => {
       for (let i = 0; i < maxResults && i < batch.length; i++) {
         const comment = batch[i];
         const expectedIndex = batchStart + i + 1;
-        const scanAResult = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
-        const scanBResult = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
+        const scanAResultRaw = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
+        const scanBResultRaw = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
+        const scanAResult = scanAResultRaw ? { ...scanAResultRaw, model: `${scanA.provider}/${scanA.model}` } : scanAResultRaw;
+        const scanBResult = scanBResultRaw ? { ...scanBResultRaw, model: `${scanB.provider}/${scanB.model}` } : scanBResultRaw;
         if (!scanAResult || !scanBResult) {
           console.warn(`Missing scan results for comment ${expectedIndex}, skipping`);
           continue;
@@ -1469,8 +1471,10 @@ serve(async (req) => {
       for (let i = 0; i < maxResults && i < batch.length; i++) {
         const comment = batch[i];
         const expectedIndex = currentBatchStart + i + 1;
-        const scanAResult = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
-        const scanBResult = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
+        const scanAResultRaw = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
+        const scanBResultRaw = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
+        const scanAResult = scanAResultRaw ? { ...scanAResultRaw, model: `${scanA.provider}/${scanA.model}` } : scanAResultRaw;
+        const scanBResult = scanBResultRaw ? { ...scanBResultRaw, model: `${scanB.provider}/${scanB.model}` } : scanBResultRaw;
 
         if (!scanAResult || !scanBResult) {
           console.warn(`Missing scan results for comment ${expectedIndex}, skipping`);
