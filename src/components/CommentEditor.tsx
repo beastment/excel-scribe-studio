@@ -551,12 +551,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   const bRes = c.adjudicationData?.scanBResult || c.scanBResult;
                   const bothIdent = Boolean(aRes?.identifiable) && Boolean(bRes?.identifiable);
                   const bothConc = Boolean(aRes?.concerning) && Boolean(bRes?.concerning);
+                  const resolvedConcerning = Boolean(r.concerning || bothConc);
+                  const resolvedIdentifiable = Boolean(r.identifiable || bothIdent);
+                  const debugSuffix = ` ScanA: Concerning ${aRes?.concerning ? "Y" : "N"}, Identifiable ${aRes?.identifiable ? "Y" : "N"}.` +
+                                     ` ScanB: Concerning ${bRes?.concerning ? "Y" : "N"}, Identifiable ${bRes?.identifiable ? "Y" : "N"}`;
+                  const baseReason = String(r.reasoning || c.aiReasoning || "Resolved by adjudicator");
+                  const combinedReason = `${baseReason}.${debugSuffix}`;
                   return {
                     ...c,
-                    concerning: Boolean(r.concerning || bothConc),
-                    identifiable: Boolean(r.identifiable || bothIdent),
+                    concerning: resolvedConcerning,
+                    identifiable: resolvedIdentifiable,
                     isAdjudicated: true,
-                    aiReasoning: r.reasoning || c.aiReasoning || ''
+                    aiReasoning: combinedReason
                   };
                 }
                 return c;
