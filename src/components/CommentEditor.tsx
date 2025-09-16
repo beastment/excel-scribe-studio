@@ -535,10 +535,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               (data as any).comments = (data.comments as any[]).map((c: any) => {
                 const r = adjMap.get(c.id) as any;
                 if (r && typeof r === 'object' && r !== null) {
+                  // Never downgrade below model agreement: if both scans agree a flag is true,
+                  // preserve it even if adjudicator says false.
+                  const aRes = c.adjudicationData?.scanAResult || c.scanAResult;
+                  const bRes = c.adjudicationData?.scanBResult || c.scanBResult;
+                  const bothIdent = Boolean(aRes?.identifiable) && Boolean(bRes?.identifiable);
+                  const bothConc = Boolean(aRes?.concerning) && Boolean(bRes?.concerning);
                   return {
                     ...c,
-                    concerning: Boolean(r.concerning),
-                    identifiable: Boolean(r.identifiable),
+                    concerning: Boolean(r.concerning || bothConc),
+                    identifiable: Boolean(r.identifiable || bothIdent),
                     isAdjudicated: true,
                     aiReasoning: r.reasoning || c.aiReasoning || ''
                   };
