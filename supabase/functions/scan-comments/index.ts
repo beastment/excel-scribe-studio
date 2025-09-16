@@ -1254,8 +1254,8 @@ serve(async (req) => {
         if (needsAdjudication) {
           totalSummary.needsAdjudication++;
         }
-        const concerning = scanAResult.concerning;
-        const identifiable = scanAResult.identifiable;
+        const concerning = Boolean(scanAResult.concerning || scanBResult.concerning);
+        const identifiable = Boolean(scanAResult.identifiable || scanBResult.identifiable);
         if (concerning) totalSummary.concerning++;
         if (identifiable) totalSummary.identifiable++;
         let mode: 'redact' | 'rephrase' | 'original';
@@ -1488,9 +1488,9 @@ serve(async (req) => {
           //console.log(`[ADJUDICATION] Comment ${comment.id} needs adjudication: concerning disagreement=${concerningDisagreement} (A:${scanAResult.concerning}, B:${scanBResult.concerning}), identifiable disagreement=${identifiableDisagreement} (A:${scanAResult.identifiable}, B:${scanBResult.identifiable})`);
         }
 
-        // Set flags based on scan results (will be resolved by adjudicator later)
-        const concerning = scanAResult.concerning; // Use Scan A as default, will be updated by adjudicator
-        const identifiable = scanAResult.identifiable;
+        // Set flags based on OR across Scan A and B (adjudicator resolves disagreements later)
+        const concerning = Boolean(scanAResult.concerning || scanBResult.concerning);
+        const identifiable = Boolean(scanAResult.identifiable || scanBResult.identifiable);
 
         if (concerning) totalSummary.concerning++;
         if (identifiable) totalSummary.identifiable++;
