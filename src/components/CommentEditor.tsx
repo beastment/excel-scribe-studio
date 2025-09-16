@@ -328,12 +328,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       const aggregated: any[] = [];
       for (let i = 0; i < comments.length; i += finalBatchSize) {
         const batch = comments.slice(i, i + finalBatchSize);
-        console.log(`[SCAN][SUBMIT] Batch ${Math.floor(i / finalBatchSize) + 1} sending ${batch.length} comments`);
+        const batchNo = Math.floor(i / finalBatchSize) + 1;
+        const batchRunId = `${scanRunId}-${batchNo}`;
+        console.log(`[SCAN][SUBMIT] Batch ${batchNo} sending ${batch.length} comments (runId=${batchRunId})`);
         const { data: sData, error: sErr } = await supabase.functions.invoke('scan-comments', {
           body: {
             comments: batch,
             defaultMode,
-            scanRunId,
+            scanRunId: batchRunId,
             isDemoScan: isDemoData,
             skipAdjudication: true,
             clientManagedBatching: true,
