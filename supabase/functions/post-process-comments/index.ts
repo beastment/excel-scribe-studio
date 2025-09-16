@@ -1565,22 +1565,21 @@ serve(async (req) => {
                 out = out.replace(re, (m, p1) => `${p1}XXXX`);
               }
             }
-            // 6) Last-chance word-level fallback: replace any alphabetic word pieces from span (length>=3)
+            // 6) Last-chance word-level fallback: replace alphabetic words from span (length>=3)
             try {
               const alphaWords = (span.match(/[A-Za-z]{3,}/g) || []).sort((a, b) => b.length - a.length);
-              const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const esc2 = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               for (const w of alphaWords) {
                 // ASCII word boundary
-                const asciiRe = new RegExp(`(^|[^A-Za-z])${esc(w)}(?=[^A-Za-z]|$)`, "gi");
+                const asciiRe = new RegExp(`(^|[^A-Za-z])${esc2(w)}(?=[^A-Za-z]|$)`, "gi");
                 out = out.replace(asciiRe, (m, p1) => `${p1}XXXX`);
                 // Unicode-tolerant boundary with allowed zero-width/combining between letters
                 const between = "[\\u0300-\\u036f\\u200B\\u200C\\u200D]*";
-                const chars = w.split("").map(c => esc(c)).join(between);
+                const chars = w.split("").map(c => esc2(c)).join(between);
                 try {
                   const uniRe = new RegExp(`(^|[^\\p{L}])${chars}(?=[^\\p{L}]|$)`, "giu");
                   out = out.replace(uniRe, (m, p1) => `${p1}XXXX`);
                 } catch (_) {
-                  // environments without Unicode property escapes
                   const uniAsciiRe = new RegExp(`(^|[^A-Za-z])${chars}(?=[^A-Za-z]|$)`, "gi");
                   out = out.replace(uniAsciiRe, (m, p1) => `${p1}XXXX`);
                 }
@@ -1594,6 +1593,17 @@ serve(async (req) => {
 
         const redactionMode = (scanConfig.redaction_output_mode === 'spans') ? 'spans' : 'full_text';
         const spanMinLen = Number.isFinite(scanConfig.span_min_length) && (scanConfig.span_min_length as number) >= 1 ? (scanConfig.span_min_length as number) : 2;
+
+        // Aggregate best results per id to avoid weaker redactions overwriting stronger ones across providers
+        const bestById = new Map<string, { id: string; originalRow?: number; scannedIndex?: number; redactedText?: string; rephrasedText?: string; baseText: string; mode: string }>();
+        const scoreRedaction = (orig: string, red?: string): number => {
+          if (!red) return -1;
+          const x = (red.match(/XXXX/g) || []).length;
+          // prefer more XXXX, then larger edit distance proxy (length difference)
+          const delta = Math.max(0, orig.length - red.length);
+          return x * 1000 + delta;
+        };
+
         for (const state of groupStates) {
           for (const ctx of state.contexts) {
             let redTexts: string[] = [];
@@ -1649,7 +1659,7 @@ serve(async (req) => {
                       for (const obj of parsed) {
                         const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
                         const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
-                    const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
+                        const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
                         if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
                       }
                     }
@@ -1740,6 +1750,24 @@ serve(async (req) => {
                 // Always enforce deterministic policy last
                 return enforceRedactionPolicy(applied) as string;
               });
+              // Fallback: if none changed and spansByIdx looks like chunk ordinals, apply by ordinal (1-based)
+              const anyChanged = redTexts.some((t, i) => (t || '').trim() !== String((ctx.chunk[i]?.text) || '').trim());
+              if (!anyChanged && spansByIdx.size > 0) {
+                const ordinalKeys = Array.from(spansByIdx.keys());
+                const maxKey = Math.max(...ordinalKeys);
+                const minKey = Math.min(...ordinalKeys);
+                const looksOrdinal = minKey >= 1 && maxKey <= ctx.chunk.length;
+                if (looksOrdinal) {
+                  console.warn('[POSTPROCESS][SPANS][DEBUG] Applying ordinal index fallback for chunk of length', ctx.chunk.length);
+                  redTexts = ctx.chunk.map((comment: any, idx: number) => {
+                    const spans = spansByIdx.get(idx + 1) || [];
+                    const applied = (spans.length > 0)
+                      ? applyRedactionSpansToText(String(comment.originalText || comment.text || ''), spans as string[], spanMinLen)
+                      : String(comment.originalText || comment.text || '');
+                    return enforceRedactionPolicy(applied) as string;
+                  });
+                }
+              }
             } else {
               redTexts = ctx.rawRed ? normalizeBatchTextParsed(ctx.rawRed) : [];
             }
@@ -1789,22 +1817,53 @@ serve(async (req) => {
               const red = redTexts[i] || comment.text;
               const rep = repTexts[i] || comment.text;
               let mode = comment.mode || ((comment.concerning || comment.identifiable) ? defaultMode : 'original');
-              let finalText = comment.text;
-              if (mode === 'redact' && (comment.identifiable || comment.concerning)) finalText = red;
-              else if (mode === 'rephrase' && (comment.identifiable || comment.concerning)) finalText = rep;
-              const hasAIRedaction = red.trim().length > 0 && red.trim() !== (comment.text || '').trim();
-              const hasAIRephrase = rep.trim().length > 0 && rep.trim() !== (comment.text || '').trim();
-              processedComments.push({
-                id: comment.id,
-                originalRow: comment.originalRow,
-                scannedIndex: comment.scannedIndex,
-                redactedText: hasAIRedaction ? red : undefined,
-                rephrasedText: hasAIRephrase ? rep : undefined,
-                finalText,
-                mode
-              });
+              const id = String(comment.id);
+              const existing = bestById.get(id);
+              const baseText = String(comment.text || '');
+              if (!existing) {
+                bestById.set(id, {
+                  id,
+                  originalRow: comment.originalRow,
+                  scannedIndex: comment.scannedIndex,
+                  redactedText: red && red !== baseText ? red : undefined,
+                  rephrasedText: rep && rep !== baseText ? rep : undefined,
+                  baseText,
+                  mode
+                });
+              } else {
+                // Choose better redaction
+                const currentBest = existing.redactedText;
+                const candBest = red && red !== baseText ? red : undefined;
+                const best = (() => {
+                  const sCur = scoreRedaction(baseText, currentBest);
+                  const sNew = scoreRedaction(baseText, candBest);
+                  return sNew > sCur ? candBest : currentBest;
+                })();
+                existing.redactedText = best;
+                // Keep first available rephrase if none yet
+                if (!existing.rephrasedText && rep && rep !== baseText) existing.rephrasedText = rep;
+                // Preserve mode; no change
+              }
             }
           }
+        }
+        // Emit aggregated results
+        for (const v of bestById.values()) {
+          const hasAIRedaction = typeof v.redactedText === 'string' && v.redactedText.trim().length > 0 && v.redactedText.trim() !== v.baseText.trim();
+          const hasAIRephrase = typeof v.rephrasedText === 'string' && v.rephrasedText.trim().length > 0 && v.rephrasedText.trim() !== v.baseText.trim();
+          // Compute finalText from available fields and mode
+          let finalText = v.baseText;
+          if (v.mode === 'redact' && hasAIRedaction) finalText = v.redactedText as string;
+          else if (v.mode === 'rephrase' && hasAIRephrase) finalText = v.rephrasedText as string;
+          processedComments.push({
+            id: v.id,
+            originalRow: v.originalRow,
+            scannedIndex: v.scannedIndex,
+            redactedText: hasAIRedaction ? v.redactedText : undefined,
+            rephrasedText: hasAIRephrase ? v.rephrasedText : undefined,
+            finalText,
+            mode: v.mode
+          });
         }
       }
     } catch (error) {
