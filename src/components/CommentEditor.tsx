@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -62,8 +63,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
-  const [showConcerningOnly, setShowConcerningOnly] = useState(false);
-  const [showIdentifiableOnly, setShowIdentifiableOnly] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [filteredComments, setFilteredComments] = useState<CommentData[]>(comments || []);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
@@ -110,14 +110,26 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   useEffect(() => {
     let filtered = comments.filter(comment => {
       const matchesSearch = comment.text.toLowerCase().includes(searchTerm.toLowerCase()) || comment.originalText.toLowerCase().includes(searchTerm.toLowerCase()) || comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesConcerning = showConcerningOnly ? comment.concerning : true;
-      const matchesIdentifiable = showIdentifiableOnly ? comment.identifiable : true;
       const matchesDemographic = selectedDemographic ? comment.demographics === selectedDemographic : true;
-      return matchesSearch && matchesConcerning && matchesIdentifiable && matchesDemographic;
+      
+      // Filter logic based on active filters
+      if (activeFilters.length === 0) {
+        return matchesSearch && matchesDemographic; // Show all when no filters selected
+      }
+      
+      const isError = (comment.concerning || comment.identifiable) && comment.text === comment.originalText;
+      const matchesFilters = activeFilters.some(filter => {
+        if (filter === 'concerning') return comment.concerning;
+        if (filter === 'identifiable') return comment.identifiable;
+        if (filter === 'error') return isError;
+        return false;
+      });
+      
+      return matchesSearch && matchesDemographic && matchesFilters;
     });
-    console.log('[FILTER] Updating filteredComments, count:', filtered.length, 'from comments:', comments.length);
+    console.log('[FILTER] Updating filteredComments, count:', filtered.length, 'from comments:', comments.length, 'activeFilters:', activeFilters);
     setFilteredComments(filtered);
-  }, [comments, searchTerm, showConcerningOnly, showIdentifiableOnly, selectedDemographic]);
+  }, [comments, searchTerm, activeFilters, selectedDemographic]);
 
   // Load sessions when user logs in
   useEffect(() => {
@@ -1143,6 +1155,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   }
   const concerningCount = comments.filter(c => c.concerning).length;
   const identifiableCount = comments.filter(c => c.identifiable).length;
+  const errorCount = comments.filter(c => (c.concerning || c.identifiable) && c.text === c.originalText).length;
 
   // Check if any comments have demographic data
   const hasDemographics = comments.some(c => c.demographics);
@@ -1466,6 +1479,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             {filteredComments.length} comments
             {concerningCount > 0 && ` • ${concerningCount} concerning`}
             {identifiableCount > 0 && ` • ${identifiableCount} identifiable`}
+            {errorCount > 0 && ` • ${errorCount} errors`}
           </p>
         </div>
         
@@ -1477,14 +1491,23 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setShowConcerningOnly(!showConcerningOnly)} variant={showConcerningOnly ? "default" : "outline"} className="gap-2">
-              <AlertTriangle className="w-4 h-4" />
-              {showConcerningOnly ? 'Show All' : 'Show Concerning Only'}
-            </Button>
-            <Button onClick={() => setShowIdentifiableOnly(!showIdentifiableOnly)} variant={showIdentifiableOnly ? "default" : "outline"} className="gap-2">
-              {showIdentifiableOnly ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              {showIdentifiableOnly ? 'Show All' : 'Show Identifiable Only'}
-            </Button>
+            <div className="flex items-center gap-2 px-3 py-2 border rounded-md">
+              <span className="text-sm font-medium">Filter:</span>
+              <ToggleGroup type="multiple" value={activeFilters} onValueChange={setActiveFilters} className="gap-1">
+                <ToggleGroupItem value="concerning" aria-label="Concerning" size="sm">
+                  <AlertTriangle className="w-4 h-4 mr-1" />
+                  Concerning
+                </ToggleGroupItem>
+                <ToggleGroupItem value="identifiable" aria-label="Identifiable" size="sm">
+                  <Eye className="w-4 h-4 mr-1" />
+                  Identifiable
+                </ToggleGroupItem>
+                <ToggleGroupItem value="error" aria-label="Error" size="sm">
+                  <X className="w-4 h-4 mr-1" />
+                  Error
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
             {isAdmin && (
               <Button onClick={() => setDebugMode(!debugMode)} variant={debugMode ? "default" : "outline"} className="gap-2">
                 {debugMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
