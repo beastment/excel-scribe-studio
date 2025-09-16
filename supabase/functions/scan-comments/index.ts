@@ -1134,10 +1134,11 @@ serve(async (req) => {
       // For client-managed batching, process only the provided comments as a single batch
       console.log(`[CLIENT_MANAGED] Processing single batch: ${inputComments.length} comments starting from index ${batchStart}`);
       
-      const batch = inputComments.slice(batchStart, batchStart + finalBatchSize);
-      const batchEnd = Math.min(batchStart + finalBatchSize, inputComments.length);
+      // Client-managed: the request already contains exactly one batch
+      const batch = inputComments;
+      const batchEnd = batchStart + batch.length;
       
-      console.log(`[PROCESS] Batch ${batchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize})`);
+      console.log(`[PROCESS] Batch ${batchStart + 1}-${batchEnd} of ${batchStart + batch.length} (finalBatchSize=${finalBatchSize})`);
       console.log(`[TOKENS] Scan A max_tokens: ${scanATokenLimits.output_token_limit}, Scan B max_tokens: ${scanBTokenLimits.output_token_limit}`);
       console.log(`[TOKENS] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
 
