@@ -353,7 +353,17 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
       }
 
-      const data = { comments: aggregated } as any;
+      let data = { comments: aggregated } as any;
+      // Enforce flags from raw scan results (OR across models) to avoid any downstream downgrades
+      if (Array.isArray(data.comments)) {
+        data.comments = (data.comments as any[]).map((c: any) => {
+          const a = c.adjudicationData?.scanAResult || c.scanAResult;
+          const b = c.adjudicationData?.scanBResult || c.scanBResult;
+          const orIdent = Boolean((a && a.identifiable) || (b && b.identifiable) || c.identifiable);
+          const orConc = Boolean((a && a.concerning) || (b && b.concerning) || c.concerning);
+          return { ...c, identifiable: orIdent, concerning: orConc };
+        });
+      }
 
       console.log(`Scan response:`, { data });
       console.log(`[DEBUG] Data type:`, typeof data);
