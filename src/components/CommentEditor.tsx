@@ -337,6 +337,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             defaultMode,
             scanRunId: batchRunId,
             isDemoScan: isDemoData,
+            batchStart: i, // hint to server: this is a follow-up/client-batched call
             skipAdjudication: true,
             clientManagedBatching: true,
             maxBatchesPerRequest: 1,
