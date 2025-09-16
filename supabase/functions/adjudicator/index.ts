@@ -674,27 +674,27 @@ serve(async (req) => {
       }
 
       // Build final response using stable ids
-      const adjudicatedComments = comments.map((comment, i) => {
-        const needsAdj = needsAdjudication.includes(comment);
-        const itemId = (comment.originalRow as number) || (comment.scannedIndex as number) || (i + 1);
+      const needsAdjIdSet = new Set(needsAdjudication.map(c => c.id));
+      const adjudicatedComments = enriched.map((comment, i) => {
+        const needsAdj = needsAdjIdSet.has(comment.id);
+        const itemId = (comment.originalRow as number) || (comment.scannedIndex as number);
         if (needsAdj) {
-          const adjudicated = resultByItemId.get(itemId);
+          const adjudicated = typeof itemId === 'number' ? resultByItemId.get(itemId) : undefined;
           if (adjudicated) {
             return {
               id: comment.id,
               concerning: Boolean(adjudicated.concerning),
               identifiable: Boolean(adjudicated.identifiable),
-              reasoning: adjudicated.reasoning || 'Resolved by adjudicator',
+              reasoning: (adjudicated as any).reasoning || 'Resolved by adjudicator',
               model: `${adjudicatorCfg.provider}/${adjudicatorCfg.model}`
             };
           }
         }
-        // For comments that don't need adjudication, use agreement results
-        const agreements = comment.agreements || {};
+        // For comments that don't need adjudication or missing adjudicated result, use agreement results
         return {
           id: comment.id,
-          concerning: agreements.concerning !== null ? agreements.concerning : comment.scanAResult.concerning,
-          identifiable: agreements.identifiable !== null ? agreements.identifiable : comment.scanAResult.identifiable,
+          concerning: Boolean(comment.scanAResult.concerning),
+          identifiable: Boolean(comment.scanAResult.identifiable),
           reasoning: 'No adjudication needed - scanners agreed',
           model: `${adjudicatorCfg.provider}/${adjudicatorCfg.model}`
         };
