@@ -435,6 +435,7 @@ serve(async (req) => {
     const isIncrementalRequest = Number.isFinite(batchStartValue) && batchStartValue > 0;
     const checkStatusOnly = Boolean(requestBody.checkStatusOnly);
     const skipAdjudication = Boolean(requestBody.skipAdjudication);
+    const clientManagedBatching = Boolean(requestBody.clientManagedBatching);
     // Optional runtime controls to ensure timely partial responses for large datasets
     const requestedMaxBatchesPerRequest = Number.isFinite(requestBody.maxBatchesPerRequest) ? Math.max(1, Math.min(50, Number(requestBody.maxBatchesPerRequest))) : undefined;
     const requestedMaxRunMs = Number.isFinite(requestBody.maxRunMs) ? Math.max(10000, Math.min(140000, Number(requestBody.maxRunMs))) : undefined;
@@ -479,7 +480,7 @@ serve(async (req) => {
       }
     }
     
-    if (!isCached && !isIncrementalRequest) {
+    if (!clientManagedBatching && !isCached && !isIncrementalRequest) {
       // Only block duplicate initial requests (batchStart=0 or undefined)
       if (gAny.__analysisStarted.has(scanRunId)) {
         console.log(`[DUPLICATE ANALYSIS] scanRunId=${scanRunId} received a second initial analysis request. Ignoring.`);
@@ -493,7 +494,7 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       gAny.__analysisStarted.add(scanRunId);
-    } else if (isIncrementalRequest) {
+    } else if (!clientManagedBatching && isIncrementalRequest) {
       console.log(`[INCREMENTAL] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${batchStartValue}`);
       // Deduplicate incremental batch processing per (runId,batchStart) within this function's lifecycle
       gAny.__processedBatchStarts = gAny.__processedBatchStarts || new Set<string>();
@@ -513,7 +514,7 @@ serve(async (req) => {
       gAny.__processedBatchStarts.add(batchKey);
     }
     // If this run id has already completed, short-circuit to avoid duplicate model calls
-    if (gAny.__runCompleted.has(scanRunId)) {
+    if (!clientManagedBatching && gAny.__runCompleted.has(scanRunId)) {
       console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed. Skipping.`);
       return new Response(JSON.stringify({
         comments: [],
@@ -528,7 +529,7 @@ serve(async (req) => {
 
     
     // Allow incremental processing: only block if this is a duplicate initial request
-    if (gAny.__runInProgress.has(scanRunId) && !isIncrementalRequest) {
+    if (!clientManagedBatching && gAny.__runInProgress.has(scanRunId) && !isIncrementalRequest) {
       console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already in progress. Skipping duplicate call.`);
       return new Response(JSON.stringify({
         comments: [],
@@ -542,9 +543,11 @@ serve(async (req) => {
     
     console.log(`[RUN STATUS] scanRunId=${scanRunId}, isIncrementalRequest=${isIncrementalRequest}, runInProgress=${gAny.__runInProgress.has(scanRunId)}`);
     
-    // Mark run as in progress
-    gAny.__runInProgress.add(scanRunId);
-    console.log(`[RUN STATUS] scanRunId=${scanRunId} marked as in progress`);
+    // Mark run as in progress (only for non-client-managed batching)
+    if (!clientManagedBatching) {
+      gAny.__runInProgress.add(scanRunId);
+      console.log(`[RUN STATUS] scanRunId=${scanRunId} marked as in progress`);
+    }
     
     const { 
       comments: inputComments, 
@@ -584,7 +587,7 @@ serve(async (req) => {
     
     // Check database for run status to prevent duplicates across function instances
     // IMPORTANT: Only apply this to duplicate INITIAL requests. Incremental follow-ups must not be blocked.
-    if (!isIncrementalRequest && !isCached) {
+    if (!clientManagedBatching && !isIncrementalRequest && !isCached) {
       const { data: existingRun, error: runCheckError } = await supabase
         .from('ai_logs')
         .select('id, function_name, response_status, created_at')
@@ -613,8 +616,10 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
       }
-    } else if (isIncrementalRequest) {
+    } else if (!clientManagedBatching && isIncrementalRequest) {
       console.log(`[RUN CHECK] Skipping DB duplicate check for incremental request scanRunId=${scanRunId}`);
+    } else if (clientManagedBatching) {
+      console.log(`[RUN CHECK] Skipping DB duplicate check for client-managed batching scanRunId=${scanRunId}`);
     }
 
     const { data: configs, error: configError } = await supabase
@@ -987,9 +992,10 @@ serve(async (req) => {
     console.log(`[TOKEN LIMITS] Scan A:`, scanATokenLimits);
     console.log(`[TOKEN LIMITS] Scan B:`, scanBTokenLimits);
     
-    // Use faster batch size calculation for large datasets
-    console.log(`[BATCH_SIZING] Using optimized batch size calculation for ${inputComments.length} comments...`);
-    const batchSizingStartTime = Date.now();
+    // Use faster batch size calculation for large datasets (only for non-client-managed batching)
+    if (!clientManagedBatching) {
+      console.log(`[BATCH_SIZING] Using optimized batch size calculation for ${inputComments.length} comments...`);
+      const batchSizingStartTime = Date.now();
     
     // Use precise AI batch size calculation for all datasets
     let scanABatchSize, scanBBatchSize;
@@ -1087,6 +1093,11 @@ serve(async (req) => {
       console.log(`  Scan A: ${scanAInputTokens} input → ${scanAOutputTokens} output (${scanA.tokens_per_comment || 13} tokens per comment)`);
       console.log(`  Scan B: ${scanBInputTokens} input → ${scanBOutputTokens} output (${scanB.tokens_per_comment || 13} tokens per comment)`);
     }
+    } else {
+      // For client-managed batching, use the provided comments as a single batch
+      console.log(`[CLIENT_MANAGED] Processing ${inputComments.length} comments as single batch (client-managed batching)`);
+      finalBatchSize = inputComments.length;
+    }
     
     // Process comments in smaller chunks to avoid gateway timeout
     // Reduce batch limits to prevent edge function timeout
@@ -1100,7 +1111,101 @@ serve(async (req) => {
     aiLogger.setFunctionStartTime(overallStartTime);
     
     let batchesProcessed = 0;
-    for (let currentBatchStart = batchStart; currentBatchStart < inputComments.length; currentBatchStart += finalBatchSize) {
+    
+    if (clientManagedBatching) {
+      // For client-managed batching, process only the provided comments as a single batch
+      console.log(`[CLIENT_MANAGED] Processing single batch: ${inputComments.length} comments starting from index ${batchStart}`);
+      
+      const batch = inputComments.slice(batchStart, batchStart + finalBatchSize);
+      const batchEnd = Math.min(batchStart + finalBatchSize, inputComments.length);
+      
+      console.log(`[PROCESS] Batch ${batchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize})`);
+      console.log(`[TOKENS] Scan A max_tokens: ${scanATokenLimits.output_token_limit}, Scan B max_tokens: ${scanBTokenLimits.output_token_limit}`);
+      console.log(`[TOKENS] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
+
+      // Process batch with Scan A and Scan B, enforcing TPM limits
+      const batchStartTime = Date.now();
+      
+      // Process with Scan A
+      const scanAResultsArray = await processBatch(batch, batchStart, finalBatchSize, scanRunId, "scan_a");
+      
+      // Process with Scan B
+      const scanBResultsArray = await processBatch(batch, batchStart, finalBatchSize, scanRunId, "scan_b");
+      
+      // Process each comment in this batch
+      const maxResults = Math.max(scanAResultsArray.length, scanBResultsArray.length);
+      console.log(`[BATCH_DEBUG] Processing batch ${batchStart + 1}-${batchEnd}: batch.length=${batch.length}, maxResults=${maxResults}`);
+      
+      for (let i = 0; i < maxResults && i < batch.length; i++) {
+        const comment = batch[i];
+        const scanAResult = scanAResultsArray[i];
+        const scanBResult = scanBResultsArray[i];
+        const expectedIndex = batchStart + i + 1;
+
+        if (!scanAResult || !scanBResult) {
+          console.warn(`Missing scan results for comment ${expectedIndex}, skipping`);
+          continue;
+        }
+
+        // Validate that the AI returned the correct index
+        if (scanAResult.index !== expectedIndex) {
+          console.warn(`[WARNING] Scan A returned index ${scanAResult.index} for comment ${expectedIndex}`);
+        }
+        if (scanBResult.index !== expectedIndex) {
+          console.warn(`[WARNING] Scan B returned index ${scanBResult.index} for comment ${expectedIndex}`);
+        }
+
+        // Determine if adjudication is needed
+        const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
+        const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
+        const needsAdjudication = concerningDisagreement || identifiableDisagreement;
+
+        if (needsAdjudication) {
+          totalSummary.needsAdjudication++;
+        }
+
+        // Set flags based on scan results (will be resolved by adjudicator later)
+        const concerning = scanAResult.concerning; // Use Scan A as default, will be updated by adjudicator
+        const identifiable = scanAResult.identifiable;
+
+        if (concerning) totalSummary.concerning++;
+        if (identifiable) totalSummary.identifiable++;
+
+        // Determine the mode based on content type
+        let mode: 'redact' | 'rephrase' | 'original';
+        if (concerning) {
+          mode = 'redact';
+        } else if (identifiable) {
+          mode = 'rephrase';
+        } else {
+          mode = 'original';
+        }
+
+        // Create comment result with adjudication flags
+        const processedComment = {
+          id: comment.id,
+          originalText: comment.text,
+          originalRow: comment.originalRow || expectedIndex,
+          scannedIndex: comment.scannedIndex || expectedIndex,
+          scanAResult: scanAResult,
+          scanBResult: scanBResult,
+          concerning: concerning,
+          identifiable: identifiable,
+          mode: mode,
+          needsAdjudication: needsAdjudication,
+          adjudicationReason: needsAdjudication ? 
+            (concerningDisagreement ? 'concerning_disagreement' : 'identifiable_disagreement') : null
+        };
+
+        allScannedComments.push(processedComment);
+      }
+      
+      batchesProcessed = 1;
+      
+      console.log(`[INCREMENTAL] Processed batch: rows ${batchStart} to ${batchEnd - 1} (${allScannedComments.length} comments)`);
+    } else {
+      // Original server-managed batching logic
+      for (let currentBatchStart = batchStart; currentBatchStart < inputComments.length; currentBatchStart += finalBatchSize) {
       // Check for timeout before processing each batch
       const currentTime = Date.now();
       const elapsedTime = currentTime - overallStartTime;
@@ -1404,6 +1509,7 @@ serve(async (req) => {
         console.log(`[SUCCESS] All comments processed successfully: rows ${firstCommentIndex} to ${lastCommentIndex}`);
       }
     }
+    } // End of server-managed batching else block
     
     const totalRunTimeMs = Date.now() - overallStartTime;
     
@@ -1413,9 +1519,9 @@ serve(async (req) => {
     
     // Determine if there are more batches to process (must be defined before first use)
     const lastProcessedIndex = batchStart + (batchesProcessed * finalBatchSize);
-    const hasMoreBatches = lastProcessedIndex < inputComments.length;
+    const hasMoreBatches = !clientManagedBatching && lastProcessedIndex < inputComments.length;
     
-    if (!hasMoreBatches && actualTotal < expectedTotal) {
+    if (!clientManagedBatching && !hasMoreBatches && actualTotal < expectedTotal) {
       const missingCount = expectedTotal - actualTotal;
       console.log(`[TAIL_RETRY] Missing ${missingCount} comments (${actualTotal}/${expectedTotal}), attempting tail retry...`);
       
@@ -1455,7 +1561,7 @@ serve(async (req) => {
     // Call adjudicator if there are comments that need adjudication and no more batches// //
     console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}, skip=${skipAdjudication}`);
     
-    if (!skipAdjudication && !hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
+    if (!clientManagedBatching && !skipAdjudication && !hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
       // Safety gate: ensure ALL scan-comments calls have finished (no pending logs for this run)
       try {
         const { data: pendingScanLogs, error: pendingErr } = await supabase
@@ -1652,14 +1758,16 @@ serve(async (req) => {
       }
     }
     
-    // Only mark run as completed if we've processed all comments
-    if (!hasMoreBatches) {
+    // Only mark run as completed if we've processed all comments (and not client-managed)
+    if (!clientManagedBatching && !hasMoreBatches) {
       console.log(`[COMPLETION] All comments processed for scanRunId=${scanRunId}, marking as completed`);
       gAny.__runCompleted.add(scanRunId);
       console.log(`[RUN STATUS] scanRunId=${scanRunId} marked as completed`);
     }
-    gAny.__runInProgress.delete(scanRunId);
-    console.log(`[RUN STATUS] scanRunId=${scanRunId} removed from in progress`);
+    if (!clientManagedBatching) {
+      gAny.__runInProgress.delete(scanRunId);
+      console.log(`[RUN STATUS] scanRunId=${scanRunId} removed from in progress`);
+    }
 
         console.log('Returning successful response with CORS headers:', corsHeaders);
         return new Response(JSON.stringify(response), {
@@ -1671,12 +1779,12 @@ serve(async (req) => {
       comments: allScannedComments,
       batchStart: batchStart,
       batchSize: finalBatchSize,
-      hasMore: hasMoreBatches,
+      hasMore: clientManagedBatching ? false : hasMoreBatches, // Client-managed batching always returns hasMore: false
       totalComments: inputComments.length,
       summary: totalSummary,
       totalRunTimeMs: Date.now() - overallStartTime,
       batchesProcessed: batchesProcessed,
-      nextBatchStart: hasMoreBatches ? lastProcessedIndex : inputComments.length,
+      nextBatchStart: clientManagedBatching ? inputComments.length : (hasMoreBatches ? lastProcessedIndex : inputComments.length),
       adjudicationStarted: false,
       adjudicationCompleted: false
     };

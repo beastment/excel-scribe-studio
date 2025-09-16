@@ -1321,11 +1321,11 @@ serve(async (req) => {
             return buildBatchTextPrompt(scanConfig.redact_prompt, ch.length);
           })();
           return {
-            chunk: ch,
+          chunk: ch,
             sentinelRed: baseSentinel,
             sentinelReph: baseSentinel,
             promptRed,
-            promptReph: buildBatchTextPrompt(scanConfig.rephrase_prompt, ch.length)
+          promptReph: buildBatchTextPrompt(scanConfig.rephrase_prompt, ch.length)
           };
         });
 
@@ -1837,13 +1837,13 @@ serve(async (req) => {
               if (!existing) {
                 bestById.set(id, {
                   id,
-                  originalRow: comment.originalRow,
-                  scannedIndex: comment.scannedIndex,
+                originalRow: comment.originalRow,
+                scannedIndex: comment.scannedIndex,
                   redactedText: red && red !== baseText ? red : undefined,
                   rephrasedText: rep && rep !== baseText ? rep : undefined,
                   baseText,
-                  mode
-                });
+                mode
+              });
               } else {
                 // Choose better redaction
                 const currentBest = existing.redactedText;

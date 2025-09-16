@@ -1,6 +1,14 @@
 2025-09-15
 - Disable server-side adjudication execution; adjudication is now client-managed with per-batch invocations sized by Dashboard token limits to avoid Edge timeouts.
 
+2025-01-27
+- Implement client-managed batching support to prevent duplicate run guards and TAIL_RETRY issues
+  - Added `clientManagedBatching` request flag to bypass server-side batch sizing and duplicate checks
+  - When `clientManagedBatching=true`: processes only provided comments as single batch, skips all internal batch sizing logic
+  - Gates duplicate run checks, TAIL_RETRY logic, and adjudication with `!clientManagedBatching`
+  - Prevents "[DUPLICATE RUN]" and "[TAIL_RETRY] processBatch is not defined" errors for client-orchestrated batches
+  - Returns `hasMore: false` for client-managed requests to indicate single-batch completion
+
 # Scan Comments Edge Function - Recent Changes
 
 - 2025-09-07: Prevent duplicate submissions during adjudication polling
