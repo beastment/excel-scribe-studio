@@ -291,32 +291,39 @@ export function AILogsViewer({
       const typedLogs = allLogs as unknown as AILog[];
       console.log('AILogsViewer: Fetched logs:', typedLogs.length);
 
-      // Find the most recent run ID (non-null scan_run_id)
+      // Find the most recent run ID, normalizing batch-suffixed IDs like "1234-2" → "1234"
+      const normalizeRunId = (id?: string | null) => {
+        if (!id) return '';
+        const m = id.match(/^(.*?)(?:-\d+)?$/);
+        return m ? m[1] : id;
+      };
+
       const logsWithRunId = typedLogs.filter(log => log.scan_run_id) || [];
       if (logsWithRunId.length > 0) {
-        // Group by scan_run_id and find the most recent one
+        // Group by normalized run id (base id without -batch suffix)
         const runGroups = logsWithRunId.reduce((groups, log) => {
-          if (!groups[log.scan_run_id!]) {
-            groups[log.scan_run_id!] = [];
+          const baseId = normalizeRunId(log.scan_run_id);
+          if (!groups[baseId]) {
+            groups[baseId] = [];
           }
-          groups[log.scan_run_id!].push(log);
+          groups[baseId].push(log);
           return groups;
         }, {} as Record<string, AILog[]>);
 
-        // Find the run with the most recent timestamp
+        // Find the most recent group by newest log timestamp
         let mostRecentRun = '';
         let mostRecentTime = 0;
-        Object.entries(runGroups).forEach(([runId, runLogs]) => {
-          const runTime = new Date(runLogs[0].created_at).getTime();
+        Object.entries(runGroups).forEach(([baseId, runLogs]) => {
+          const runTime = Math.max(...runLogs.map(l => new Date(l.created_at).getTime()));
           if (runTime > mostRecentTime) {
             mostRecentTime = runTime;
-            mostRecentRun = runId;
+            mostRecentRun = baseId;
           }
         });
         setMostRecentRunId(mostRecentRun);
 
-        // Filter logs to only show the most recent run
-        const filteredLogs = typedLogs.filter(log => log.scan_run_id === mostRecentRun) || [];
+        // Filter logs to only show the most recent normalized run (include all batch-suffixed entries)
+        const filteredLogs = typedLogs.filter(log => normalizeRunId(log.scan_run_id) === mostRecentRun) || [];
         setLogs(filteredLogs);
 
         // Calculate run statistics
