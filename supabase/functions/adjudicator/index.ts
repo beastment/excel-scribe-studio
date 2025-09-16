@@ -356,11 +356,22 @@ serve(async (req) => {
     // Adjudication is now free - no credit checking needed
     console.log(`${logPrefix} [ADJUDICATOR] Adjudication is free - no credits required`);
     
-    const needsAdjudication = comments.filter(c => {
-      // Safely check if agreements exist and have null values
-      const agreements = c.agreements || {};
-      return agreements.concerning === null || agreements.identifiable === null;
+    // Normalize agreements. If not provided, derive from scanA vs scanB equality.
+    const enriched = comments.map(c => {
+      const a = c.scanAResult || { concerning: false, identifiable: false };
+      const b = c.scanBResult || { concerning: false, identifiable: false };
+      const concerningAgrees = a.concerning === b.concerning;
+      const identifiableAgrees = a.identifiable === b.identifiable;
+      const agreements = c.agreements && typeof c.agreements === 'object' ? c.agreements : {} as any;
+      const normAgreements = {
+        concerning: typeof agreements.concerning === 'boolean' ? agreements.concerning : concerningAgrees,
+        identifiable: typeof agreements.identifiable === 'boolean' ? agreements.identifiable : identifiableAgrees
+      };
+      return { ...c, agreements: normAgreements };
     });
+
+    // A comment needs adjudication if either axis disagrees (agreement === false)
+    const needsAdjudication = enriched.filter(c => c.agreements.concerning === false || c.agreements.identifiable === false);
 
     // Filter comments that need adjudication (where agreements are null)
 
@@ -369,12 +380,16 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
-          adjudicatedComments: comments.map(c => {
-            const agreements = c.agreements || {};
+          adjudicatedComments: enriched.map(c => {
+            // On agreement, use the agreed labels (from either scan)
+            const a = c.scanAResult;
+            const b = c.scanBResult;
+            const agreedConcerning = (a?.concerning === b?.concerning) ? a?.concerning : a?.concerning;
+            const agreedIdentifiable = (a?.identifiable === b?.identifiable) ? a?.identifiable : a?.identifiable;
             return {
               id: c.id,
-              concerning: agreements.concerning !== null ? agreements.concerning : c.scanAResult.concerning,
-              identifiable: agreements.identifiable !== null ? agreements.identifiable : c.scanAResult.identifiable,
+              concerning: Boolean(agreedConcerning),
+              identifiable: Boolean(agreedIdentifiable),
               reasoning: 'No adjudication needed - scanners agreed',
               model: `${adjudicatorConfig?.provider || 'auto'}/${adjudicatorConfig?.model || 'auto'}`
             };
