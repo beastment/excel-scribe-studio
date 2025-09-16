@@ -1593,6 +1593,7 @@ serve(async (req) => {
 
         const redactionMode = (scanConfig.redaction_output_mode === 'spans') ? 'spans' : 'full_text';
         const spanMinLen = Number.isFinite(scanConfig.span_min_length) && (scanConfig.span_min_length as number) >= 1 ? (scanConfig.span_min_length as number) : 2;
+        const expectRedactionOutputs = requestPhaseMode !== 'rephrase';
 
         // Aggregate best results per id to avoid weaker redactions overwriting stronger ones across providers
         const bestById = new Map<string, { id: string; originalRow?: number; scannedIndex?: number; redactedText?: string; rephrasedText?: string; baseText: string; mode: string }>();
@@ -1607,181 +1608,182 @@ serve(async (req) => {
         for (const state of groupStates) {
           for (const ctx of state.contexts) {
             let redTexts: string[] = [];
-            if (redactionMode === 'spans') {
-              // Parse JSON of the form [{ index: k, redact: ["substring", ...] }, ...]
-              let spansByIdx = new Map<number, string[]>();
-              try {
-                const rawAny = ctx.rawRed;
-                let rawText = String(rawAny ?? "");
-                if (!rawText) {
-                  console.warn('[POSTPROCESS][SPANS][DEBUG] No raw redaction content (ctx.rawRed is empty or null)');
-                } else {
-                  const preview = rawText.length > 600 ? (rawText.slice(0, 600) + '…') : rawText;
-                  console.log(`[POSTPROCESS][SPANS][DEBUG] Raw redaction content length=${rawText.length} preview=`, preview);
-                }
-                // Attempt direct JSON.parse
-                try {
-                  const parsedAny = JSON.parse(rawText);
-                  if (Array.isArray(parsedAny)) {
-                    console.log(`[POSTPROCESS][SPANS][DEBUG] Direct JSON.parse succeeded with array length=${parsedAny.length}`);
-                    for (const obj of parsedAny as Array<{ index?: number|string; redact?: string[] }>) {
-                      const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
-                      const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
-                      const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
-                      if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
-                    }
-                  } else if (typeof parsedAny === 'string') {
-                    rawText = parsedAny;
-                    console.log('[POSTPROCESS][SPANS][DEBUG] Direct parse returned string; will continue with extracted string.');
-                  }
-                } catch (e) {
-                  console.warn('[POSTPROCESS][SPANS][DEBUG] Direct JSON.parse failed:', e);
-                }
+            if (expectRedactionOutputs && redactionMode === 'spans' && ctx.rawRed) {
+               // Parse JSON of the form [{ index: k, redact: ["substring", ...] }, ...]
+               let spansByIdx = new Map<number, string[]>();
+               try {
+                 const rawAny = ctx.rawRed;
+                 let rawText = String(rawAny ?? "");
+                 if (rawText) {
+                   const preview = rawText.length > 600 ? (rawText.slice(0, 600) + '…') : rawText;
+                   console.log(`[POSTPROCESS][SPANS][DEBUG] Raw redaction content length=${rawText.length} preview=`, preview);
+                 }
+                 // Attempt direct JSON.parse
+                 try {
+                   const parsedAny = JSON.parse(rawText);
+                   if (Array.isArray(parsedAny)) {
+                     console.log(`[POSTPROCESS][SPANS][DEBUG] Direct JSON.parse succeeded with array length=${parsedAny.length}`);
+                     for (const obj of parsedAny as Array<{ index?: number|string; redact?: string[] }>) {
+                       const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
+                       const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
+                       const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
+                       if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
+                     }
+                   } else if (typeof parsedAny === 'string') {
+                     rawText = parsedAny;
+                     console.log('[POSTPROCESS][SPANS][DEBUG] Direct parse returned string; will continue with extracted string.');
+                   }
+                 } catch (e) {
+                   console.warn('[POSTPROCESS][SPANS][DEBUG] Direct JSON.parse failed:', e);
+                 }
 
-                // If still empty, extract JSON array region
-                if (spansByIdx.size === 0) {
-                  const start = rawText.indexOf("[");
-                  const end = rawText.lastIndexOf("]");
-                  let jsonStr = (start >= 0 && end > start) ? rawText.substring(start, end + 1) : rawText;
-                  const jsonPreview = jsonStr.length > 600 ? (jsonStr.slice(0, 600) + '…') : jsonStr;
-                  console.log(`[POSTPROCESS][SPANS][DEBUG] Candidate JSON slice length=${jsonStr.length} preview=`, jsonPreview);
-                  // Sanitize common issues
-                  jsonStr = jsonStr
-                    .replace(/^[\u200B\s`]*json\s*/i, "")
-                    .replace(/^```|```$/g, "")
-                    .replace(/[\u201C\u201D]/g, '"')
-                    .replace(/[\u2018\u2019]/g, "'")
-                    .replace(/,(\s*[}\]])/g, '$1');
-                  try {
-                    const parsed = JSON.parse(jsonStr) as Array<{ index?: number|string; redact?: string[] }>;
-                    console.log(`[POSTPROCESS][SPANS][DEBUG] Sanitized JSON.parse succeeded with array length=${Array.isArray(parsed) ? parsed.length : 0}`);
-                    if (Array.isArray(parsed)) {
-                      for (const obj of parsed) {
-                        const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
-                        const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
-                        const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
-                        if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
-                      }
-                    }
-                  } catch (e1) {
-                    console.warn('[POSTPROCESS][SPANS][DEBUG] Sanitized JSON.parse failed:', e1);
-                    // If it looks like a JSON string containing an array (escaped quotes), unescape and retry
-                    const looksEscaped = /\\"index\\"|\\"redact\\"/.test(jsonStr) || /\\\[/.test(jsonStr);
-                    if (looksEscaped) {
-                      const unescaped = jsonStr
-                        .replace(/\\"/g, '"')
-                        .replace(/\\n/g, ' ')
-                        .replace(/\\r/g, ' ')
-                        .replace(/\\t/g, ' ')
-                        .replace(/\\\\/g, '\\');
-                      const unescPreview = unescaped.length > 600 ? (unescaped.slice(0, 600) + '…') : unescaped;
-                      console.log('[POSTPROCESS][SPANS][DEBUG] Trying unescaped JSON parse. preview=', unescPreview);
-                      try {
-                        const parsed2 = JSON.parse(unescaped) as Array<{ index?: number|string; redact?: string[] }>;
-                        console.log(`[POSTPROCESS][SPANS][DEBUG] Unescaped JSON.parse succeeded with length=${Array.isArray(parsed2) ? parsed2.length : 0}`);
-                        if (Array.isArray(parsed2)) {
-                          for (const obj of parsed2) {
-                            const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
-                            const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
-                            const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
-                            if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
-                          }
-                        }
-                      } catch (e2) {
-                        console.warn('[POSTPROCESS][SPANS][DEBUG] Unescaped JSON.parse failed:', e2);
-                      }
-                    }
-                  }
-                }
-              } catch (e) {
-                console.warn("[POSTPROCESS][SPANS] Failed to parse JSON spans; attempting regex fallback.", e);
-              }
-              // Regex fallback if parse failed or empty – run on both raw and an unescaped view
-              if (spansByIdx.size === 0) {
-                const tryRegexExtract = (source: string, tag: string) => {
-                  let found = 0;
-                  const objRe = /\{[\s\S]*?\}/g;
-                  const matches = source.match(objRe) || [];
-                  for (const m of matches) {
-                    const idxMatch = /\b"?index"?\s*:\s*(\d+)/i.exec(m);
-                    const redactMatch = /\b"?redact"?\s*:\s*\[(.*?)\]/is.exec(m);
-                    if (!idxMatch || !redactMatch) continue;
-                    const idx = parseInt(idxMatch[1], 10);
-                    if (!Number.isFinite(idx)) continue;
-                    const inner = redactMatch[1];
-                    const strRe = /"([^"\\]*(?:\\.[^"\\]*)*)"/g;
-                    const arr: string[] = [];
-                    let sm: RegExpExecArray | null;
-                    while ((sm = strRe.exec(inner)) !== null) {
-                      try {
-                        const s = JSON.parse('"' + sm[1] + '"');
-                        if (typeof s === 'string' && s.trim().length > 0) arr.push(s);
-                      } catch (_) {
-                        const unescaped = sm[1].replace(/\\"/g, '"');
-                        if (unescaped.trim().length > 0) arr.push(unescaped);
-                      }
-                    }
-                    if (arr.length > 0) {
-                      spansByIdx.set(idx, arr);
-                      found += 1;
-                    }
-                  }
-                  console.log(`[POSTPROCESS][SPANS][DEBUG] Regex extractor(${tag}) matched objects=${found}`);
-                };
-                const rawAll = String(ctx.rawRed || "");
-                tryRegexExtract(rawAll, 'raw');
-                if (spansByIdx.size === 0) {
-                  const unesc = rawAll.replace(/\\"/g, '"');
-                  tryRegexExtract(unesc, 'unescaped');
-                }
-                if (spansByIdx.size === 0) {
-                  console.warn('[POSTPROCESS][SPANS] Regex fallback found no spans. Falling back to policy only.');
-                }
-              }
-              // Build per-item redacted outputs by applying spans to the original text
-              redTexts = ctx.chunk.map((comment: any) => {
-                const orowRaw = comment?.originalRow;
-                const sidxRaw = comment?.scannedIndex;
-                const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
-                const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
-                const key = (typeof orow === 'number' && Number.isFinite(orow)) ? orow : ((typeof sidx === 'number' && Number.isFinite(sidx)) ? sidx : null);
-                const spans = (key !== null && spansByIdx.has(key)) ? (spansByIdx.get(key) as string[]) : [];
-                const applied = spans.length > 0 ? applyRedactionSpansToText(String(comment.originalText || comment.text || ""), spans, spanMinLen) : String(comment.originalText || comment.text || "");
-                // Always enforce deterministic policy last
-                return enforceRedactionPolicy(applied) as string;
-              });
-              // Fallback: if none changed and spansByIdx looks like chunk ordinals, apply by ordinal (1-based)
-              const anyChanged = redTexts.some((t, i) => (t || '').trim() !== String((ctx.chunk[i]?.text) || '').trim());
-              if (!anyChanged && spansByIdx.size > 0) {
-                const ordinalKeys = Array.from(spansByIdx.keys());
-                const maxKey = Math.max(...ordinalKeys);
-                const minKey = Math.min(...ordinalKeys);
-                const looksOrdinal = minKey >= 1 && maxKey <= ctx.chunk.length;
-                if (looksOrdinal) {
-                  console.warn('[POSTPROCESS][SPANS][DEBUG] Applying ordinal index fallback for chunk of length', ctx.chunk.length);
-                  redTexts = ctx.chunk.map((comment: any, idx: number) => {
-                    const spans = spansByIdx.get(idx + 1) || [];
-                    const applied = (spans.length > 0)
-                      ? applyRedactionSpansToText(String(comment.originalText || comment.text || ''), spans as string[], spanMinLen)
-                      : String(comment.originalText || comment.text || '');
-                    return enforceRedactionPolicy(applied) as string;
-                  });
-                }
-              }
-              // Fallback: if still no change, apply spans to any comment whose text contains any span substring
-              if (!redTexts.some((t, i) => (t || '').trim() !== String((ctx.chunk[i]?.text) || '').trim()) && spansByIdx.size > 0) {
-                console.warn('[POSTPROCESS][SPANS][DEBUG] Applying substring fallback within chunk');
-                redTexts = ctx.chunk.map((comment: any) => {
-                  const base = String(comment.originalText || comment.text || '');
-                  // Merge all spans arrays
-                  const allSpans: string[] = Array.from(spansByIdx.values()).flat();
-                  const hasHit = allSpans.some(s => base.includes(String(s)));
-                  const applied = hasHit ? applyRedactionSpansToText(base, allSpans, spanMinLen) : base;
-                  return enforceRedactionPolicy(applied) as string;
-                });
-              }
+                 // If still empty, extract JSON array region
+                 if (spansByIdx.size === 0) {
+                   const start = rawText.indexOf("[");
+                   const end = rawText.lastIndexOf("]");
+                   let jsonStr = (start >= 0 && end > start) ? rawText.substring(start, end + 1) : rawText;
+                   const jsonPreview = jsonStr.length > 600 ? (jsonStr.slice(0, 600) + '…') : jsonStr;
+                   console.log(`[POSTPROCESS][SPANS][DEBUG] Candidate JSON slice length=${jsonStr.length} preview=`, jsonPreview);
+                   // Sanitize common issues
+                   jsonStr = jsonStr
+                     .replace(/^[\u200B\s`]*json\s*/i, "")
+                     .replace(/^```|```$/g, "")
+                     .replace(/[\u201C\u201D]/g, '"')
+                     .replace(/[\u2018\u2019]/g, "'")
+                     .replace(/,(\s*[}\]])/g, '$1');
+                   try {
+                     const parsed = JSON.parse(jsonStr) as Array<{ index?: number|string; redact?: string[] }>;
+                     console.log(`[POSTPROCESS][SPANS][DEBUG] Sanitized JSON.parse succeeded with array length=${Array.isArray(parsed) ? parsed.length : 0}`);
+                     if (Array.isArray(parsed)) {
+                       for (const obj of parsed) {
+                         const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
+                         const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
+                         const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
+                         if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
+                       }
+                     }
+                   } catch (e1) {
+                     console.warn('[POSTPROCESS][SPANS][DEBUG] Sanitized JSON.parse failed:', e1);
+                     // If it looks like a JSON string containing an array (escaped quotes), unescape and retry
+                     const looksEscaped = /\\"index\\"|\\"redact\\"/.test(jsonStr) || /\\\[/.test(jsonStr);
+                     if (looksEscaped) {
+                       const unescaped = jsonStr
+                         .replace(/\\"/g, '"')
+                         .replace(/\\n/g, ' ')
+                         .replace(/\\r/g, ' ')
+                         .replace(/\\t/g, ' ')
+                         .replace(/\\\\/g, '\\');
+                       const unescPreview = unescaped.length > 600 ? (unescaped.slice(0, 600) + '…') : unescaped;
+                       console.log('[POSTPROCESS][SPANS][DEBUG] Trying unescaped JSON parse. preview=', unescPreview);
+                       try {
+                         const parsed2 = JSON.parse(unescaped) as Array<{ index?: number|string; redact?: string[] }>;
+                         console.log(`[POSTPROCESS][SPANS][DEBUG] Unescaped JSON.parse succeeded with length=${Array.isArray(parsed2) ? parsed2.length : 0}`);
+                         if (Array.isArray(parsed2)) {
+                           for (const obj of parsed2) {
+                             const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
+                             const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
+                             const arr = Array.isArray(obj?.redact) ? obj?.redact.filter((s): s is string => typeof s === 'string') : [];
+                             if (idx >= 0 && arr.length > 0) spansByIdx.set(idx, arr);
+                           }
+                         }
+                       } catch (e2) {
+                         console.warn('[POSTPROCESS][SPANS][DEBUG] Unescaped JSON.parse failed:', e2);
+                       }
+                     }
+                   }
+                 }
+               } catch (e) {
+                 console.warn("[POSTPROCESS][SPANS] Failed to parse JSON spans; attempting regex fallback.", e);
+               }
+               // Regex fallback if parse failed or empty – run on both raw and an unescaped view
+               if (spansByIdx.size === 0) {
+                 const tryRegexExtract = (source: string, tag: string) => {
+                   let found = 0;
+                   const objRe = /\{[\s\S]*?\}/g;
+                   const matches = source.match(objRe) || [];
+                   for (const m of matches) {
+                     const idxMatch = /\b"?index"?\s*:\s*(\d+)/i.exec(m);
+                     const redactMatch = /\b"?redact"?\s*:\s*\[(.*?)\]/is.exec(m);
+                     if (!idxMatch || !redactMatch) continue;
+                     const idx = parseInt(idxMatch[1], 10);
+                     if (!Number.isFinite(idx)) continue;
+                     const inner = redactMatch[1];
+                     const strRe = /"([^"\\]*(?:\\.[^"\\]*)*)"/g;
+                     const arr: string[] = [];
+                     let sm: RegExpExecArray | null;
+                     while ((sm = strRe.exec(inner)) !== null) {
+                       try {
+                         const s = JSON.parse('"' + sm[1] + '"');
+                         if (typeof s === 'string' && s.trim().length > 0) arr.push(s);
+                       } catch (_) {
+                         const unescaped = sm[1].replace(/\\"/g, '"');
+                         if (unescaped.trim().length > 0) arr.push(unescaped);
+                       }
+                     }
+                     if (arr.length > 0) {
+                       spansByIdx.set(idx, arr);
+                       found += 1;
+                     }
+                   }
+                   console.log(`[POSTPROCESS][SPANS][DEBUG] Regex extractor(${tag}) matched objects=${found}`);
+                 };
+                 const rawAll = String(ctx.rawRed || "");
+                 tryRegexExtract(rawAll, 'raw');
+                 if (spansByIdx.size === 0) {
+                   const unesc = rawAll.replace(/\\"/g, '"');
+                   tryRegexExtract(unesc, 'unescaped');
+                 }
+                 if (spansByIdx.size === 0) {
+                   console.warn('[POSTPROCESS][SPANS] Regex fallback found no spans. Falling back to policy only.');
+                 }
+               }
+               // Build per-item redacted outputs by applying spans to the original text
+               redTexts = ctx.chunk.map((comment: any) => {
+                 const orowRaw = comment?.originalRow;
+                 const sidxRaw = comment?.scannedIndex;
+                 const orow = typeof orowRaw === 'string' ? parseInt(orowRaw, 10) : orowRaw;
+                 const sidx = typeof sidxRaw === 'string' ? parseInt(sidxRaw, 10) : sidxRaw;
+                 const key = (typeof orow === 'number' && Number.isFinite(orow)) ? orow : ((typeof sidx === 'number' && Number.isFinite(sidx)) ? sidx : null);
+                 const spans = (key !== null && spansByIdx.has(key)) ? (spansByIdx.get(key) as string[]) : [];
+                 const applied = spans.length > 0 ? applyRedactionSpansToText(String(comment.originalText || comment.text || ""), spans, spanMinLen) : String(comment.originalText || comment.text || "");
+                 // Always enforce deterministic policy last
+                 return enforceRedactionPolicy(applied) as string;
+               });
+               // Fallback: if none changed and spansByIdx looks like chunk ordinals, apply by ordinal (1-based)
+               const anyChanged = redTexts.some((t, i) => (t || '').trim() !== String((ctx.chunk[i]?.text) || '').trim());
+               if (!anyChanged && spansByIdx.size > 0) {
+                 const ordinalKeys = Array.from(spansByIdx.keys());
+                 const maxKey = Math.max(...ordinalKeys);
+                 const minKey = Math.min(...ordinalKeys);
+                 const looksOrdinal = minKey >= 1 && maxKey <= ctx.chunk.length;
+                 if (looksOrdinal) {
+                   console.warn('[POSTPROCESS][SPANS][DEBUG] Applying ordinal index fallback for chunk of length', ctx.chunk.length);
+                   redTexts = ctx.chunk.map((comment: any, idx: number) => {
+                     const spans = spansByIdx.get(idx + 1) || [];
+                     const applied = (spans.length > 0)
+                       ? applyRedactionSpansToText(String(comment.originalText || comment.text || ''), spans as string[], spanMinLen)
+                       : String(comment.originalText || comment.text || '');
+                     return enforceRedactionPolicy(applied) as string;
+                   });
+                 }
+               }
+               // Fallback: if still no change, apply spans to any comment whose text contains any span substring
+               if (!redTexts.some((t, i) => (t || '').trim() !== String((ctx.chunk[i]?.text) || '').trim()) && spansByIdx.size > 0) {
+                 console.warn('[POSTPROCESS][SPANS][DEBUG] Applying substring fallback within chunk');
+                 redTexts = ctx.chunk.map((comment: any) => {
+                   const base = String(comment.originalText || comment.text || '');
+                   // Merge all spans arrays
+                   const allSpans: string[] = Array.from(spansByIdx.values()).flat();
+                   const hasHit = allSpans.some(s => base.includes(String(s)));
+                   const applied = hasHit ? applyRedactionSpansToText(base, allSpans, spanMinLen) : base;
+                   return enforceRedactionPolicy(applied) as string;
+                 });
+               }
+            } else if (expectRedactionOutputs && redactionMode !== 'spans' && ctx.rawRed) {
+               redTexts = ctx.rawRed ? normalizeBatchTextParsed(ctx.rawRed) : [];
             } else {
-              redTexts = ctx.rawRed ? normalizeBatchTextParsed(ctx.rawRed) : [];
+              // Rephrase-only phase or no raw redaction content; keep redTexts empty without warnings
+              redTexts = [];
             }
             let repTexts = ctx.rawReph ? normalizeBatchTextParsed(ctx.rawReph) : [];
             const redIdx = stripAndIndex(redTexts);
