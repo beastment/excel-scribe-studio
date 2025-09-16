@@ -1141,55 +1141,123 @@ serve(async (req) => {
       console.log(`[TOKENS] Scan A max_tokens: ${scanATokenLimits.output_token_limit}, Scan B max_tokens: ${scanBTokenLimits.output_token_limit}`);
       console.log(`[TOKENS] Scan A temperature: ${scanA.temperature}, Scan B temperature: ${scanB.temperature}`);
 
-      // Process batch with Scan A and Scan B, enforcing TPM limits
+      // Process batch with Scan A and Scan B, enforcing TPM limits (mirrors server-managed path)
       const batchStartTime = Date.now();
-      
-      // Process with Scan A
-      const scanAResultsArray = await processBatch(batch, batchStart, finalBatchSize, scanRunId, "scan_a");
-      
-      // Process with Scan B
-      const scanBResultsArray = await processBatch(batch, batchStart, finalBatchSize, scanRunId, "scan_b");
-      
+
+      // Calculate estimated tokens for this batch
+      const batchInput = buildBatchInput(batch, batchStart + 1);
+      const estimatedInputTokens = Math.ceil(batchInput.length / 4);
+      const estimatedOutputTokens = batch.length * Math.max(scanA.tokens_per_comment || 13, scanB.tokens_per_comment || 13);
+      const totalEstimatedTokens = estimatedInputTokens + estimatedOutputTokens;
+
+      console.log(`[BATCH ${batchStart + 1}-${batchEnd}] Estimated tokens: ${totalEstimatedTokens} (${estimatedInputTokens} input + ${estimatedOutputTokens} output)`);
+
+      // Check rate limits and wait if necessary before making parallel calls
+      if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
+        const tpmWaitTimeA = calculateWaitTime(scanA.provider, scanA.model, totalEstimatedTokens, scanATokenLimits.tpm_limit);
+        const rpmWaitTimeA = calculateRPMWaitTime(scanA.provider, scanA.model, 1, scanATokenLimits.rpm_limit);
+        const maxWaitTimeA = Math.max(tpmWaitTimeA, rpmWaitTimeA);
+        if (maxWaitTimeA > 0) {
+          const reason: string[] = [];
+          if (tpmWaitTimeA > 0) reason.push(`TPM (${tpmWaitTimeA}ms)`);
+          if (rpmWaitTimeA > 0) reason.push(`RPM (${rpmWaitTimeA}ms)`);
+          console.log(`[BATCH ${batchStart + 1}-${batchEnd}] [SCAN_A] Waiting ${maxWaitTimeA}ms to comply with ${reason.join(' and ')} limits`);
+          await new Promise(resolve => setTimeout(resolve, maxWaitTimeA));
+        }
+      }
+
+      if (scanBTokenLimits.tpm_limit || scanBTokenLimits.rpm_limit) {
+        const tpmWaitTimeB = calculateWaitTime(scanB.provider, scanB.model, totalEstimatedTokens, scanBTokenLimits.tpm_limit);
+        const rpmWaitTimeB = calculateRPMWaitTime(scanB.provider, scanB.model, 1, scanBTokenLimits.rpm_limit);
+        const maxWaitTimeB = Math.max(tpmWaitTimeB, rpmWaitTimeB);
+        if (maxWaitTimeB > 0) {
+          const reason: string[] = [];
+          if (tpmWaitTimeB > 0) reason.push(`TPM (${tpmWaitTimeB}ms)`);
+          if (rpmWaitTimeB > 0) reason.push(`RPM (${rpmWaitTimeB}ms)`);
+          console.log(`[BATCH ${batchStart + 1}-${batchEnd}] [SCAN_B] Waiting ${maxWaitTimeB}ms to comply with ${reason.join(' and ')} limits`);
+          await new Promise(resolve => setTimeout(resolve, maxWaitTimeB));
+        }
+      }
+
+      const settledClient = await Promise.allSettled([
+        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+      ]);
+      let scanAResultsClient: any = null;
+      let scanBResultsClient: any = null;
+      if (settledClient[0].status === 'fulfilled') {
+        scanAResultsClient = settledClient[0].value;
+      } else {
+        const errMsg = settledClient[0].reason instanceof Error ? settledClient[0].reason.message : String(settledClient[0].reason);
+        console.error(`[SCAN_A] Error: ${errMsg}`);
+        if (aiLogger) {
+          await aiLogger.logResponse(user.id, scanRunId, 'scan-comments', scanA.provider, scanA.model, 'batch_analysis', 'scan_a', '', errMsg, undefined);
+        }
+      }
+      if (settledClient[1].status === 'fulfilled') {
+        scanBResultsClient = settledClient[1].value;
+      } else {
+        const errMsg = settledClient[1].reason instanceof Error ? settledClient[1].reason.message : String(settledClient[1].reason);
+        console.error(`[SCAN_B] Error: ${errMsg}`);
+        if (aiLogger) {
+          await aiLogger.logResponse(user.id, scanRunId, 'scan-comments', scanB.provider, scanB.model, 'batch_analysis', 'scan_b', '', errMsg, undefined);
+        }
+      }
+      const batchEndTimeClient = Date.now();
+      console.log(`[PERFORMANCE] Batch ${batchStart + 1}-${batchEnd} processed in ${batchEndTimeClient - batchStartTime}ms (parallel AI calls)`);
+
+      // Record usage AFTER the AI calls complete
+      if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
+        recordUsage(scanA.provider, scanA.model, totalEstimatedTokens);
+        recordRequest(scanA.provider, scanA.model, 1);
+        console.log(`[BATCH ${batchStart + 1}-${batchEnd}] [SCAN_A] Recorded usage: ${totalEstimatedTokens} tokens, 1 request`);
+      }
+      if (scanBTokenLimits.tpm_limit || scanBTokenLimits.rpm_limit) {
+        recordUsage(scanB.provider, scanB.model, totalEstimatedTokens);
+        recordRequest(scanB.provider, scanB.model, 1);
+        console.log(`[BATCH ${batchStart + 1}-${batchEnd}] [SCAN_B] Recorded usage: ${totalEstimatedTokens} tokens, 1 request`);
+      }
+
+      console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResultsClient} len=${Array.isArray(scanAResultsClient) ? scanAResultsClient.length : 'n/a'}`);
+      console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResultsClient} len=${Array.isArray(scanBResultsClient) ? scanBResultsClient.length : 'n/a'}`);
+
+      // Parse and validate results
+      const scanAResultsArray = parseBatchResults(scanAResultsClient, batch.length, 'Scan A', batchStart + 1);
+      const scanBResultsArray = parseBatchResults(scanBResultsClient, batch.length, 'Scan B', batchStart + 1);
+
+      if (scanAResultsArray.length !== batch.length || scanBResultsArray.length !== batch.length) {
+        console.error(`[ERROR] Incomplete batch results detected for client-managed batch ${batchStart + 1}-${batchEnd}`);
+        console.error(`[ERROR] Expected ${batch.length} results, got Scan A: ${scanAResultsArray.length}, Scan B: ${scanBResultsArray.length}`);
+      }
+
       // Process each comment in this batch
       const maxResults = Math.max(scanAResultsArray.length, scanBResultsArray.length);
       console.log(`[BATCH_DEBUG] Processing batch ${batchStart + 1}-${batchEnd}: batch.length=${batch.length}, maxResults=${maxResults}`);
-      
       for (let i = 0; i < maxResults && i < batch.length; i++) {
         const comment = batch[i];
         const scanAResult = scanAResultsArray[i];
         const scanBResult = scanBResultsArray[i];
         const expectedIndex = batchStart + i + 1;
-
         if (!scanAResult || !scanBResult) {
           console.warn(`Missing scan results for comment ${expectedIndex}, skipping`);
           continue;
         }
-
-        // Validate that the AI returned the correct index
         if (scanAResult.index !== expectedIndex) {
           console.warn(`[WARNING] Scan A returned index ${scanAResult.index} for comment ${expectedIndex}`);
         }
         if (scanBResult.index !== expectedIndex) {
           console.warn(`[WARNING] Scan B returned index ${scanBResult.index} for comment ${expectedIndex}`);
         }
-
-        // Determine if adjudication is needed
         const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
         const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
         const needsAdjudication = concerningDisagreement || identifiableDisagreement;
-
         if (needsAdjudication) {
           totalSummary.needsAdjudication++;
         }
-
-        // Set flags based on scan results (will be resolved by adjudicator later)
-        const concerning = scanAResult.concerning; // Use Scan A as default, will be updated by adjudicator
+        const concerning = scanAResult.concerning;
         const identifiable = scanAResult.identifiable;
-
         if (concerning) totalSummary.concerning++;
         if (identifiable) totalSummary.identifiable++;
-
-        // Determine the mode based on content type
         let mode: 'redact' | 'rephrase' | 'original';
         if (concerning) {
           mode = 'redact';
@@ -1198,8 +1266,6 @@ serve(async (req) => {
         } else {
           mode = 'original';
         }
-
-        // Create comment result with adjudication flags
         const processedComment = {
           id: comment.id,
           originalText: comment.text,
@@ -1211,10 +1277,8 @@ serve(async (req) => {
           identifiable: identifiable,
           mode: mode,
           needsAdjudication: needsAdjudication,
-          adjudicationReason: needsAdjudication ? 
-            (concerningDisagreement ? 'concerning_disagreement' : 'identifiable_disagreement') : null
+          adjudicationReason: needsAdjudication ? (concerningDisagreement ? 'concerning_disagreement' : 'identifiable_disagreement') : null
         };
-
         allScannedComments.push(processedComment);
       }
       
@@ -1553,22 +1617,63 @@ serve(async (req) => {
       
       if (tailComments.length > 0 && tailComments.length <= 100) { // Only retry for reasonable sizes
         console.log(`[TAIL_RETRY] Processing ${tailComments.length} tail comments starting from index ${tailStartIndex}`);
-        
         try {
-          // Use a very small batch size for tail retry
-          const tailBatchSize = Math.min(50, tailComments.length);
-          const tailResponse = await processBatch(tailComments, 0, tailBatchSize, scanRunId, "scan_b");
-          
-          if (tailResponse && tailResponse.length > 0) {
-            // Adjust the originalRow indices for tail comments
-            const adjustedTailComments = tailResponse.map(comment => ({
-              ...comment,
-              originalRow: (comment.originalRow || 0) + tailStartIndex
-            }));
-            
-            allScannedComments.push(...adjustedTailComments);
-            console.log(`[TAIL_RETRY] Successfully processed ${tailResponse.length} tail comments`);
+          const tailBatch = tailComments;
+          const tailBatchInput = buildBatchInput(tailBatch, tailStartIndex + 1);
+          const estIn = Math.ceil(tailBatchInput.length / 4);
+          const estOut = tailBatch.length * Math.max(scanA.tokens_per_comment || 13, scanB.tokens_per_comment || 13);
+          const estTotal = estIn + estOut;
+          if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
+            const wtA = Math.max(
+              calculateWaitTime(scanA.provider, scanA.model, estTotal, scanATokenLimits.tpm_limit),
+              calculateRPMWaitTime(scanA.provider, scanA.model, 1, scanATokenLimits.rpm_limit)
+            );
+            if (wtA > 0) await new Promise(r => setTimeout(r, wtA));
           }
+          if (scanBTokenLimits.tpm_limit || scanBTokenLimits.rpm_limit) {
+            const wtB = Math.max(
+              calculateWaitTime(scanB.provider, scanB.model, estTotal, scanBTokenLimits.tpm_limit),
+              calculateRPMWaitTime(scanB.provider, scanB.model, 1, scanBTokenLimits.rpm_limit)
+            );
+            if (wtB > 0) await new Promise(r => setTimeout(r, wtB));
+          }
+          const settledTail = await Promise.allSettled([
+            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, tailBatchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, tailBatchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+          ]);
+          let tailA: any = null;
+          let tailB: any = null;
+          if (settledTail[0].status === 'fulfilled') tailA = settledTail[0].value;
+          if (settledTail[1].status === 'fulfilled') tailB = settledTail[1].value;
+          const tailAArray = parseBatchResults(tailA, tailBatch.length, 'Scan A (tail)', tailStartIndex + 1);
+          const tailBArray = parseBatchResults(tailB, tailBatch.length, 'Scan B (tail)', tailStartIndex + 1);
+          const maxTail = Math.max(tailAArray.length, tailBArray.length);
+          const adjustedTailComments: any[] = [];
+          for (let i = 0; i < maxTail && i < tailBatch.length; i++) {
+            const comment = tailBatch[i];
+            const aRes = tailAArray[i];
+            const bRes = tailBArray[i];
+            if (!aRes || !bRes) continue;
+            const expectedIndex = tailStartIndex + i + 1;
+            const concerning = aRes.concerning;
+            const identifiable = aRes.identifiable;
+            const needsAdj = (aRes.concerning !== bRes.concerning) || (aRes.identifiable !== bRes.identifiable);
+            adjustedTailComments.push({
+              id: comment.id,
+              originalText: comment.text,
+              originalRow: comment.originalRow || expectedIndex,
+              scannedIndex: comment.scannedIndex || expectedIndex,
+              scanAResult: aRes,
+              scanBResult: bRes,
+              concerning,
+              identifiable,
+              mode: concerning ? 'redact' : (identifiable ? 'rephrase' : 'original'),
+              needsAdjudication: needsAdj,
+              adjudicationReason: needsAdj ? (aRes.concerning !== bRes.concerning ? 'concerning_disagreement' : 'identifiable_disagreement') : null
+            });
+          }
+          allScannedComments.push(...adjustedTailComments);
+          console.log(`[TAIL_RETRY] Successfully processed ${adjustedTailComments.length} tail comments`);
         } catch (tailError) {
           console.error(`[TAIL_RETRY] Failed to process tail comments:`, tailError);
           // Continue without failing the entire request
