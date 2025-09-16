@@ -1225,6 +1225,9 @@ serve(async (req) => {
       // Parse and validate results
       const scanAResultsArray = parseBatchResults(scanAResultsClient, batch.length, 'Scan A', batchStart + 1);
       const scanBResultsArray = parseBatchResults(scanBResultsClient, batch.length, 'Scan B', batchStart + 1);
+      // Index-aligned lookup by returned index to avoid order mismatches
+      const scanAByIndex = new Map<number, any>(scanAResultsArray.filter(r => typeof r?.index === 'number').map(r => [r.index as number, r]));
+      const scanBByIndex = new Map<number, any>(scanBResultsArray.filter(r => typeof r?.index === 'number').map(r => [r.index as number, r]));
 
       if (scanAResultsArray.length !== batch.length || scanBResultsArray.length !== batch.length) {
         console.error(`[ERROR] Incomplete batch results detected for client-managed batch ${batchStart + 1}-${batchEnd}`);
@@ -1236,9 +1239,9 @@ serve(async (req) => {
       console.log(`[BATCH_DEBUG] Processing batch ${batchStart + 1}-${batchEnd}: batch.length=${batch.length}, maxResults=${maxResults}`);
       for (let i = 0; i < maxResults && i < batch.length; i++) {
         const comment = batch[i];
-        const scanAResult = scanAResultsArray[i];
-        const scanBResult = scanBResultsArray[i];
         const expectedIndex = batchStart + i + 1;
+        const scanAResult = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
+        const scanBResult = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
         if (!scanAResult || !scanBResult) {
           console.warn(`Missing scan results for comment ${expectedIndex}, skipping`);
           continue;
@@ -1435,6 +1438,9 @@ serve(async (req) => {
       // Parse and validate results
       const scanAResultsArray = parseBatchResults(scanAResults, batch.length, 'Scan A', currentBatchStart + 1);
       const scanBResultsArray = parseBatchResults(scanBResults, batch.length, 'Scan B', currentBatchStart + 1);
+      // Index-aligned lookup by returned index to avoid order mismatches
+      const scanAByIndex = new Map<number, any>(scanAResultsArray.filter(r => typeof r?.index === 'number').map(r => [r.index as number, r]));
+      const scanBByIndex = new Map<number, any>(scanBResultsArray.filter(r => typeof r?.index === 'number').map(r => [r.index as number, r]));
 
       // CRITICAL FIX: Validate that we got complete results for all comments
       if (scanAResultsArray.length !== batch.length) {
@@ -1462,9 +1468,9 @@ serve(async (req) => {
       
       for (let i = 0; i < maxResults && i < batch.length; i++) {
         const comment = batch[i];
-        const scanAResult = scanAResultsArray[i];
-        const scanBResult = scanBResultsArray[i];
         const expectedIndex = currentBatchStart + i + 1;
+        const scanAResult = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
+        const scanBResult = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
 
         if (!scanAResult || !scanBResult) {
           console.warn(`Missing scan results for comment ${expectedIndex}, skipping`);
