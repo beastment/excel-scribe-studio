@@ -572,6 +572,9 @@ serve(async (req) => {
 
     console.log(`[REQUEST_DETAILS] phase=${useCachedAnalysis ? 'followup' : 'initial'} cached=${useCachedAnalysis} comments=${inputComments?.length} batchStart=${batchStart}`);
 
+    // Initialize finalBatchSize early to prevent ReferenceError
+    let finalBatchSize: number = 1; // Default fallback value
+
     if (!inputComments || !Array.isArray(inputComments) || inputComments.length === 0) {
       return new Response(JSON.stringify({ error: 'No comments provided' }), { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
@@ -1035,7 +1038,7 @@ serve(async (req) => {
     }
     
     // Use the smaller batch size to ensure both scans can process the same batches
-    let finalBatchSize = Math.min(scanABatchSize, scanBBatchSize);
+    finalBatchSize = Math.min(scanABatchSize, scanBBatchSize);
     
     console.log(`[BATCH_SELECTION] Individual batch sizes calculated:`);
     console.log(`[BATCH_SELECTION]   Scan A: ${scanABatchSize} comments`);
