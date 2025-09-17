@@ -1043,6 +1043,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 let finalText = comment.text; // Default to existing text
                 let finalMode = processed.mode || defaultMode; // Use backend mode if available, otherwise use default mode
                 
+                // If backend provided a definitive finalText that differs from current, prefer it
+                if (typeof processed.finalText === 'string' && processed.finalText.trim().length > 0 && processed.finalText.trim() !== String(comment.text || '').trim()) {
+                  finalText = processed.finalText;
+                  finalMode = processed.mode || finalMode;
+                }
+                
                 // Prefer computed redacted/rephrased based on policy; fall back to backend finalText last
                 if (comment.identifiable) {
                   if (defaultMode === 'redact' && processed.redactedText) {
@@ -1794,7 +1800,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                              </div>
                            )}
                            
-                           {comment.debugInfo.needsAdjudication && (
+                           {(comment.needsAdjudication || comment.debugInfo?.needsAdjudication) && (
                              <div className="p-2 rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800/50">
                                <p className="text-xs font-medium text-yellow-900 dark:text-yellow-100">
                                  ⚠️ Adjudication Required (Scan A and B disagreed)
