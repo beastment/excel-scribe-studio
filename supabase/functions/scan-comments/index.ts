@@ -1239,7 +1239,12 @@ serve(async (req) => {
       console.log(`[BATCH_DEBUG] Processing batch ${batchStart + 1}-${batchEnd}: batch.length=${batch.length}, maxResults=${maxResults}`);
       for (let i = 0; i < maxResults && i < batch.length; i++) {
         const comment = batch[i];
-        const expectedIndex = batchStart + i + 1;
+        const stableIndexCandidate = (typeof (comment as any)?.originalRow === 'number' && (comment as any).originalRow > 0)
+          ? (comment as any).originalRow
+          : (typeof (comment as any)?.scannedIndex === 'number' && (comment as any).scannedIndex > 0)
+            ? (comment as any).scannedIndex
+            : (batchStart + i + 1);
+        const expectedIndex = Number.isFinite(stableIndexCandidate) ? stableIndexCandidate : (batchStart + i + 1);
         const scanAResultRaw = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
         const scanBResultRaw = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
         const scanAResult = scanAResultRaw ? { ...scanAResultRaw, model: `${scanA.provider}/${scanA.model}` } : scanAResultRaw;
@@ -1470,7 +1475,12 @@ serve(async (req) => {
       
       for (let i = 0; i < maxResults && i < batch.length; i++) {
         const comment = batch[i];
-        const expectedIndex = currentBatchStart + i + 1;
+        const stableIndexCandidate = (typeof (comment as any)?.originalRow === 'number' && (comment as any).originalRow > 0)
+          ? (comment as any).originalRow
+          : (typeof (comment as any)?.scannedIndex === 'number' && (comment as any).scannedIndex > 0)
+            ? (comment as any).scannedIndex
+            : (currentBatchStart + i + 1);
+        const expectedIndex = Number.isFinite(stableIndexCandidate) ? stableIndexCandidate : (currentBatchStart + i + 1);
         const scanAResultRaw = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
         const scanBResultRaw = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
         const scanAResult = scanAResultRaw ? { ...scanAResultRaw, model: `${scanA.provider}/${scanA.model}` } : scanAResultRaw;
