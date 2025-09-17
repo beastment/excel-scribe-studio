@@ -326,28 +326,79 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
       // 4) Invoke scan-comments sequentially per batch; server runs A/B in parallel per batch
       const aggregated: any[] = [];
+
+      // Ensure we have a fresh access token for function auth
+      let accessToken: string | undefined = undefined;
+      try {
+        const sessionRes = await supabase.auth.getSession();
+        accessToken = sessionRes.data?.session?.access_token;
+        if (!accessToken) {
+          console.warn('[SCAN][AUTH] No access token found; proceeding without Authorization header');
+        }
+      } catch (e) {
+        console.warn('[SCAN][AUTH] Failed to get session for access token:', e instanceof Error ? e.message : String(e));
+      }
+
+      // Helper: invoke scan-comments with retries to handle transient edge failures
+      const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+      const invokeScanBatch = async (args: {
+        batch: any[];
+        batchStart: number;
+        batchRunId: string;
+        defaultMode: 'redact' | 'rephrase' | 'original';
+        isDemoData: boolean;
+        accessToken?: string;
+      }): Promise<any> => {
+        const { batch, batchStart, batchRunId, defaultMode, isDemoData, accessToken } = args;
+        const maxAttempts = 3;
+        let lastErr: unknown = undefined;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            const { data: sData, error: sErr } = await supabase.functions.invoke('scan-comments', {
+              body: {
+                comments: batch,
+                defaultMode,
+                scanRunId: batchRunId,
+                isDemoScan: isDemoData,
+                batchStart: batchStart,
+                skipAdjudication: true,
+                clientManagedBatching: true,
+                maxBatchesPerRequest: 1,
+                maxRunMs: 140000
+              },
+              headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+            });
+            if (sErr) {
+              throw new Error(sErr.message || 'scan-comments invocation failed');
+            }
+            return sData;
+          } catch (err) {
+            lastErr = err;
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[SCAN][RETRY] scan-comments batchStart=${batchStart} attempt ${attempt}/${maxAttempts} failed: ${msg}`);
+            if (attempt < maxAttempts) {
+              const backoff = Math.min(4000, 500 * Math.pow(2, attempt - 1)) + Math.floor(Math.random() * 250);
+              await sleep(backoff);
+              continue;
+            }
+            throw err;
+          }
+        }
+        throw lastErr instanceof Error ? lastErr : new Error('scan-comments invoke failed');
+      };
       for (let i = 0; i < comments.length; i += finalBatchSize) {
         const batch = comments.slice(i, i + finalBatchSize);
         const batchNo = Math.floor(i / finalBatchSize) + 1;
         const batchRunId = `${scanRunId}-${batchNo}`;
         console.log(`[SCAN][SUBMIT] Batch ${batchNo} sending ${batch.length} comments (runId=${batchRunId})`);
-        const { data: sData, error: sErr } = await supabase.functions.invoke('scan-comments', {
-          body: {
-            comments: batch,
-            defaultMode,
-            scanRunId: batchRunId,
-            isDemoScan: isDemoData,
-            batchStart: i, // hint to server: this is a follow-up/client-batched call
-            skipAdjudication: true,
-            clientManagedBatching: true,
-            maxBatchesPerRequest: 1,
-            maxRunMs: 140000
-          }
+        const sData = await invokeScanBatch({
+          batch,
+          batchStart: i,
+          batchRunId,
+          defaultMode,
+          isDemoData,
+          accessToken
         });
-        if (sErr) {
-          console.error('[SCAN][BATCH] Error:', sErr);
-          throw new Error(sErr.message || 'Scan batch failed');
-        }
         if (Array.isArray(sData?.comments) && sData.comments.length > 0) {
           aggregated.push(...sData.comments);
         }
