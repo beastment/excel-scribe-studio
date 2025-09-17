@@ -355,16 +355,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
             const { data: sData, error: sErr } = await supabase.functions.invoke('scan-comments', {
-              body: {
+            body: {
                 comments: batch,
-                defaultMode,
+              defaultMode,
                 scanRunId: batchRunId,
-                isDemoScan: isDemoData,
+              isDemoScan: isDemoData,
                 batchStart: batchStart,
-                skipAdjudication: true,
+              skipAdjudication: true,
                 clientManagedBatching: true,
-                maxBatchesPerRequest: 1,
-                maxRunMs: 140000
+              maxBatchesPerRequest: 1,
+              maxRunMs: 140000
               },
               headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
             });
@@ -410,8 +410,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         data.comments = (data.comments as any[]).map((c: any) => {
           const a = c.adjudicationData?.scanAResult || c.scanAResult;
           const b = c.adjudicationData?.scanBResult || c.scanBResult;
-          const orIdent = Boolean((a && a.identifiable) || (b && b.identifiable) || c.identifiable);
-          const orConc = Boolean((a && a.concerning) || (b && b.concerning) || c.concerning);
+          const orIdent = Boolean((a && a.identifiable) || (b && b.identifiable));
+          const orConc = Boolean((a && a.concerning) || (b && b.concerning));
           return { ...c, identifiable: orIdent, concerning: orConc };
         });
       }
@@ -608,11 +608,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                                      ` ScanB: Concerning ${bRes?.concerning ? "Y" : "N"}, Identifiable ${bRes?.identifiable ? "Y" : "N"}`;
                   const baseReason = String(r.reasoning || c.aiReasoning || "Resolved by adjudicator");
                   const combinedReason = `${baseReason}.${debugSuffix}`;
-                  return {
-                    ...c,
+                  return { 
+                    ...c, 
                     concerning: resolvedConcerning,
                     identifiable: resolvedIdentifiable,
-                    isAdjudicated: true,
+                    isAdjudicated: true, 
                     aiReasoning: combinedReason
                   };
                 }
