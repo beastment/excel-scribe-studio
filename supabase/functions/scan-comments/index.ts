@@ -1269,10 +1269,14 @@ serve(async (req) => {
         const identifiable = Boolean(scanAResult.identifiable || scanBResult.identifiable);
         if (concerning) totalSummary.concerning++;
         if (identifiable) totalSummary.identifiable++;
+        // Mode mapping policy:
+        // - identifiable => redact (higher priority)
+        // - concerning-only => rephrase
+        // - else => original
         let mode: 'redact' | 'rephrase' | 'original';
-        if (concerning) {
+        if (identifiable) {
           mode = 'redact';
-        } else if (identifiable) {
+        } else if (concerning) {
           mode = 'rephrase';
         } else {
           mode = 'original';
@@ -1516,11 +1520,14 @@ serve(async (req) => {
         if (concerning) totalSummary.concerning++;
         if (identifiable) totalSummary.identifiable++;
 
-        // Determine the mode based on content type
+        // Mode mapping policy:
+        // - identifiable => redact (higher priority)
+        // - concerning-only => rephrase
+        // - else => original
         let mode: 'redact' | 'rephrase' | 'original';
-        if (concerning) {
+        if (identifiable) {
           mode = 'redact';
-        } else if (identifiable) {
+        } else if (concerning) {
           mode = 'rephrase';
         } else {
           mode = 'original';

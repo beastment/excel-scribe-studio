@@ -1,6 +1,12 @@
 2025-09-15
 - Disable server-side adjudication execution; adjudication is now client-managed with per-batch invocations sized by Dashboard token limits to avoid Edge timeouts.
 
+2025-09-17
+- Correct mode mapping after Scan A/B aggregation:
+  - identifiable => 'redact'
+  - concerning-only => 'rephrase'
+  - Ensures items like <<<ITEM 17>>> with non-identifiable concerns are routed to rephrase, and any identifiable items are always redacted.
+
 2025-01-27
 - Implement client-managed batching support to prevent duplicate run guards and TAIL_RETRY issues
   - Added `clientManagedBatching` request flag to bypass server-side batch sizing and duplicate checks
