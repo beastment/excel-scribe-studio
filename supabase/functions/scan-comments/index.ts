@@ -1938,15 +1938,20 @@ serve(async (req) => {
 
 // Utility functions
 function buildBatchInput(comments: any[], globalStartIndex: number): string {
-  const items = comments.map((comment, i) => 
-    `<<<ITEM ${globalStartIndex + i}>>>
-${comment.originalText || comment.text}
-<<<END ${globalStartIndex + i}>>>`
-  ).join('\n\n');
-  
-  return `Comments to analyze (each bounded by sentinels):
+  // Prefer stable per-comment indices if provided; else fall back to sequential numbering
+  const items = comments.map((comment, i) => {
+    const idxCandidate = (typeof (comment as any)?.originalRow === 'number' && (comment as any).originalRow > 0)
+      ? (comment as any).originalRow
+      : (typeof (comment as any)?.scannedIndex === 'number' && (comment as any).scannedIndex > 0)
+        ? (comment as any).scannedIndex
+        : (globalStartIndex + i);
+    const idx = Number.isFinite(idxCandidate) ? idxCandidate : (globalStartIndex + i);
+    return `<<<ITEM ${idx}>>>
+${(comment as any).originalText || (comment as any).text}
+<<<END ${idx}>>>`;
+  }).join('\n\n');
 
-${items}`;
+  return `Comments to analyze (each bounded by sentinels):\n\n${items}`;
 }
 
 function parseBatchResults(response: any, expectedCount: number, source: string, globalStartIndex: number): any[] {
