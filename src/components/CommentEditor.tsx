@@ -109,7 +109,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   };
   useEffect(() => {
     let filtered = comments.filter(comment => {
-      const matchesSearch = comment.text.toLowerCase().includes(searchTerm.toLowerCase()) || comment.originalText.toLowerCase().includes(searchTerm.toLowerCase()) || comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = (comment.text || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           (comment.originalText || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           (comment.author && comment.author.toLowerCase().includes(searchTerm.toLowerCase()));
       const matchesDemographic = selectedDemographic ? comment.demographics === selectedDemographic : true;
       
       // Filter logic based on active filters
