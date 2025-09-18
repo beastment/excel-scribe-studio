@@ -572,26 +572,47 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           // Ensure Authorization header is included for adjudicator invoke
           const { data: sessionData } = await supabase.auth.getSession();
           const accessToken = sessionData?.session?.access_token;
+          // Helper: invoke adjudicator with retry/backoff on transient rate limits
+          const invokeAdjudicatorWithRetry = async (batch: any[]): Promise<any | null> => {
+            const maxAttempts = 3;
+            const baseDelayMs = 1200;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const { data: adjData, error: adjErr } = await supabase.functions.invoke('adjudicator', {
+                body: {
+                  comments: batch.map((c: any) => ({
+                    id: c.id,
+                    originalText: c.originalText || c.text,
+                    originalRow: c.originalRow,
+                    scannedIndex: c.scannedIndex,
+                    scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
+                    scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
+                    agreements: c.adjudicationData?.agreements || c.agreements
+                  })),
+                  scanRunId
+                },
+                headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+              });
+              if (!adjErr) return adjData;
+              const msg = String(adjErr?.message || adjErr);
+              const isRateLimited = msg.includes('429') || /Too\s*Many\s*Requests/i.test(msg);
+              const isRetryable = isRateLimited || /ETIMEDOUT|ECONNRESET|ENETUNREACH|5\d{2}/i.test(msg);
+              console.warn(`[PHASE2] Adjudicator attempt ${attempt} failed${isRateLimited ? ' (429)' : ''}:`, adjErr);
+              if (attempt < maxAttempts && isRetryable) {
+                const sleep = baseDelayMs * attempt + Math.floor(Math.random() * 400);
+                await new Promise(res => setTimeout(res, sleep));
+                continue;
+              }
+              return null;
+            }
+            return null;
+          };
+
           for (let i = 0; i < needsAdj.length; i += perBatch) {
             const batch = needsAdj.slice(i, i + perBatch);
-            const { data: adjData, error: adjErr } = await supabase.functions.invoke('adjudicator', {
-              body: {
-                comments: batch.map((c: any) => ({
-                  id: c.id,
-                  originalText: c.originalText || c.text,
-                  originalRow: c.originalRow,
-                  scannedIndex: c.scannedIndex,
-                  scanAResult: c.adjudicationData?.scanAResult || c.scanAResult,
-                  scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
-                  agreements: c.adjudicationData?.agreements || c.agreements
-                })),
-                scanRunId
-              },
-              headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
-            });
-            if (adjErr) {
-              console.error('[PHASE2] Adjudicator error:', adjErr);
-              break;
+            const adjData = await invokeAdjudicatorWithRetry(batch);
+            if (!adjData) {
+              console.error('[PHASE2] Adjudicator failed after retries; continuing without adjudication for this batch');
+              continue;
             }
             if (adjData?.adjudicatedComments && Array.isArray(adjData.adjudicatedComments)) {
               const adjMap = new Map(adjData.adjudicatedComments.map((r: any) => [r.id, r]));
@@ -620,6 +641,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 }
                 return c;
               });
+            }
+            // Gentle pacing between batches to avoid provider RPM spikes
+            if (i + perBatch < needsAdj.length) {
+              await new Promise(res => setTimeout(res, 300));
             }
           }
         }
@@ -1043,33 +1068,21 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 let finalText = comment.text; // Default to existing text
                 let finalMode = processed.mode || defaultMode; // Use backend mode if available, otherwise use default mode
                 
-                // If backend provided a definitive finalText that differs from current, prefer it
-                if (typeof processed.finalText === 'string' && processed.finalText.trim().length > 0 && processed.finalText.trim() !== String(comment.text || '').trim()) {
+                // Priority:
+                // 1) For identifiable items, prefer redactedText if available
+                if (comment.identifiable && typeof processed.redactedText === 'string' && processed.redactedText.trim().length > 0) {
+                  finalText = processed.redactedText;
+                  finalMode = 'redact';
+                }
+                // 2) For concerning-only items, prefer rephrasedText if available
+                else if (comment.concerning && !comment.identifiable && typeof processed.rephrasedText === 'string' && processed.rephrasedText.trim().length > 0) {
+                  finalText = processed.rephrasedText;
+                  finalMode = 'rephrase';
+                }
+                // 3) Otherwise, if backend provided a definitive finalText, use it
+                else if (typeof processed.finalText === 'string' && processed.finalText.trim().length > 0 && processed.finalText.trim() !== String(comment.text || '').trim()) {
                   finalText = processed.finalText;
                   finalMode = processed.mode || finalMode;
-                }
-                
-                // Prefer computed redacted/rephrased based on policy; fall back to backend finalText last
-                if (comment.identifiable) {
-                  if (defaultMode === 'redact' && processed.redactedText) {
-                    finalText = processed.redactedText;
-                    finalMode = 'redact';
-                  } else if (defaultMode === 'rephrase' && processed.rephrasedText) {
-                    finalText = processed.rephrasedText;
-                    finalMode = 'rephrase';
-                  }
-                } else if (comment.concerning && !comment.identifiable) {
-                  if (processed.rephrasedText) {
-                    finalText = processed.rephrasedText;
-                    finalMode = 'rephrase';
-                  }
-                }
-                if ((finalMode === defaultMode && finalText === comment.text) || (!processed.redactedText && !processed.rephrasedText)) {
-                  if (typeof processed.finalText === 'string' && processed.finalText.trim().length > 0) {
-                    finalText = processed.finalText;
-                    finalMode = processed.mode || finalMode;
-                    console.log(`[MODE] Fallback to backend finalText for comment ${comment.id}`);
-                  }
                 }
                  const result = {
                    ...comment,
