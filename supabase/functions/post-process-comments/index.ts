@@ -734,6 +734,10 @@ interface PostProcessResponse {
     rephrasedText?: string;
     finalText: string;
     mode: 'redact' | 'rephrase' | 'original';
+    diagnostics?: {
+      cause: 'no_spans' | 'spans_unmatched' | 'ai_unchanged' | 'skipped_dedup' | 'fallback_policy' | 'ok';
+      notes?: string;
+    };
   }>;
   summary: {
     total: number;
@@ -1869,6 +1873,17 @@ serve(async (req) => {
           let finalText = v.baseText;
           if (v.mode === 'redact' && hasAIRedaction) finalText = v.redactedText as string;
           else if (v.mode === 'rephrase' && hasAIRephrase) finalText = v.rephrasedText as string;
+          const diag = (() => {
+            if (v.mode === 'redact') {
+              if (!hasAIRedaction) return { cause: 'ai_unchanged' as const, notes: 'No AI redaction produced differing text' };
+              return { cause: 'ok' as const };
+            }
+            if (v.mode === 'rephrase') {
+              if (!hasAIRephrase) return { cause: 'ai_unchanged' as const, notes: 'No AI rephrase produced differing text' };
+              return { cause: 'ok' as const };
+            }
+            return { cause: 'ok' as const };
+          })();
           processedComments.push({
             id: v.id,
             originalRow: v.originalRow,
@@ -1876,7 +1891,8 @@ serve(async (req) => {
             redactedText: hasAIRedaction ? v.redactedText : undefined,
             rephrasedText: hasAIRephrase ? v.rephrasedText : undefined,
             finalText,
-            mode: v.mode
+            mode: v.mode,
+            diagnostics: diag
           });
         }
       }
@@ -1922,7 +1938,8 @@ serve(async (req) => {
           redactedText,
           rephrasedText,
           finalText,
-          mode
+          mode,
+          diagnostics: { cause: mode === 'redact' ? 'fallback_policy' : 'ai_unchanged' }
         });
       }
     }

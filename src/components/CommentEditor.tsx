@@ -844,6 +844,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             }
             if (ppData?.processedComments) {
               out.push(...ppData.processedComments as Proc[]);
+              // Attach diagnostics to comments for Debug UI
+              try {
+                const diagById = new Map<string, any>((ppData.processedComments as any[]).map((p: any) => [p.id, p.diagnostics]));
+                for (const it of batch) {
+                  const d = diagById.get(it.id);
+                  if (d) {
+                    it.debugInfo = { ...(it.debugInfo || {}), postProcessDiagnostics: d };
+                  }
+                }
+              } catch (_) {}
             }
           }
           return out;
@@ -1963,6 +1973,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                           <div className="mt-2 p-2 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50">
                             <p className="text-xs text-green-700 dark:text-green-300">
                               <strong>Rephrased Version</strong> - Personally identifiable information has been anonymized
+                            </p>
+                          </div>
+                        )}
+                        {comment.debugInfo?.postProcessDiagnostics && (
+                          <div className="mt-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+                            <p className="text-xs text-amber-800 dark:text-amber-200">
+                              <strong>Post-process diagnostics</strong>: {String(comment.debugInfo.postProcessDiagnostics.cause || 'unknown')}
+                              {comment.debugInfo.postProcessDiagnostics.notes ? ` – ${String(comment.debugInfo.postProcessDiagnostics.notes)}` : ''}
                             </p>
                           </div>
                         )}
