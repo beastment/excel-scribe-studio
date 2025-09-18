@@ -1101,7 +1101,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                    rephrasedText: processed.rephrasedText,
                    mode: finalMode, // Use the determined final mode
                    needsPostProcessing: false, // Mark as processed
-                   isPostProcessed: true // Add flag to prevent re-processing
+                   isPostProcessed: true, // Add flag to prevent re-processing
+                   debugInfo: {
+                     ...(comment.debugInfo || {}),
+                     postProcessDiagnostics: processed.diagnostics || (comment.debugInfo ? comment.debugInfo.postProcessDiagnostics : undefined)
+                   }
                  };
                  
                  return result;
@@ -1367,6 +1371,18 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       if (error) throw new Error(error.message);
       if (data?.processedComments && data.processedComments.length > 0) {
         let updatedComment = data.processedComments[0];
+        // Attach diagnostics into debugInfo for visibility in Debug Mode
+        try {
+          if (updatedComment?.diagnostics) {
+            updatedComment = {
+              ...updatedComment,
+              debugInfo: {
+                ...(comment.debugInfo || {}),
+                postProcessDiagnostics: updatedComment.diagnostics
+              }
+            };
+          }
+        } catch (_) {}
         
         // Update the comment with the processed text
         const updatedComments = comments.map(c => c.id === commentId ? {
@@ -1375,7 +1391,11 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           mode,
           text: mode === 'rephrase' ? (updatedComment.rephrasedText || c.text) : 
                  mode === 'redact' ? (updatedComment.redactedText || c.text) : c.text,
-          approved: false
+          approved: false,
+          debugInfo: {
+            ...(c.debugInfo || {}),
+            postProcessDiagnostics: updatedComment.diagnostics || (c.debugInfo ? c.debugInfo.postProcessDiagnostics : undefined)
+          }
         } : c);
         
         onCommentsUpdate(updatedComments);
