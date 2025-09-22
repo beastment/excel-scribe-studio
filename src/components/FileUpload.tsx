@@ -39,7 +39,9 @@ export interface CommentData {
       scanBResponse?: string;
       adjudicationResponse?: string;
     };
+    postProcessDiagnostics?: any;
   };
+  needsAdjudication?: boolean;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded }) => {
