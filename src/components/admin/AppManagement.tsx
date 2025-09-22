@@ -198,11 +198,20 @@ export const AppManagement = () => {
     try {
       const { data, error } = await supabase
         .from('app_configurations')
-        .select('*')
-        .order('position');
+        .select('id, app_id, name, description, is_enabled, is_hidden, is_blurred, status, position, created_at, updated_at')
+        .order('position', { ascending: true });
+
+      // Debug: log what we got back
+      console.log('[AppManagement] fetchApps result', { count: data?.length ?? 0, error, data });
 
       if (error) throw error;
       setApps(data || []);
+
+      if (!data || data.length === 0) {
+        toast.message('No apps found', {
+          description: 'No app configurations were returned from the database.'
+        });
+      }
     } catch (error) {
       console.error('Error fetching apps:', error);
       toast.error('Failed to load app configurations');
@@ -375,30 +384,36 @@ export const AppManagement = () => {
         </p>
       </CardHeader>
       <CardContent>
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={apps.map(app => app.app_id)}
-            strategy={verticalListSortingStrategy}
+        {apps.length === 0 ? (
+          <div className="py-10 text-center text-muted-foreground">
+            No apps found. Try refreshing the page. If this persists, it may be a data visibility (RLS) issue.
+          </div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            <div className="space-y-4">
-              {apps.map((app) => (
-                <SortableAppItem
-                  key={app.app_id}
-                  app={app}
-                  updating={updating}
-                  onToggleStatus={toggleAppStatus}
-                  onToggleHidden={toggleAppHidden}
-                  onToggleBlurred={toggleAppBlurred}
-                  onUpdateStatus={updateAppStatus}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+            <SortableContext
+              items={apps.map(app => app.app_id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-4">
+                {apps.map((app) => (
+                  <SortableAppItem
+                    key={app.app_id}
+                    app={app}
+                    updating={updating}
+                    onToggleStatus={toggleAppStatus}
+                    onToggleHidden={toggleAppHidden}
+                    onToggleBlurred={toggleAppBlurred}
+                    onUpdateStatus={updateAppStatus}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
       </CardContent>
     </Card>
   );
