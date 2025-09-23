@@ -760,7 +760,54 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
         // Helper: process items in chunks sequentially to ensure each call gets a fresh Edge invocation
         console.log('[HELPER OK]');
-        const perChunk = 40; // conservative chunk size
+        
+        // Calculate optimal batch size based on I/O ratios and model limits
+        const calculateOptimalBatchSize = async (comments: any[], phase: 'redaction'|'rephrase') => {
+          try {
+            // Get batch sizing configuration
+            const { data: batchSizingData } = await supabase
+              .from('batch_sizing_config')
+              .select('*')
+              .single();
+            
+            const redactionIoRatio = batchSizingData?.redaction_io_ratio ?? 5.0;
+            const rephraseIoRatio = batchSizingData?.rephrase_io_ratio ?? 1.0;
+            const safetyMarginPercent = batchSizingData?.safety_margin_percent ?? 10;
+            
+            // Calculate average comment length
+            const avgCommentLength = comments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / comments.length;
+            const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 5);
+            
+            // Calculate output tokens based on I/O ratio
+            const ioRatio = phase === 'redaction' ? redactionIoRatio : rephraseIoRatio;
+            const estimatedOutputTokensPerComment = Math.ceil(estimatedInputTokensPerComment / ioRatio);
+            
+            // Use conservative model limits
+            const inputTokenLimit = 128000;
+            const outputTokenLimit = 4096; // Conservative for most models
+            const promptTokens = 2000;
+            const availableInputTokens = inputTokenLimit - promptTokens;
+            
+            // Calculate max batch sizes
+            const maxBatchByInput = Math.floor(availableInputTokens / estimatedInputTokensPerComment);
+            const maxBatchByOutput = Math.floor(outputTokenLimit / estimatedOutputTokensPerComment);
+            const maxBatchByTokens = Math.min(maxBatchByInput, maxBatchByOutput);
+            
+            // Apply safety margin
+            const safetyMultiplier = 1 - (safetyMarginPercent / 100);
+            const optimalBatchSize = Math.max(1, Math.floor(maxBatchByTokens * safetyMultiplier));
+            
+            console.log(`[BATCH_CALC] ${phase}: avgCommentLength=${Math.round(avgCommentLength)}, inputTokens=${estimatedInputTokensPerComment}, outputTokens=${estimatedOutputTokensPerComment}, ioRatio=${ioRatio}`);
+            console.log(`[BATCH_CALC] ${phase}: maxBatchByInput=${maxBatchByInput}, maxBatchByOutput=${maxBatchByOutput}, optimal=${optimalBatchSize}`);
+            
+            return optimalBatchSize;
+          } catch (error) {
+            console.warn('[BATCH_CALC] Failed to calculate optimal batch size, using fallback:', error);
+            return 40; // Fallback to original value
+          }
+        };
+        
+        const perChunk = await calculateOptimalBatchSize(commentsForA.concat(commentsForB), 'redaction');
         type Proc = { redactedText?: string; rephrasedText?: string; finalText: string; mode: 'redact'|'rephrase'|'original'; id: string; originalRow?: number; scannedIndex?: number };
         const invokeChunk = async (items: any[], phase: 'redaction'|'rephrase', routingMode: 'scan_a'|'scan_b', providerModelKey?: string): Promise<Proc[]> => {
           if (items.length === 0) return [];
