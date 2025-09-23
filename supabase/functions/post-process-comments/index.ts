@@ -1034,8 +1034,8 @@ serve(async (req) => {
       const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
       const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 5); // ~5 chars per token (more realistic for post-processing)
       // Estimate outputs using configured I/O ratios (not scan-comments constants)
-      const estimatedOutputTokensPerCommentRedact = Math.ceil(estimatedInputTokensPerComment * redactionIoRatio);
-      const estimatedOutputTokensPerCommentRephrase = Math.ceil(estimatedInputTokensPerComment * rephraseIoRatio);
+      const estimatedOutputTokensPerCommentRedact = Math.ceil(estimatedInputTokensPerComment / redactionIoRatio);
+      const estimatedOutputTokensPerCommentRephrase = Math.ceil(estimatedInputTokensPerComment / rephraseIoRatio);
       const estimatedTotalTokensPerCommentRedact = estimatedInputTokensPerComment + estimatedOutputTokensPerCommentRedact;
       const estimatedTotalTokensPerCommentRephrase = estimatedInputTokensPerComment + estimatedOutputTokensPerCommentRephrase;
       
@@ -1227,8 +1227,8 @@ serve(async (req) => {
               const item = items[i];
               const text = String(item.originalText || item.text || "");
               const inputTokens = Math.ceil(text.length / 5);
-              const outRedact = Math.ceil(inputTokens * ioRedact);
-              const outRephrase = Math.ceil(inputTokens * ioRephrase);
+              const outRedact = Math.ceil(inputTokens / ioRedact);
+              const outRephrase = Math.ceil(inputTokens / ioRephrase);
               const nextSumInput = sumInput + inputTokens;
               const nextSumOutRedact = sumOutRedact + outRedact;
               const nextSumOutRephrase = sumOutRephrase + outRephrase;
@@ -1261,8 +1261,8 @@ serve(async (req) => {
         const capItemsByOutput = Math.max(1, Math.floor(conservativeOutputLimitSafe / Math.max(estimatedOutputTokensPerCommentRedact, estimatedOutputTokensPerCommentRephrase)));
         let maxItemsCap = Math.max(1, Math.min(optimalBatchSize, capItemsByOutput));
         const inputDerivedLimitSafe = (() => {
-          const redIn = Math.floor(sharedOutputLimitSafe / Math.max(1, redactionIoRatio));
-          const repIn = Math.floor(sharedOutputLimitSafe / Math.max(1, rephraseIoRatio));
+          const redIn = Math.floor(sharedOutputLimitSafe * Math.max(1, redactionIoRatio));
+          const repIn = Math.floor(sharedOutputLimitSafe * Math.max(1, rephraseIoRatio));
           if (phaseMode === 'both') return Math.min(conservativeInputLimitSafe, redIn, repIn);
           if (phaseMode === 'redaction') return Math.min(conservativeInputLimitSafe, redIn);
           return Math.min(conservativeInputLimitSafe, repIn);
@@ -1295,8 +1295,8 @@ serve(async (req) => {
               let sumOutP = 0;
               while (end < ch.length) {
                 const ti = Math.ceil(String(ch[end].originalText || ch[end].text || '').length / 5);
-                const addR = Math.ceil(ti * redactionIoRatio);
-                const addP = Math.ceil(ti * rephraseIoRatio);
+                const addR = Math.ceil(ti / redactionIoRatio);
+                const addP = Math.ceil(ti / rephraseIoRatio);
                 if ((sumOutR + addR) <= groupMaxTokens && (sumOutP + addP) <= groupMaxTokens) {
                   sumOutR += addR;
                   sumOutP += addP;
