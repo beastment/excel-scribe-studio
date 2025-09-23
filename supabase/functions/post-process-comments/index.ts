@@ -914,10 +914,7 @@ serve(async (req) => {
       .single();
     
     const safetyMarginPercent = typeof batchSizingData?.safety_margin_percent === "number" ? batchSizingData.safety_margin_percent : 10;
-    const redactionIoRatio = typeof batchSizingData?.redaction_io_ratio === "number" ? batchSizingData.redaction_io_ratio : 1.7;
-    const rephraseIoRatio = typeof batchSizingData?.rephrase_io_ratio === "number" ? batchSizingData.rephrase_io_ratio : 2.3;
     console.log(`${logPrefix} [POSTPROCESS] Safety margin: ${safetyMarginPercent}%`);
-    console.log(`${logPrefix} [POSTPROCESS] I/O ratios: redaction=${redactionIoRatio}, rephrase=${rephraseIoRatio}`);
 
     let actualMaxTokens = getEffectiveMaxTokens(scanConfig, logPrefix);
     // Initial token estimation logs reduced
@@ -1153,32 +1150,6 @@ serve(async (req) => {
         
         // Process all comments as a single batch (client-managed batching)
         let chunks = [group.items];
-        if (phaseMode === 'both') {
-          const guarded: any[][] = [];
-          for (const ch of chunks) {
-            let start = 0;
-            while (start < ch.length) {
-              let end = start;
-              let sumOutR = 0;
-              let sumOutP = 0;
-              while (end < ch.length) {
-                const ti = Math.ceil(String(ch[end].originalText || ch[end].text || '').length / 5);
-                const addR = Math.ceil(ti / redactionIoRatio);
-                const addP = Math.ceil(ti / rephraseIoRatio);
-                if ((sumOutR + addR) <= groupMaxTokens && (sumOutP + addP) <= groupMaxTokens) {
-                  sumOutR += addR;
-                  sumOutP += addP;
-                  end += 1;
-                } else {
-                  break;
-                }
-              }
-              guarded.push(ch.slice(start, end > start ? end : (start + 1)));
-              start = end > start ? end : (start + 1);
-            }
-          }
-          chunks = guarded;
-        }
         console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} chunks (client-managed batching)`);
 
         const redactionMode = (scanConfig.redaction_output_mode === 'spans') ? 'spans' : 'full_text';
