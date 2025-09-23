@@ -975,7 +975,7 @@ serve(async (req) => {
       sharedConservativeOutputLimit = getEffectiveMaxTokens(scanConfig);
     }
     const sharedOutputLimitSafe = Math.max(1, Math.floor(sharedConservativeOutputLimit * (1 - (safetyMarginPercent / 100))));
-    console.log(`${logPrefix} [BATCH_CALC] Shared conservative output limit across models: ${sharedConservativeOutputLimit}, safe=${sharedOutputLimitSafe}`);
+    console.log(`${logPrefix} [CLIENT_MANAGED] Shared conservative output limit across models: ${sharedConservativeOutputLimit}, safe=${sharedOutputLimitSafe}`);
 
     const tokensPerComment = aiCfg?.tokens_per_comment || 13;
     console.log(`${logPrefix} [POSTPROCESS] Using tokens_per_comment: ${tokensPerComment} (for reference, post-processing uses I/O ratios)`);
@@ -1130,8 +1130,8 @@ serve(async (req) => {
       const safetyMultiplierConservative = 1 - (safetyMarginPercent / 100);
       const conservativeInputLimitSafe = Math.floor(conservativeInputLimit * safetyMultiplierConservative);
       const conservativeOutputLimitSafe = Math.floor(conservativeOutputLimit * safetyMultiplierConservative);
-      console.log(`${logPrefix} [BATCH_CALC] Conservative limits across models: input=${conservativeInputLimit}, output=${conservativeOutputLimit}`);
-      console.log(`${logPrefix} [BATCH_CALC] Safety-adjusted conservative limits: input=${conservativeInputLimitSafe}, output=${conservativeOutputLimitSafe} (margin=${safetyMarginPercent}%)`);
+      console.log(`${logPrefix} [CLIENT_MANAGED] Conservative limits across models: input=${conservativeInputLimit}, output=${conservativeOutputLimit}`);
+      console.log(`${logPrefix} [CLIENT_MANAGED] Safety-adjusted conservative limits: input=${conservativeInputLimitSafe}, output=${conservativeOutputLimitSafe} (margin=${safetyMarginPercent}%)`);
 
       // Build per-model state with contexts and chunks first
       type Ctx = { chunk: any[]; sentinelRed: string; sentinelReph: string; promptRed: string; promptReph: string; rawRed?: string|null; rawReph?: string|null };
@@ -1202,33 +1202,9 @@ serve(async (req) => {
         };
 
         const phaseMode: 'both' | 'redaction' | 'rephrase' = (phase === 'both' || phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
-        const capItemsByOutput = Math.max(1, Math.floor(conservativeOutputLimitSafe / Math.max(estimatedOutputTokensPerCommentRedact, estimatedOutputTokensPerCommentRephrase)));
-        let maxItemsCap = Math.max(1, Math.min(optimalBatchSize, capItemsByOutput));
-        const inputDerivedLimitSafe = (() => {
-          const redIn = Math.floor(sharedOutputLimitSafe * Math.max(1, redactionIoRatio));
-          const repIn = Math.floor(sharedOutputLimitSafe * Math.max(1, rephraseIoRatio));
-          if (phaseMode === 'both') return Math.min(conservativeInputLimitSafe, redIn, repIn);
-          if (phaseMode === 'redaction') return Math.min(conservativeInputLimitSafe, redIn);
-          return Math.min(conservativeInputLimitSafe, repIn);
-        })();
-
-        const isClaude = group.model.toLowerCase().includes('claude');
-        const charsPerToken = isClaude ? 3.5 : 4;
-        const basePromptReserve = Math.min(1000, Math.max(300, Math.ceil(scanConfig.redact_prompt.length / charsPerToken)));
-        const perItemPromptOverhead = 8;
-
-        let chunks = buildTokenAwareChunks(
-          group.items,
-          phaseMode,
-          inputDerivedLimitSafe,
-          sharedOutputLimitSafe,
-          basePromptReserve,
-          5,
-          redactionIoRatio,
-          rephraseIoRatio,
-          maxItemsCap,
-          perItemPromptOverhead
-        );
+        
+        // Process all comments as a single batch (client-managed batching)
+        let chunks = [group.items];
         if (phaseMode === 'both') {
           const guarded: any[][] = [];
           for (const ch of chunks) {
