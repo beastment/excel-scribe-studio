@@ -1,8 +1,16 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { AILogger } from './ai-logger.ts';
 import { calculateWaitTime, calculateRPMWaitTime, recordUsage, recordRequest, calculateOptimalBatchSize as calculateRateLimitedBatchSize } from './tpm-tracker.ts';
+
+// Declare Deno global for TypeScript
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+  serveHttp(conn: any): any;
+};
 
 const buildCorsHeaders = (origin: string | null) => ({
   'Access-Control-Allow-Origin': origin || '*',
@@ -186,7 +194,9 @@ const processAdjudicationBatches = async (
   commentsToAdjudicate: any[],
   adjudicatorConfig: any,
   authHeader: string,
-  safetyMarginPercent: number = 10
+  safetyMarginPercent: number = 10,
+  aiLogger: AILogger,
+  user: any
 ): Promise<any[]> => {
   // Calculate optimal batch size for adjudicator
   console.log(`[ADJUDICATION] Calculating optimal batch size for ${commentsToAdjudicate.length} comments...`);
@@ -1376,7 +1386,7 @@ serve(async (req) => {
         const maxWaitTimeA = Math.max(tpmWaitTimeA, rpmWaitTimeA);
         
         if (maxWaitTimeA > 0) {
-          const reason = [];
+          const reason: string[] = [];
           if (tpmWaitTimeA > 0) reason.push(`TPM (${tpmWaitTimeA}ms)`);
           if (rpmWaitTimeA > 0) reason.push(`RPM (${rpmWaitTimeA}ms)`);
           
@@ -1391,7 +1401,7 @@ serve(async (req) => {
         const maxWaitTimeB = Math.max(tpmWaitTimeB, rpmWaitTimeB);
         
         if (maxWaitTimeB > 0) {
-          const reason = [];
+          const reason: string[] = [];
           if (tpmWaitTimeB > 0) reason.push(`TPM (${tpmWaitTimeB}ms)`);
           if (rpmWaitTimeB > 0) reason.push(`RPM (${rpmWaitTimeB}ms)`);
           
@@ -1798,7 +1808,9 @@ serve(async (req) => {
               commentsNeedingAdjudication,
               adjudicatorConfig,
               authHeader || '',
-              safetyMarginPercent // Use the same safety margin as scan-comments
+              safetyMarginPercent, // Use the same safety margin as scan-comments
+              aiLogger,
+              user
             );
 
             // Update the comments with adjudicated results
@@ -1828,7 +1840,7 @@ serve(async (req) => {
         }
       }
 
-        const response = { 
+        const response: any = { 
           comments: allScannedComments,
           batchStart: batchStart, // Starting batch for this request
           batchSize: finalBatchSize, // Batch size used for processing
@@ -1926,7 +1938,7 @@ serve(async (req) => {
         });
       }
     // If we skipped adjudication or none was needed, return scan results now
-    const responseNoAdj = {
+    const responseNoAdj: any = {
       comments: allScannedComments,
       batchStart: batchStart,
       batchSize: finalBatchSize,
@@ -2076,7 +2088,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
             console.warn(`${source}: Expected ${expectedCount} items, got ${results.length}. Missing ${missingCount} items (${missingPercentage}%). This may indicate the AI response was truncated due to output token limits. Padding with default results.`);
             
             // Create default results for missing items
-            const paddedResults = [];
+            const paddedResults: any[] = [];
             for (let i = 0; i < expectedCount; i++) {
               const existingResult = results[i];
               if (existingResult) {
@@ -2229,9 +2241,9 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
           
           // Count brackets and braces to see if they're balanced
           const openBraces = (cleanedJson.match(/\{/g) || []).length;
-          const closeBraces = (cleanedJson.match(/\}/g) || []).length;
+          let closeBraces = (cleanedJson.match(/\}/g) || []).length;
           const openBrackets = (cleanedJson.match(/\[/g) || []).length;
-          const closeBrackets = (cleanedJson.match(/\]/g) || []).length;
+          let closeBrackets = (cleanedJson.match(/\]/g) || []).length;
           
           // If we have more opening than closing, try to complete the JSON
           if (openBraces > closeBraces || openBrackets > closeBrackets) {
@@ -2304,7 +2316,7 @@ function parseBatchResults(response: any, expectedCount: number, source: string,
       console.warn(`${source}: This suggests the AI response was truncated or incomplete`);
       
       // Create default results for missing items
-      const paddedResults = [];
+      const paddedResults: any[] = [];
       for (let i = 0; i < expectedCount; i++) {
         const existingResult = parsed[i];
         if (existingResult) {
@@ -2708,12 +2720,14 @@ async function sha256(message: string): Promise<string> {
   return arrayBufferToHex(hashBuffer);
 }
 
-async function hmacSha256(key: string | ArrayBuffer, message: string): Promise<ArrayBuffer> {
+async function hmacSha256(key: string | ArrayBuffer | Uint8Array, message: string): Promise<Uint8Array> {
   let keyBuffer: ArrayBuffer;
   if (typeof key === 'string') {
-    keyBuffer = new TextEncoder().encode(key);
+    keyBuffer = new TextEncoder().encode(key).buffer;
+  } else if (key instanceof Uint8Array) {
+    keyBuffer = key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer;
   } else {
-    keyBuffer = key;
+    keyBuffer = key as ArrayBuffer;
   }
   
   const msgBuffer = new TextEncoder().encode(message);
@@ -2724,11 +2738,13 @@ async function hmacSha256(key: string | ArrayBuffer, message: string): Promise<A
     false,
     ['sign']
   );
-  return await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
+  const result = await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
+  return new Uint8Array(result);
 }
 
-function arrayBufferToHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer))
+function arrayBufferToHex(buffer: ArrayBuffer | Uint8Array): string {
+  const uint8Array = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  return Array.from(uint8Array)
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 }
