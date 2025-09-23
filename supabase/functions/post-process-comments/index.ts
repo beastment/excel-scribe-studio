@@ -1148,58 +1148,6 @@ serve(async (req) => {
           console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError?.message);
         }
 
-        const buildTokenAwareChunks = (
-          items: any[],
-          phaseMode: 'both' | 'redaction' | 'rephrase',
-          inputLimit: number,
-          outputLimit: number,
-          basePromptReserve: number,
-          inputTokensPerCharEstimate: number,
-          ioRedact: number,
-          ioRephrase: number,
-          maxItemsCap: number,
-          perItemPromptOverhead: number
-        ): any[][] => {
-          const chunksOut: any[][] = [];
-          let i = 0;
-          while (i < items.length) {
-            let chunk: any[] = [];
-            let sumInput = 0;
-            let sumOutRedact = 0;
-            let sumOutRephrase = 0;
-            while (i < items.length) {
-              const item = items[i];
-              const text = String(item.originalText || item.text || "");
-              const inputTokens = Math.ceil(text.length / 5);
-              const outRedact = Math.ceil(inputTokens / ioRedact);
-              const outRephrase = Math.ceil(inputTokens / ioRephrase);
-              const nextSumInput = sumInput + inputTokens;
-              const nextSumOutRedact = sumOutRedact + outRedact;
-              const nextSumOutRephrase = sumOutRephrase + outRephrase;
-              const dynamicPromptReserve = basePromptReserve + (chunk.length + 1) * perItemPromptOverhead;
-              const inputOk = (nextSumInput + dynamicPromptReserve) <= inputLimit;
-              const redactOk = (phaseMode !== 'rephrase') ? (nextSumOutRedact <= outputLimit) : true;
-              const rephraseOk = (phaseMode !== 'redaction') ? (nextSumOutRephrase <= outputLimit) : true;
-              const bothOk = phaseMode === 'both' ? (nextSumOutRedact <= outputLimit && nextSumOutRephrase <= outputLimit) : true;
-              if (inputOk && redactOk && rephraseOk && bothOk) {
-                chunk.push(item);
-                sumInput = nextSumInput;
-                sumOutRedact = nextSumOutRedact;
-                sumOutRephrase = nextSumOutRephrase;
-                i += 1;
-                if (chunk.length >= maxItemsCap) break;
-              } else {
-                if (chunk.length === 0) {
-                  chunk.push(item);
-                  i += 1;
-                }
-                break;
-              }
-            }
-            chunksOut.push(chunk);
-          }
-          return chunksOut;
-        };
 
         const phaseMode: 'both' | 'redaction' | 'rephrase' = (phase === 'both' || phase === 'redaction' || phase === 'rephrase') ? phase : 'both';
         
