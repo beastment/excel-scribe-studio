@@ -79,7 +79,13 @@ export const ConsultingServicesSection: React.FC = () => {
     fetchData();
   }, []);
 
-  if (loading || !settings?.is_enabled || services.length === 0) {
+  const effectiveSettings: ConsultingServicesSettings = settings ?? {
+    is_enabled: true,
+    section_title: 'When AI is not enough, and you need HI: Human Intelligence',
+    section_subtitle: 'Our professional consultants are registered workplace psychologists, specialising in working with you to obtain maximum value from your survey results.',
+  };
+
+  if (loading || !effectiveSettings.is_enabled || services.length === 0) {
     return null;
   }
 
@@ -88,10 +94,10 @@ export const ConsultingServicesSection: React.FC = () => {
       <div className="container mx-auto px-4">
         <div className="text-center mb-16">
           <EditableText contentKey="consulting-services-title" as="h2" className="text-3xl md:text-4xl font-bold mb-6">
-            {settings.section_title}
+            {effectiveSettings.section_title}
           </EditableText>
           <EditableText contentKey="consulting-services-subtitle" as="p" className="text-xl text-muted-foreground max-w-4xl mx-auto leading-relaxed">
-            {settings.section_subtitle}
+            {effectiveSettings.section_subtitle}
           </EditableText>
         </div>
 
