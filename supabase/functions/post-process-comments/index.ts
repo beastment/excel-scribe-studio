@@ -1179,7 +1179,7 @@ serve(async (req) => {
           }
           chunks = guarded;
         }
-        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} token-aware chunks (conservative limits applied, cap=${maxItemsCap})`);
+        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} chunks (client-managed batching)`);
 
         const redactionMode = (scanConfig.redaction_output_mode === 'spans') ? 'spans' : 'full_text';
         const contexts: Ctx[] = chunks.map((ch) => {
