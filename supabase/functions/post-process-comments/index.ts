@@ -1027,64 +1027,8 @@ serve(async (req) => {
     let originalCount = 0
 
     try {
-      // Calculate optimal batch size based on model limits and actual comment sizes //
-      let optimalBatchSize = 1; // Initialize with minimum value, will be updated based on token limits
-      
-      // Calculate actual token usage for better batch sizing
-      const avgCommentLength = flaggedComments.reduce((sum, c) => sum + (c.originalText || c.text || '').length, 0) / flaggedComments.length;
-      const estimatedInputTokensPerComment = Math.ceil(avgCommentLength / 5); // ~5 chars per token (more realistic for post-processing)
-      // Estimate outputs using configured I/O ratios (not scan-comments constants)
-      const estimatedOutputTokensPerCommentRedact = Math.ceil(estimatedInputTokensPerComment / redactionIoRatio);
-      const estimatedOutputTokensPerCommentRephrase = Math.ceil(estimatedInputTokensPerComment / rephraseIoRatio);
-      const estimatedTotalTokensPerCommentRedact = estimatedInputTokensPerComment + estimatedOutputTokensPerCommentRedact;
-      const estimatedTotalTokensPerCommentRephrase = estimatedInputTokensPerComment + estimatedOutputTokensPerCommentRephrase;
-      
-      console.log(`${logPrefix} [BATCH_CALC] Average comment length: ${Math.round(avgCommentLength)} chars`);
-      console.log(`${logPrefix} [BATCH_CALC] Estimated tokens per comment (redact): ${estimatedInputTokensPerComment} in + ${estimatedOutputTokensPerCommentRedact} out = ${estimatedTotalTokensPerCommentRedact}`);
-      console.log(`${logPrefix} [BATCH_CALC] Estimated tokens per comment (rephrase): ${estimatedInputTokensPerComment} in + ${estimatedOutputTokensPerCommentRephrase} out = ${estimatedTotalTokensPerCommentRephrase}`);
-      
-      // Calculate batch size based on input token limits - use proper defaults for modern models
-      const inputTokenLimit = modelCfg?.input_token_limit || 128000;
-      const outputTokenLimit = modelCfg?.output_token_limit || getEffectiveMaxTokens(scanConfig); // Use same fallback logic as AI calls
-      
-      // Reserve tokens for prompt (estimate ~2000 tokens for post-processing prompts)
-      const promptTokens = 2000;
-      const availableInputTokens = inputTokenLimit - promptTokens;
-      
-      // Calculate max batch size by input tokens
-      const maxBatchByInput = Math.floor(availableInputTokens / estimatedInputTokensPerComment);
-      
-      // Calculate max batch size by output tokens per phase (use stricter when both phases requested)
-      const maxBatchByOutputRedact = Math.max(1, Math.floor(outputTokenLimit / Math.max(1, estimatedOutputTokensPerCommentRedact)));
-      const maxBatchByOutputRephrase = Math.max(1, Math.floor(outputTokenLimit / Math.max(1, estimatedOutputTokensPerCommentRephrase)));
-      const phasesToRun = (phase === 'both') ? 'both' : phase;
-      const maxBatchByOutput = phasesToRun === 'both' ? Math.min(maxBatchByOutputRedact, maxBatchByOutputRephrase)
-        : (phase === 'redaction' ? maxBatchByOutputRedact : maxBatchByOutputRephrase);
-      
-      // Use the more restrictive limit
-      const maxBatchByTokens = Math.min(maxBatchByInput, maxBatchByOutput);
-      
-      console.log(`${logPrefix} [BATCH_CALC] Input limit: ${inputTokenLimit}, Output limit: ${outputTokenLimit}`);
-      console.log(`${logPrefix} [BATCH_CALC] Available input tokens: ${availableInputTokens} (after ${promptTokens} prompt tokens)`);
-      console.log(`${logPrefix} [BATCH_CALC] Max batch by input: ${maxBatchByInput}, Max batch by output: ${maxBatchByOutput} (redact=${maxBatchByOutputRedact}, rephrase=${maxBatchByOutputRephrase})`);
-      console.log(`${logPrefix} [BATCH_CALC] Max batch by tokens: ${maxBatchByTokens}`);
-      
-      // Use token-based limit directly (no hard cap)
-      optimalBatchSize = maxBatchByTokens;
-      
-
-      
-      // Apply configurable safety margin
-      const safetyMultiplier = 1 - (safetyMarginPercent / 100);
-      const safetyBatchSize = Math.floor(optimalBatchSize * safetyMultiplier);
-      if (safetyBatchSize < optimalBatchSize) {
-        console.log(`${logPrefix} [BATCH_CALC] Applied safety margin: ${optimalBatchSize} → ${safetyBatchSize} (${safetyMarginPercent}% of max)`);
-        optimalBatchSize = safetyBatchSize;
-      }
-      
-      console.log(`${logPrefix} [BATCH_CALC] Final optimal batch size: ${optimalBatchSize}`);
-      console.log(`${logPrefix} [BATCH_CALC] Calculation breakdown: maxBatchByTokens=${maxBatchByTokens}, safetyMarginPercent=${safetyMarginPercent}%`);
-      console.log(`${logPrefix} [BATCH_CALC] Token estimation summary: avgCommentLength=${Math.round(avgCommentLength)}, inputTokensPerComment=${estimatedInputTokensPerComment}, outputTokensPerCommentRedact=${estimatedOutputTokensPerCommentRedact}, outputTokensPerCommentRephrase=${estimatedOutputTokensPerCommentRephrase}`);
+      // Batch sizing is now handled client-side
+      console.log(`${logPrefix} [CLIENT_MANAGED] Processing ${flaggedComments.length} comments as single batch (client-managed batching)`);
       
       // Route each comment to Scan A/B model based on identifiable flags; random if both; for concerning-only use concerning flags, else random
       type GroupKey = string;

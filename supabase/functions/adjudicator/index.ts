@@ -537,78 +537,11 @@ serve(async (req) => {
         }
       };
 
-      const calculateAdjudicatorBatchSize = async (
-        items: typeof needsAdjudication,
-        promptText: string,
-        limits: { input_token_limit: number; output_token_limit: number },
-        safetyPct: number,
-        provider: string,
-        model: string,
-        perCommentOutTokens: number
-      ): Promise<number> => {
-        const safetyMultiplier = 1 - (Math.min(90, Math.max(0, safetyPct)) / 100);
-        const maxIn = Math.floor(limits.input_token_limit * safetyMultiplier);
-        const maxOut = Math.floor(limits.output_token_limit * safetyMultiplier);
-
-        const promptTokens = await getPreciseTokens(promptText, provider, model);
-        const availableForComments = maxIn - promptTokens;
-        if (availableForComments <= 0) return 1;
-
-        let batchSize = 0;
-        let totalCommentTokens = 0;
-        for (let i = 0; i < items.length; i++) {
-          const t = await getPreciseTokens(String(items[i].originalText || items[i].text || ''), provider, model);
-          if (totalCommentTokens + t <= availableForComments) {
-            totalCommentTokens += t;
-            batchSize += 1;
-          } else {
-            break;
-          }
-        }
-        // Ensure output tokens fit
-        const estOut = batchSize * perCommentOutTokens;
-        if (estOut > maxOut) {
-          const maxByOut = Math.floor(maxOut / Math.max(1, perCommentOutTokens));
-          batchSize = Math.min(batchSize, maxByOut);
-        }
-        return Math.max(1, batchSize);
-      };
-
-      // Compute optimal batch size
-      let finalBatchSize = await calculateAdjudicatorBatchSize(
-        needsAdjudication,
-        prompt,
-        tokenLimits,
-        safetyMarginPercent,
-        adjudicatorCfg.provider,
-        adjudicatorCfg.model,
-        tokensPerComment
-      );
-
-      // Small dataset override: if all fits within limits, process in one batch
-      if (needsAdjudication.length <= 50) {
-        try {
-          const safetyMultiplier = 1 - (safetyMarginPercent / 100);
-          const promptTokensAll = await getPreciseTokens(prompt, adjudicatorCfg.provider, adjudicatorCfg.model);
-          let totalInputTokensAll = promptTokensAll;
-          for (const c of needsAdjudication) {
-            totalInputTokensAll += await getPreciseTokens(String(c.originalText || c.text || ''), adjudicatorCfg.provider, adjudicatorCfg.model);
-          }
-          const totalOutputTokensAll = needsAdjudication.length * tokensPerComment;
-          const fitsAll = totalInputTokensAll <= Math.floor(tokenLimits.input_token_limit * safetyMultiplier)
-            && totalOutputTokensAll <= Math.floor(tokenLimits.output_token_limit * safetyMultiplier);
-          if (fitsAll) finalBatchSize = needsAdjudication.length;
-        } catch (_) {}
-      }
-
-      console.log(`${logPrefix} [BATCH SIZING][ADJ] safety_margin=${safetyMarginPercent}%, input_limit=${tokenLimits.input_token_limit}, output_limit=${tokenLimits.output_token_limit}`);
-      console.log(`${logPrefix} [BATCH SIZING][ADJ] tokens_per_comment=${tokensPerComment}, final_batch_size=${finalBatchSize}`);
-
-      // Chunk comments into batches
-      const batchedComments: typeof needsAdjudication[] = [];
-      for (let i = 0; i < needsAdjudication.length; i += finalBatchSize) {
-        batchedComments.push(needsAdjudication.slice(i, i + finalBatchSize));
-      }
+      // Batch sizing is now handled client-side
+      console.log(`${logPrefix} [CLIENT_MANAGED] Processing ${needsAdjudication.length} comments as single batch (client-managed batching)`);
+      
+      // Process all comments as a single batch
+      const batchedComments: typeof needsAdjudication[] = [needsAdjudication];
 
       // Initialize AI logger for this adjudication run
       const aiLogger = new AILogger();
