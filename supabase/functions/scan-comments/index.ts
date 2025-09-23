@@ -30,7 +30,7 @@ const getPreciseTokensGlobal = async (text: string, provider: string, model: str
     const { getPreciseTokenCount } = await import('./token-counter.ts');
     return await getPreciseTokenCount(provider, model, text);
   } catch (error) {
-    console.warn(`[TOKEN_COUNT] Global fallback to approximation for ${provider}/${model}:`, error);
+    console.warn(`[RUNID-BATCH] Global fallback to approximation for ${provider}/${model}:`, error);
     return Math.ceil(text.length / 4);
   }
 };
@@ -77,102 +77,11 @@ const checkForDuplicateAdjudication = async (supabase: any, scanRunId: string, c
 
     return existingAdjudication.data && existingAdjudication.data.length > 0;
   } catch (error) {
-    console.error('[ADJUDICATION] Error checking for duplicates:', error);
+    console.error('[RUNID-BATCH] Error checking for duplicates:', error);
     return false; // If we can't check, proceed with the call
   }
 };
 
-const calculateAdjudicatorBatchSize = async (
-  comments: any[],
-  adjudicatorConfig: any,
-  modelConfig: any,
-  safetyMarginPercent: number
-): Promise<number> => {
-  const phase = 'adjudicator';
-  console.log(`[BATCH_CALC] ${phase}: Calculating optimal batch size for ${comments.length} comments`);
-  
-  // Get token limits from model configuration
-  const maxInputTokens = Math.floor((modelConfig?.input_token_limit || 128000) * (1 - safetyMarginPercent / 100));
-  const maxOutputTokens = Math.floor((modelConfig?.output_token_limit || 4000) * (1 - safetyMarginPercent / 100));
-  const tokensPerComment = adjudicatorConfig.tokens_per_comment || 13;
-  
-  console.log(`[BATCH_CALC] ${phase}: Token limits - Input: ${maxInputTokens}, Output: ${maxOutputTokens}, Per comment: ${tokensPerComment}`);
-  
-  // Calculate the maximum number of comments we can process based on output limits
-  const maxCommentsByOutput = Math.floor(maxOutputTokens / tokensPerComment);
-  console.log(`[BATCH_CALC] ${phase}: Max comments by output: ${maxOutputTokens} / ${tokensPerComment} = ${maxCommentsByOutput}`);
-  
-  // Estimate tokens for prompt
-  const prompt = adjudicatorConfig.prompt || '';
-  const promptTokens = await getPreciseTokensGlobal(prompt, adjudicatorConfig.provider, adjudicatorConfig.model);
-  console.log(`[BATCH_CALC] ${phase}: Prompt tokens: ${prompt.length} chars, precise count: ${promptTokens}`);
-  
-  const availableTokensForComments = maxInputTokens - promptTokens;
-  console.log(`[BATCH_CALC] ${phase}: Available tokens for comments: ${maxInputTokens} - ${promptTokens} = ${availableTokensForComments}`);
-  
-  if (availableTokensForComments <= 0) {
-    console.log(`[BATCH_CALC] ${phase}: No tokens available for comments, returning batch size 1`);
-    return 1; // Can only process one comment if prompt is too long
-  }
-  
-  // Calculate how many comments we can fit
-  let batchSize = 0;
-  let totalTokens = 0;
-  
-  console.log(`[BATCH_CALC] ${phase}: Starting comment-by-comment token calculation...`);
-  
-  for (let i = 0; i < comments.length; i++) {
-    const comment = comments[i];
-    const commentText = comment.originalText || comment.text || '';
-    const commentTokens = await getPreciseTokensGlobal(commentText, adjudicatorConfig.provider, adjudicatorConfig.model);
-    
-    if (totalTokens + commentTokens <= availableTokensForComments) {
-      totalTokens += commentTokens;
-      batchSize++;
-    } else {
-      console.log(`[BATCH_CALC] ${phase}: Comment ${i + 1} would exceed limit: ${totalTokens} + ${commentTokens} > ${availableTokensForComments}`);
-      break;
-    }
-  }
-  
-  console.log(`[BATCH_CALC] ${phase}: Total comment tokens: ${totalTokens}`);
-  console.log(`[BATCH_CALC] ${phase}: Calculated batch size: ${batchSize}`);
-  
-  // Check if we would exceed output token limits
-  const estimatedOutputTokens = batchSize * tokensPerComment;
-  if (estimatedOutputTokens > maxOutputTokens) {
-    console.log(`[BATCH_CALC] ${phase}: Output token limit exceeded: ${estimatedOutputTokens} > ${maxOutputTokens}`);
-    // Reduce batch size to fit within output limits
-    const maxCommentsByOutput = Math.floor(maxOutputTokens / tokensPerComment);
-    batchSize = Math.min(batchSize, maxCommentsByOutput);
-    console.log(`[BATCH_CALC] ${phase}: Reduced batch size to ${batchSize} to fit output limits`);
-  } else {
-    console.log(`[BATCH_CALC] ${phase}: Output tokens within limit: ${estimatedOutputTokens} <= ${maxOutputTokens}`);
-  }
-  
-  // TPM-aware cap: ensure total tokens (prompt + avg input + output) for the batch fit within TPM safety window
-  const tpmLimit = Number.isFinite(modelConfig?.tpm_limit) ? modelConfig.tpm_limit : undefined;
-  if (tpmLimit && tpmLimit > 0 && batchSize > 0) {
-    const safetyMultiplier = 1 - (safetyMarginPercent / 100);
-    const tpmAllowed = Math.floor(tpmLimit * safetyMultiplier);
-    const avgInputPerComment = Math.ceil(totalTokens / Math.max(1, batchSize));
-    const perCommentTotalTokens = avgInputPerComment + tokensPerComment;
-    const maxByTpm = perCommentTotalTokens > 0
-      ? Math.floor((tpmAllowed - promptTokens) / perCommentTotalTokens)
-      : batchSize;
-    if (Number.isFinite(maxByTpm) && maxByTpm >= 1) {
-      const originalBatchSize = batchSize;
-      batchSize = Math.max(1, Math.min(batchSize, maxByTpm));
-      if (batchSize !== originalBatchSize) {
-        console.log(`[BATCH_CALC] ${phase}: TPM cap applied. perComment≈${perCommentTotalTokens} tokens, allowed=${tpmAllowed}. Batch size ${originalBatchSize} → ${batchSize}`);
-      }
-    }
-  }
-
-  console.log(`[BATCH_CALC] ${phase}: Final batch size determined by token limits: ${batchSize}`);
-  
-  return Math.max(1, batchSize); // Always return at least 1
-};
 
 const createAdjudicationBatches = (comments: any[], maxBatchSize: number): AdjudicationBatch[] => {
   const batches: AdjudicationBatch[] = [];
@@ -202,7 +111,7 @@ const processAdjudicationBatches = async (
   user: any
 ): Promise<any[]> => {
   // Calculate optimal batch size for adjudicator
-  console.log(`[ADJUDICATION] Calculating optimal batch size for ${commentsToAdjudicate.length} comments...`);
+  console.log(`[RUNID-BATCH] Calculating optimal batch size for ${commentsToAdjudicate.length} comments...`);
   
   // Get adjudicator model configuration
   const { data: adjudicatorModelConfig, error: modelError } = await supabase
@@ -213,39 +122,34 @@ const processAdjudicationBatches = async (
     .single();
   
   if (modelError || !adjudicatorModelConfig) {
-    console.error(`[ADJUDICATION] Failed to fetch adjudicator model config:`, modelError);
+    console.error(`[RUNID-BATCH] Failed to fetch adjudicator model config:`, modelError);
     throw new Error(`Adjudicator model configuration not found for ${adjudicatorConfig.provider}/${adjudicatorConfig.model}`);
   }
   
-  const optimalBatchSize = await calculateAdjudicatorBatchSize(
-    commentsToAdjudicate,
-    adjudicatorConfig,
-    adjudicatorModelConfig,
-    safetyMarginPercent
-  );
+  // Batch sizing is now handled client-side
+  console.log(`[RUNID-BATCH] Processing ${commentsToAdjudicate.length} comments as single batch (client-managed batching)`);
   
-  console.log(`[ADJUDICATION] Optimal batch size calculated: ${optimalBatchSize} comments per batch`);
-  
-  const batches = createAdjudicationBatches(commentsToAdjudicate, optimalBatchSize);
+  // Process all comments as a single batch
+  const batches = [{ comments: commentsToAdjudicate, batchIndex: 0, batchKey: 'single-batch' }];
   const allResults: any[] = [];
   
   // Track completed batches for this run to prevent duplicates within the same execution
   const gAny: any = globalThis as any;
   const completedBatchKeys = gAny.__adjudicationBatchesCompleted || new Set<string>();
   
-  console.log(`[ADJUDICATION] Processing ${commentsToAdjudicate.length} comments in ${batches.length} batches`);
+  console.log(`[RUNID-BATCH] Processing ${commentsToAdjudicate.length} comments in ${batches.length} batches`);
   
   let processedBatches = 0;
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
     const { comments, batchKey } = batch;
     
-    console.log(`[ADJUDICATION] Processing batch ${batchIndex + 1}/${batches.length} (${comments.length} comments, key: ${batchKey})`);
+    console.log(`[RUNID-BATCH] Processing batch ${batchIndex + 1}/${batches.length} (${comments.length} comments, key: ${batchKey})`);
     
     // Check for duplicate batch in memory (same execution)
     const batchKeyForRun = `${scanRunId}-${batchKey}`;
     if (completedBatchKeys.has(batchKeyForRun)) {
-      console.log(`[ADJUDICATION] Batch ${batchIndex + 1} already processed in this execution, skipping duplicate call`);
+      console.log(`[RUNID-BATCH] Batch ${batchIndex + 1} already processed in this execution, skipping duplicate call`);
       continue;
     }
     
@@ -254,10 +158,10 @@ const processAdjudicationBatches = async (
     try {
       const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, comments);
       if (isDuplicate) {
-        console.log(`[ADJUDICATION] Duplicate-like entry found for batch ${batchIndex + 1}, proceeding to ensure all batches are processed`);
+        console.log(`[RUNID-BATCH] Duplicate-like entry found for batch ${batchIndex + 1}, proceeding to ensure all batches are processed`);
       }
     } catch (dupErr) {
-      console.warn(`[ADJUDICATION] Duplicate check failed (non-fatal):`, dupErr);
+      console.warn(`[RUNID-BATCH] Duplicate check failed (non-fatal):`, dupErr);
     }
     
     try {
@@ -278,7 +182,7 @@ const processAdjudicationBatches = async (
         agreements: comment.adjudicationData.agreements
       }));
 
-      console.log(`[ADJUDICATION] Calling adjudicator for batch ${batchIndex + 1} with ${comments.length} comments`);
+      console.log(`[RUNID-BATCH] Calling adjudicator for batch ${batchIndex + 1} with ${comments.length} comments`);
 
       // Respect TPM/RPM: estimate tokens for this batch and wait if needed
       try {
@@ -297,12 +201,12 @@ const processAdjudicationBatches = async (
           const rpmWaitMs = calculateRPMWaitTime(adjudicatorConfig.provider, adjudicatorConfig.model, 1, rpmLimitAdj);
           const waitMs = Math.max(tpmWaitMs || 0, rpmWaitMs || 0);
           if (waitMs && waitMs > 0) {
-            console.log(`[ADJUDICATION][RATE_LIMIT] Waiting ${waitMs}ms before request to respect limits (TPM=${tpmLimitAdj || 'n/a'}, RPM=${rpmLimitAdj || 'n/a'}, estTokens=${estimatedTotalTokens})`);
+            console.log(`[RUNID-BATCH][RATE_LIMIT] Waiting ${waitMs}ms before request to respect limits (TPM=${tpmLimitAdj || 'n/a'}, RPM=${rpmLimitAdj || 'n/a'}, estTokens=${estimatedTotalTokens})`);
             await new Promise(r => setTimeout(r, waitMs));
           }
         }
       } catch (rateErr) {
-        console.warn(`[ADJUDICATION][RATE_LIMIT] Failed to compute precise rate limits, proceeding without wait:`, rateErr);
+        console.warn(`[RUNID-BATCH][RATE_LIMIT] Failed to compute precise rate limits, proceeding without wait:`, rateErr);
       }
 
       const adjudicationResponse = await supabase.functions.invoke('adjudicator', {
@@ -325,11 +229,11 @@ const processAdjudicationBatches = async (
       });
 
       if (adjudicationResponse.error) {
-        console.error(`[ADJUDICATION] Error calling adjudicator for batch ${batchIndex + 1}:`, adjudicationResponse.error);
+        console.error(`[RUNID-BATCH] Error calling adjudicator for batch ${batchIndex + 1}:`, adjudicationResponse.error);
         throw new Error(`Adjudicator batch ${batchIndex + 1} failed: ${adjudicationResponse.error.message}`);
       }
 
-      console.log(`[ADJUDICATION] Batch ${batchIndex + 1} completed successfully`);
+      console.log(`[RUNID-BATCH] Batch ${batchIndex + 1} completed successfully`);
       // Record usage against TPM/RPM trackers if configured
       try {
         const tokensPerCommentOut = adjudicatorConfig.tokens_per_comment || 13;
@@ -342,18 +246,18 @@ const processAdjudicationBatches = async (
         recordUsage(adjudicatorConfig.provider, adjudicatorConfig.model, estimatedTotalTokens);
         recordRequest(adjudicatorConfig.provider, adjudicatorConfig.model, 1);
       } catch (recErr) {
-        console.warn(`[ADJUDICATION][RATE_LIMIT] Failed to record usage:`, recErr);
+        console.warn(`[RUNID-BATCH][RATE_LIMIT] Failed to record usage:`, recErr);
       }
       
       // Mark this batch as completed to prevent duplicates in this execution
       completedBatchKeys.add(batchKeyForRun);
-      console.log(`[ADJUDICATION] Marked batch ${batchIndex + 1} (key: ${batchKeyForRun}) as completed`);
+      console.log(`[RUNID-BATCH] Marked batch ${batchIndex + 1} (key: ${batchKeyForRun}) as completed`);
 
       // Persist a success marker row to ai_logs to help cross-invocation dedupe
       try {
         await aiLogger.logResponse(user.id, scanRunId, 'adjudicator', adjudicatorConfig.provider, adjudicatorConfig.model, 'adjudication', 'adjudication', '[BATCH SUCCESS]', undefined);
       } catch (persistErr) {
-        console.warn(`[ADJUDICATION] Failed to persist success marker:`, persistErr);
+        console.warn(`[RUNID-BATCH] Failed to persist success marker:`, persistErr);
       }
 
       processedBatches++;
@@ -361,7 +265,7 @@ const processAdjudicationBatches = async (
       if (Number.isFinite((adjudicatorConfig as any)?.maxBatchesPerRequest) && (adjudicatorConfig as any).maxBatchesPerRequest > 0) {
         const cap = (adjudicatorConfig as any).maxBatchesPerRequest as number;
         if (processedBatches >= cap) {
-          console.log(`[ADJUDICATION] Reached adjudicator maxBatchesPerRequest=${cap}, stopping adjudication for this invocation`);
+          console.log(`[RUNID-BATCH] Reached adjudicator maxBatchesPerRequest=${cap}, stopping adjudication for this invocation`);
           break;
         }
       }
@@ -374,17 +278,17 @@ const processAdjudicationBatches = async (
       // Add delay between batches to respect rate limits (if not the last batch)
       if (batchIndex < batches.length - 1) {
         const delayMs = 1000; // 1 second delay between batches
-        console.log(`[ADJUDICATION] Waiting ${delayMs}ms before next batch to respect rate limits`);
+        console.log(`[RUNID-BATCH] Waiting ${delayMs}ms before next batch to respect rate limits`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
       
     } catch (batchError) {
-      console.error(`[ADJUDICATION] Failed to process batch ${batchIndex + 1}:`, batchError);
+      console.error(`[RUNID-BATCH] Failed to process batch ${batchIndex + 1}:`, batchError);
       throw batchError; // Re-throw to stop processing
     }
   }
   
-  console.log(`[ADJUDICATION] All batches completed. Total results: ${allResults.length}`);
+  console.log(`[RUNID-BATCH] All batches completed. Total results: ${allResults.length}`);
   return allResults;
 };
 
@@ -394,7 +298,7 @@ serve(async (req) => {
   // Build CORS headers for this request
   const origin = req.headers.get('origin');
   const corsHeaders = buildCorsHeaders(origin);
-  console.log('[CORS] Origin:', origin);
+  console.log('[RUNID-BATCH] Origin:', origin);
 
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -428,7 +332,7 @@ serve(async (req) => {
     }
 
     const user = userData.user;
-    console.log(`Processing request for user: ${user.email}`);
+    console.log(`[RUNID-BATCH] Processing request for user: ${user.email}`);
     
     // Global run-guards to prevent duplicate analysis batches for the same run id
     const gAny: any = globalThis as any;
@@ -438,8 +342,8 @@ serve(async (req) => {
     gAny.__adjudicationBatchesCompleted = gAny.__adjudicationBatchesCompleted || new Set<string>();
     
     // Log run id context
-    console.log(`[RUN ${scanRunId}] Request started`);
-    console.log(`[REQUEST] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
+    console.log(`[RUNID-BATCH] Request started`);
+    console.log(`[RUNID-BATCH] comments=${requestBody.comments?.length} defaultMode=${requestBody.defaultMode} batchStart=${requestBody.batchStart}`);
 
     // Allow incremental processing: only block duplicate initial requests (batchStart=0)
     const isCached = Boolean(requestBody.useCachedAnalysis);
@@ -496,7 +400,7 @@ serve(async (req) => {
     if (!clientManagedBatching && !isCached && !isIncrementalRequest) {
       // Only block duplicate initial requests (batchStart=0 or undefined)
       if (gAny.__analysisStarted.has(scanRunId)) {
-        console.log(`[DUPLICATE ANALYSIS] scanRunId=${scanRunId} received a second initial analysis request. Ignoring.`);
+        console.log(`[RUNID-BATCH] scanRunId=${scanRunId} received a second initial analysis request. Ignoring.`);
         return new Response(JSON.stringify({
           comments: [],
           batchStart: batchStartValue,
@@ -508,12 +412,12 @@ serve(async (req) => {
       }
       gAny.__analysisStarted.add(scanRunId);
     } else if (!clientManagedBatching && isIncrementalRequest) {
-      console.log(`[INCREMENTAL] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${batchStartValue}`);
+      console.log(`[RUNID-BATCH] Allowing incremental request for scanRunId=${scanRunId} with batchStart=${batchStartValue}`);
       // Deduplicate incremental batch processing per (runId,batchStart) within this function's lifecycle
       gAny.__processedBatchStarts = gAny.__processedBatchStarts || new Set<string>();
       const batchKey = `${scanRunId}:${batchStartValue}`;
       if (gAny.__processedBatchStarts.has(batchKey)) {
-        console.log(`[DEDUP] Incremental batch already processed in this execution for key=${batchKey}. Skipping.`);
+        console.log(`[RUNID-BATCH] Incremental batch already processed in this execution for key=${batchKey}. Skipping.`);
         return new Response(JSON.stringify({
           comments: [],
           batchStart: batchStartValue,
@@ -528,7 +432,7 @@ serve(async (req) => {
     }
     // If this run id has already completed, short-circuit to avoid duplicate model calls
     if (!clientManagedBatching && gAny.__runCompleted.has(scanRunId)) {
-      console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed. Skipping.`);
+      console.log(`[RUNID-BATCH] scanRunId=${scanRunId} already completed. Skipping.`);
       return new Response(JSON.stringify({
         comments: [],
         batchStart: batchStartValue,
@@ -543,7 +447,7 @@ serve(async (req) => {
     
     // Allow incremental processing: only block if this is a duplicate initial request
     if (!clientManagedBatching && gAny.__runInProgress.has(scanRunId) && !isIncrementalRequest) {
-      console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already in progress. Skipping duplicate call.`);
+      console.log(`[RUNID-BATCH] scanRunId=${scanRunId} already in progress. Skipping duplicate call.`);
       return new Response(JSON.stringify({
         comments: [],
         batchStart: batchStartValue,
@@ -622,7 +526,7 @@ serve(async (req) => {
         const maxRunAge = 5 * 60 * 1000; // 5 minutes
         
         if (runAge < maxRunAge) {
-          console.log(`[DUPLICATE RUN] scanRunId=${scanRunId} already completed recently (${Math.round(runAge/1000)}s ago). Skipping duplicate initial call.`);
+          console.log(`[RUNID-BATCH] scanRunId=${scanRunId} already completed recently (${Math.round(runAge/1000)}s ago). Skipping duplicate initial call.`);
           return new Response(JSON.stringify({
             comments: [],
             batchStart: batchStartValue,
@@ -786,7 +690,7 @@ serve(async (req) => {
         const { getPreciseTokenCount } = await import('./token-counter.ts');
         return await getPreciseTokenCount(provider, model, text);
       } catch (error) {
-        console.warn(`[TOKEN_COUNT] Fallback to approximation for ${provider}/${model}:`, error);
+        console.warn(`[RUNID-BATCH] Fallback to approximation for ${provider}/${model}:`, error);
         return Math.ceil(text.length / 4);
       }
     };
@@ -1040,7 +944,7 @@ serve(async (req) => {
       
       batchesProcessed = 1;
       
-      console.log(`[INCREMENTAL] Processed batch: rows ${batchStart} to ${batchEnd - 1} (${allScannedComments.length} comments)`);
+      console.log(`[RUNID-BATCH] Processed batch: rows ${batchStart} to ${batchEnd - 1} (${allScannedComments.length} comments)`);
     } else {
       // Original server-managed batching logic
       for (let currentBatchStart = batchStart; currentBatchStart < inputComments.length; currentBatchStart += finalBatchSize) {
@@ -1251,7 +1155,7 @@ serve(async (req) => {
 
         if (needsAdjudication) {
           totalSummary.needsAdjudication++;
-          //console.log(`[ADJUDICATION] Comment ${comment.id} needs adjudication: concerning disagreement=${concerningDisagreement} (A:${scanAResult.concerning}, B:${scanBResult.concerning}), identifiable disagreement=${identifiableDisagreement} (A:${scanAResult.identifiable}, B:${scanBResult.identifiable})`);
+          //console.log(`[RUNID-BATCH] Comment ${comment.id} needs adjudication: concerning disagreement=${concerningDisagreement} (A:${scanAResult.concerning}, B:${scanBResult.concerning}), identifiable disagreement=${identifiableDisagreement} (A:${scanAResult.identifiable}, B:${scanBResult.identifiable})`);
         }
 
         // Set flags based on OR across Scan A and B (adjudicator resolves disagreements later)
@@ -1342,7 +1246,7 @@ serve(async (req) => {
       // For incremental requests, we only process a subset of the total comments
       const firstCommentIndex = allScannedComments[0]?.originalRow || (batchStartValue + 1);
       const lastCommentIndex = allScannedComments[allScannedComments.length - 1]?.originalRow || (batchStartValue + allScannedComments.length);
-      console.log(`[INCREMENTAL] Processed batch: rows ${firstCommentIndex} to ${lastCommentIndex} (${allScannedComments.length} comments)`);
+      console.log(`[RUNID-BATCH] Processed batch: rows ${firstCommentIndex} to ${lastCommentIndex} (${allScannedComments.length} comments)`);
     } else {
       // For initial requests, check if we processed all comments in this invocation
       if (allScannedComments.length < inputComments.length) {
@@ -1451,7 +1355,7 @@ serve(async (req) => {
     }
     
     // Call adjudicator if there are comments that need adjudication and no more batches// //
-    console.log(`[ADJUDICATION] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}, skip=${skipAdjudication}`);
+    console.log(`[RUNID-BATCH] Checking conditions: hasMoreBatches=${hasMoreBatches}, needsAdjudication=${totalSummary.needsAdjudication}, adjudicator=${!!adjudicator}, skip=${skipAdjudication}`);
     
     if (!clientManagedBatching && !skipAdjudication && !hasMoreBatches && totalSummary.needsAdjudication > 0 && adjudicator) {
       // Safety gate: ensure ALL scan-comments calls have finished (no pending logs for this run)
@@ -1464,9 +1368,9 @@ serve(async (req) => {
           .eq('response_status', 'pending')
           .limit(1);
         if (pendingErr) {
-          console.warn(`[ADJUDICATION] Pending check failed, proceeding cautiously:`, pendingErr);
+          console.warn(`[RUNID-BATCH] Pending check failed, proceeding cautiously:`, pendingErr);
         } else if (pendingScanLogs && pendingScanLogs.length > 0) {
-          console.log(`[ADJUDICATION] Deferring adjudication: found pending scan-comments logs for run ${scanRunId}`);
+          console.log(`[RUNID-BATCH] Deferring adjudication: found pending scan-comments logs for run ${scanRunId}`);
           // Skip adjudication for this invocation; frontend will call again on next batch/refresh
           return new Response(JSON.stringify({
             comments: allScannedComments,
@@ -1482,15 +1386,15 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
       } catch (gateErr) {
-        console.warn(`[ADJUDICATION] Error during pending scan check, proceeding:`, gateErr);
+        console.warn(`[RUNID-BATCH] Error during pending scan check, proceeding:`, gateErr);
       }
       // Process adjudication for all comments that need it
-      console.log(`[ADJUDICATION] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
+      console.log(`[RUNID-BATCH] Starting adjudication for ${totalSummary.needsAdjudication} comments that need resolution`);
 
       // Client-driven adjudication: skip server-side adjudication to avoid long-running edge invocations
       const CLIENT_MANAGED_ADJUDICATION = true;
       if (CLIENT_MANAGED_ADJUDICATION) {
-        console.log('[ADJUDICATION] Skipped: client-managed adjudication enabled');
+        console.log('[RUNID-BATCH] Skipped: client-managed adjudication enabled');
       } else {
         try {
           // Filter comments that need adjudication
@@ -1506,13 +1410,13 @@ serve(async (req) => {
             return concerningDisagreement || identifiableDisagreement;
           });
 
-          console.log(`[ADJUDICATION] Found ${commentsNeedingAdjudication.length} comments that need adjudication`);
+          console.log(`[RUNID-BATCH] Found ${commentsNeedingAdjudication.length} comments that need adjudication`);
 
           // Check for duplicate adjudication call (cross-invocation, via DB logs)
           const isDuplicate = await checkForDuplicateAdjudication(supabase, scanRunId, commentsNeedingAdjudication);
           
           if (isDuplicate) {
-            console.log(`[ADJUDICATION] These comments have already been processed, skipping duplicate call`);
+            console.log(`[RUNID-BATCH] These comments have already been processed, skipping duplicate call`);
             // Continue without calling adjudicator again
           } else {
             // Process adjudication with proper batching
@@ -1524,7 +1428,7 @@ serve(async (req) => {
               tokens_per_comment: adjudicator.tokens_per_comment || 13
             };
 
-            console.log(`[ADJUDICATION] Sending adjudicator config:`, {
+            console.log(`[RUNID-BATCH] Sending adjudicator config:`, {
               provider: adjudicator.provider,
               model: adjudicator.model,
               promptLength: adjudicator.analysis_prompt?.length || 0,
@@ -1566,7 +1470,7 @@ serve(async (req) => {
             }
           }
         } catch (adjudicationError) {
-          console.error('[ADJUDICATION] Failed to call adjudicator:', adjudicationError);
+          console.error('[RUNID-BATCH] Failed to call adjudicator:', adjudicationError);
           // Continue without failing the entire scan
         }
       }

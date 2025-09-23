@@ -226,7 +226,7 @@ function parseAdjudicationResponse(response: string, expectedCount: number): Arr
   try {
     // First try to parse the simple key-value format (i:1\nA:N\nB:Y)
     if (response.includes('i:') && response.includes('A:') && response.includes('B:')) {
-      console.log('Detected simple key-value format, parsing directly');
+      console.log('[RUNID-BATCH] Detected simple key-value format, parsing directly');
       
       const lines = response.split('\n').filter(line => line.trim().length > 0);
       const results: any[] = [];
@@ -284,8 +284,8 @@ function parseAdjudicationResponse(response: string, expectedCount: number): Arr
       identifiable: Boolean(item.identifiable)
     }));
   } catch (error) {
-    console.error('Failed to parse adjudication response:', error);
-    console.error('Raw response:', response);
+    console.error('[RUNID-BATCH] Failed to parse adjudication response:', error);
+    console.error('[RUNID-BATCH] Raw response:', response);
     throw new Error(`Failed to parse adjudication response: ${error.message}`);
   }
 }
@@ -303,7 +303,7 @@ serve(async (req) => {
     const { comments, adjudicatorConfig, scanRunId, batchIndex, batchKey } = request;
     
     if (!comments || !Array.isArray(comments) || comments.length === 0) {
-      console.log(`[RUN ${scanRunId || 'n/a'}] [ADJUDICATOR] No comments provided; returning success with empty results`);
+      console.log(`[RUNID-BATCH] No comments provided; returning success with empty results`);
       return new Response(
         JSON.stringify({
           success: true,
@@ -320,9 +320,9 @@ serve(async (req) => {
     const runId = scanRunId || Math.floor(Math.random() * 10000);
     const logPrefix = `[RUN ${runId}]`;
 
-    console.log(`${logPrefix} [ADJUDICATOR] Request received: comments=${comments.length}, hasConfig=${Boolean(adjudicatorConfig)}`);
-    console.log(`${logPrefix} [ADJUDICATOR] Processing ${comments.length} comments with ${adjudicatorConfig?.provider || '(auto)'}/${adjudicatorConfig?.model || '(auto)'}`);
-    console.log(`${logPrefix} [ADJUDICATOR] Config received:`, {
+    console.log(`${logPrefix} [RUNID-BATCH] Request received: comments=${comments.length}, hasConfig=${Boolean(adjudicatorConfig)}`);
+    console.log(`${logPrefix} [RUNID-BATCH] Processing ${comments.length} comments with ${adjudicatorConfig?.provider || '(auto)'}/${adjudicatorConfig?.model || '(auto)'}`);
+    console.log(`${logPrefix} [RUNID-BATCH] Config received:`, {
       provider: adjudicatorConfig?.provider,
       model: adjudicatorConfig?.model,
       promptLength: adjudicatorConfig?.prompt?.length || 0,
@@ -354,7 +354,7 @@ serve(async (req) => {
     }
     
     // Adjudication is now free - no credit checking needed
-    console.log(`${logPrefix} [ADJUDICATOR] Adjudication is free - no credits required`);
+    console.log(`${logPrefix} [RUNID-BATCH] Adjudication is free - no credits required`);
     
     // Normalize agreements. If not provided, derive from scanA vs scanB equality.
     const enriched = comments.map(c => {
@@ -376,7 +376,7 @@ serve(async (req) => {
     // Filter comments that need adjudication (where agreements are null)
 
     if (needsAdjudication.length === 0) {
-      console.log(`${logPrefix} [ADJUDICATOR] No comments need adjudication`);
+      console.log(`${logPrefix} [RUNID-BATCH] No comments need adjudication`);
       return new Response(
         JSON.stringify({
           success: true,
@@ -404,7 +404,7 @@ serve(async (req) => {
       )
     }
 
-    console.log(`${logPrefix} [ADJUDICATOR] ${needsAdjudication.length} comments need adjudication`);
+    console.log(`${logPrefix} [RUNID-BATCH] ${needsAdjudication.length} comments need adjudication`);
 
     try {
       // Scan-comments style: fetch AI configs, pick adjudicator row
@@ -420,7 +420,7 @@ serve(async (req) => {
       if (!adjudicatorCfg) {
         throw new Error('No adjudicator configuration found in ai_configurations');
       }
-      console.log(`${logPrefix} [CONFIG] Adjudicator: ${adjudicatorCfg.provider}/${adjudicatorCfg.model}`);
+      console.log(`${logPrefix} [RUNID-BATCH] Adjudicator: ${adjudicatorCfg.provider}/${adjudicatorCfg.model}`);
 
       // Fetch model configurations, find matching row
       const { data: modelConfigs, error: modelErr } = await supabase
@@ -442,13 +442,13 @@ serve(async (req) => {
         ? aiTempAdj
         : (modelCfgEff?.temperature ?? 0);
       const tokensPerComment = adjudicatorCfg?.tokens_per_comment || 13;
-      console.log(`${logPrefix} [CONFIG] Adjudicator temperature: ${temperature}, tokens_per_comment: ${tokensPerComment}`);
+      console.log(`${logPrefix} [RUNID-BATCH] Adjudicator temperature: ${temperature}, tokens_per_comment: ${tokensPerComment}`);
 
       // Limits
       let actualMaxTokens = modelCfgEff.output_token_limit as number;
       const tpmLimit = modelCfgEff?.tpm_limit;
       const rpmLimit = modelCfgEff?.rpm_limit;
-      console.log(`${logPrefix} [TOKEN LIMITS] Adjudicator output_token_limit: ${actualMaxTokens}, TPM: ${tpmLimit || 'n/a'}, RPM: ${rpmLimit || 'n/a'}`);
+      console.log(`${logPrefix} [RUNID-BATCH] Adjudicator output_token_limit: ${actualMaxTokens}, TPM: ${tpmLimit || 'n/a'}, RPM: ${rpmLimit || 'n/a'}`);
 
       // Prompt
       const prompt = String(adjudicatorCfg.analysis_prompt || '');
@@ -458,8 +458,8 @@ serve(async (req) => {
 
       // Build input
       const input = buildAdjudicationInput(needsAdjudication);
-      console.log(`${logPrefix} [AI REQUEST] ${adjudicatorCfg.provider}/${adjudicatorCfg.model} type=adjudication`);
-      console.log(`${logPrefix} [AI REQUEST] payload=${JSON.stringify({
+      console.log(`${logPrefix} [RUNID-BATCH] ${adjudicatorCfg.provider}/${adjudicatorCfg.model} type=adjudication`);
+      console.log(`${logPrefix} [RUNID-BATCH] payload=${JSON.stringify({
         provider: adjudicatorCfg.provider,
         model: adjudicatorCfg.model,
         prompt_length: prompt.length,
@@ -471,7 +471,7 @@ serve(async (req) => {
       const estimatedInputTokens = Math.ceil(input.length / 4);
       const estimatedOutputTokens = needsAdjudication.length * tokensPerComment;
       const totalEstimatedTokens = estimatedInputTokens + estimatedOutputTokens;
-      console.log(`${logPrefix} [TOKEN ESTIMATES] Adjudication (${needsAdjudication.length} comments):`);
+      console.log(`${logPrefix} [RUNID-BATCH] Adjudication (${needsAdjudication.length} comments):`);
       console.log(`  Input: ~${estimatedInputTokens} tokens (estimated)`);
       console.log(`  Output: ${estimatedOutputTokens} tokens (${tokensPerComment} tokens per comment)`);
       console.log(`  Total: ${totalEstimatedTokens} tokens`);
@@ -591,11 +591,11 @@ serve(async (req) => {
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Parsed ${batchResults.length} results`);
       }
 
-      console.log(`${logPrefix} [ADJUDICATOR] Completed all batches. Total results: ${allAdjudicatedResults.length}`);
+      console.log(`${logPrefix} [RUNID-BATCH] Completed all batches. Total results: ${allAdjudicatedResults.length}`);
 
       // Use the combined results from all batches
       const adjudicatedResults = allAdjudicatedResults;
-      console.log(`${logPrefix} [ADJUDICATOR] Combined ${adjudicatedResults.length} adjudication results from ${batchedComments.length} batches`);
+      console.log(`${logPrefix} [RUNID-BATCH] Combined ${adjudicatedResults.length} adjudication results from ${batchedComments.length} batches`);
 
       // Map results by the sentinel item id used in input (originalRow || scannedIndex || sequence)
       const resultByItemId = new Map<number, { index: number; concerning: boolean; identifiable: boolean }>();
@@ -641,8 +641,8 @@ serve(async (req) => {
         errors: 0
       };
 
-      console.log(`${logPrefix} [ADJUDICATOR] Completed: ${summary.resolved} resolved, ${summary.total - summary.resolved} already agreed`);
-      console.log(`${logPrefix} [ADJUDICATOR] No credits deducted - adjudication is free`);
+      console.log(`${logPrefix} [RUNID-BATCH] Completed: ${summary.resolved} resolved, ${summary.total - summary.resolved} already agreed`);
+      console.log(`${logPrefix} [RUNID-BATCH] No credits deducted - adjudication is free`);
       console.log(`${logPrefix} [TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`);
 
       return new Response(
@@ -656,7 +656,7 @@ serve(async (req) => {
       );
 
     } catch (error) {
-      console.error(`${logPrefix} [ADJUDICATOR] Error during adjudication:`, error);
+      console.error(`${logPrefix} [RUNID-BATCH] Error during adjudication:`, error);
       
       return new Response(
         JSON.stringify({

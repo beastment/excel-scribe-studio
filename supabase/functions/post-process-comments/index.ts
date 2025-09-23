@@ -63,7 +63,7 @@ async function enforceRpmDelay(provider: string, model: string, rpmLimit?: numbe
   const last = lastCallStartByModel.get(key) ?? 0;
   const waitMs = Math.max(0, minIntervalMs - (now - last));
   if (waitMs > 0) {
-    console.log(`[RPM] ${key} waiting ${waitMs}ms (rpm=${rpmLimit})`);
+    console.log(`[RUNID-BATCH] ${key} waiting ${waitMs}ms (rpm=${rpmLimit})`);
     await delay(waitMs);
   }
   lastCallStartByModel.set(key, Date.now());
@@ -80,13 +80,13 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 function getEffectiveMaxTokens(config: any, logPrefix?: string): number {
   const explicit = config?.max_tokens;
   const lp = logPrefix ? `${logPrefix} ` : '';
-  console.log(`${lp}[getEffectiveMaxTokens] Input config:`, { 
+  console.log(`${lp}[RUNID-BATCH] Input config:`, { 
     provider: config?.provider, 
     model: config?.model, 
     explicit_max_tokens: explicit 
   });
   if (explicit && explicit > 0) {
-    console.log(`${lp}[getEffectiveMaxTokens] Using explicit max_tokens:`, explicit);
+    console.log(`${lp}[RUNID-BATCH] Using explicit max_tokens:`, explicit);
     return Math.floor(explicit);
   }
   const provider = String(config?.provider || '').toLowerCase();
@@ -99,7 +99,7 @@ function getEffectiveMaxTokens(config: any, logPrefix?: string): number {
     if (model.startsWith('amazon.titan')) return 2000; // Fallback only - should use output_token_limit from model config
   }
   if (provider === 'openai' || provider === 'azure') return 4096;
-  console.log(`${lp}[getEffectiveMaxTokens] Using default fallback: 2000`);
+  console.log(`${lp}[RUNID-BATCH] Using default fallback: 2000`);
   return 2000; // Fallback only - should use output_token_limit from model config
 }
 
@@ -189,8 +189,8 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     max_tokens: maxTokens || 4096
   };
 
-  console.log(`${lp}[CALL_AI] ${provider}/${model} max_tokens=${maxTokens || 4096}, temperature=${temperature || 0}`);
-  console.log(`${lp}[CALL_AI_DEBUG] Provider: ${provider}, Model: ${model}, MaxTokens: ${maxTokens}, Temperature: ${temperature}`);
+  console.log(`${lp}[RUNID-BATCH] ${provider}/${model} max_tokens=${maxTokens || 4096}, temperature=${temperature || 0}`);
+  console.log(`${lp}[RUNID-BATCH] Provider: ${provider}, Model: ${model}, MaxTokens: ${maxTokens}, Temperature: ${temperature}`);
 
         // Log the AI request if logger is provided
       if (aiLogger && userId && scanRunId && phase) {
@@ -215,10 +215,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const timeoutId = setTimeout(() => controller.abort(), effectiveTimeoutMs); // configurable
     
     const callStart = Date.now();
-    console.log(`${lp}[CALL_AI_TIMING] azure/${model} start`);
+    console.log(`${lp}[RUNID-BATCH] azure/${model} start`);
     const heartbeatId = setInterval(() => {
       try {
-        console.log(`${lp}[CALL_AI_TIMING] azure/${model} heartbeat ${Date.now() - callStart}ms`);
+        console.log(`${lp}[RUNID-BATCH] azure/${model} heartbeat ${Date.now() - callStart}ms`);
       } catch (_) {
         // ignore logging errors
       }
@@ -238,7 +238,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       
       clearTimeout(timeoutId);
       clearInterval(heartbeatId);
-      console.log(`${lp}[CALL_AI_TIMING] azure/${model} took ${Date.now() - callStart}ms`);
+      console.log(`${lp}[RUNID-BATCH] azure/${model} took ${Date.now() - callStart}ms`);
 
       if (!response.ok) {
         const errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
@@ -280,10 +280,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     
     let response;
     const callStart = Date.now();
-    console.log(`${lp}[CALL_AI_TIMING] openai/${model} start`);
+    console.log(`${lp}[RUNID-BATCH] openai/${model} start`);
     const heartbeatId = setInterval(() => {
       try {
-        console.log(`${lp}[CALL_AI_TIMING] openai/${model} heartbeat ${Date.now() - callStart}ms`);
+        console.log(`${lp}[RUNID-BATCH] openai/${model} heartbeat ${Date.now() - callStart}ms`);
       } catch (_) {
         // ignore logging errors
       }
@@ -304,7 +304,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
       
       clearTimeout(timeoutId);
       clearInterval(heartbeatId);
-      console.log(`${lp}[CALL_AI_TIMING] openai/${model} took ${Date.now() - callStart}ms`);
+      console.log(`${lp}[RUNID-BATCH] openai/${model} took ${Date.now() - callStart}ms`);
 
       if (!response.ok) {
         const errorMessage = `OpenAI API error: ${response.status} ${response.statusText}`;
@@ -356,10 +356,10 @@ async function callAI(provider: string, model: string, prompt: string, input: st
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), effectiveTimeoutMs); // configurable
     const callStart = Date.now();
-    console.log(`${lp}[CALL_AI_TIMING] bedrock/${model} start`);
+    console.log(`${lp}[RUNID-BATCH] bedrock/${model} start`);
     const heartbeatId = setInterval(() => {
       try {
-        console.log(`${lp}[CALL_AI_TIMING] bedrock/${model} heartbeat ${Date.now() - callStart}ms`);
+        console.log(`${lp}[RUNID-BATCH] bedrock/${model} heartbeat ${Date.now() - callStart}ms`);
       } catch (_) {
         // ignore logging errors
       }
@@ -416,7 +416,7 @@ async function callAI(provider: string, model: string, prompt: string, input: st
 
       clearTimeout(timeoutId);
       clearInterval(heartbeatId);
-      console.log(`${lp}[CALL_AI_TIMING] bedrock/${modelId} took ${Date.now() - callStart}ms`);
+      console.log(`${lp}[RUNID-BATCH] bedrock/${modelId} took ${Date.now() - callStart}ms`);
       if (!response.ok) {
         const errorText = await response.text();
         const errorMessage = `Bedrock API error: ${response.status} ${response.statusText} ${errorText}`;
@@ -765,7 +765,7 @@ async function waitForDbRpmGate(supabase: any, provider: string, model: string, 
         .in('response_status', ['pending', 'success'])
         .order('created_at', { ascending: true });
       if (error) {
-        console.warn(`${logPrefix || ''} [RPM_DB] Query error, proceeding without gate:`, error.message);
+        console.warn(`${logPrefix || ''} [RUNID-BATCH] Query error, proceeding without gate:`, error.message);
         return;
       }
       const recent = Array.isArray(data) ? data : [];
@@ -775,10 +775,10 @@ async function waitForDbRpmGate(supabase: any, provider: string, model: string, 
       const windowStart = new Date(recent[cutoffIdx].created_at).getTime();
       const waitMs = Math.max(0, windowMs - (Date.now() - windowStart)) + jitter();
       if (waitMs <= 0) return;
-      console.log(`${logPrefix || ''} [RPM_DB] Throttling ${provider}/${model}: recent=${recent.length} >= rpm=${rpmLimit}, sleeping ${waitMs}ms`);
+      console.log(`${logPrefix || ''} [RUNID-BATCH] Throttling ${provider}/${model}: recent=${recent.length} >= rpm=${rpmLimit}, sleeping ${waitMs}ms`);
       await delay(waitMs);
     } catch (e) {
-      console.warn(`${logPrefix || ''} [RPM_DB] Unexpected error, proceeding:`, e instanceof Error ? e.message : String(e));
+      console.warn(`${logPrefix || ''} [RUNID-BATCH] Unexpected error, proceeding:`, e instanceof Error ? e.message : String(e));
       return;
     }
   }
@@ -810,14 +810,14 @@ async function findRecentDuplicateLog(
       .order('created_at', { ascending: false })
       .limit(1);
     if (error) {
-      console.warn(`${logPrefix || ''} [DEDUP_DB] Query failed; proceeding without dedup:`, error.message);
+      console.warn(`${logPrefix || ''} [RUNID-BATCH] Query failed; proceeding without dedup:`, error.message);
       return null;
     }
     if (Array.isArray(data) && data.length > 0) {
       return { id: String((data[0] as any).id) };
     }
   } catch (e) {
-    console.warn(`${logPrefix || ''} [DEDUP_DB] Unexpected error; proceeding:`, e instanceof Error ? e.message : String(e));
+    console.warn(`${logPrefix || ''} [RUNID-BATCH] Unexpected error; proceeding:`, e instanceof Error ? e.message : String(e));
   }
   return null;
 }
@@ -914,15 +914,15 @@ serve(async (req) => {
       .single();
     
     const safetyMarginPercent = typeof batchSizingData?.safety_margin_percent === "number" ? batchSizingData.safety_margin_percent : 10;
-    console.log(`${logPrefix} [POSTPROCESS] Safety margin: ${safetyMarginPercent}%`);
+    console.log(`${logPrefix} [RUNID-BATCH] Safety margin: ${safetyMarginPercent}%`);
 
     let actualMaxTokens = getEffectiveMaxTokens(scanConfig, logPrefix);
     // Initial token estimation logs reduced
     if (modelCfgError) {
-      console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations, using defaults:`, modelCfgError.message);
+      console.warn(`${logPrefix} [RUNID-BATCH] Warning: Could not fetch model_configurations, using defaults:`, modelCfgError.message);
     } else {
       actualMaxTokens = modelCfg?.output_token_limit || getEffectiveMaxTokens(scanConfig, logPrefix);
-      console.log(`${logPrefix} [POSTPROCESS] Using max_tokens from model_configurations: ${actualMaxTokens}, model_temperature=${modelCfg?.temperature}`);
+      console.log(`${logPrefix} [RUNID-BATCH] Using max_tokens from model_configurations: ${actualMaxTokens}, model_temperature=${modelCfg?.temperature}`);
     }
 
     const effectiveTemperature = (aiCfg && typeof aiCfg.temperature === 'number')
@@ -972,15 +972,15 @@ serve(async (req) => {
       sharedConservativeOutputLimit = getEffectiveMaxTokens(scanConfig);
     }
     const sharedOutputLimitSafe = Math.max(1, Math.floor(sharedConservativeOutputLimit * (1 - (safetyMarginPercent / 100))));
-    console.log(`${logPrefix} [CLIENT_MANAGED] Shared conservative output limit across models: ${sharedConservativeOutputLimit}, safe=${sharedOutputLimitSafe}`);
+    console.log(`${logPrefix} [RUNID-BATCH] Shared conservative output limit across models: ${sharedConservativeOutputLimit}, safe=${sharedOutputLimitSafe}`);
 
     const tokensPerComment = aiCfg?.tokens_per_comment || 13;
-    console.log(`${logPrefix} [POSTPROCESS] Using tokens_per_comment: ${tokensPerComment} (for reference, post-processing uses I/O ratios)`);
+    console.log(`${logPrefix} [RUNID-BATCH] Using tokens_per_comment: ${tokensPerComment} (for reference, post-processing uses I/O ratios)`);
 
     // Get rate limits
     const tpmLimit = modelCfg?.tpm_limit;
     const rpmLimit = modelCfg?.rpm_limit;
-    console.log(`${logPrefix} [POSTPROCESS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${scanConfig.provider}/${scanConfig.model}`);
+    console.log(`${logPrefix} [RUNID-BATCH] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${scanConfig.provider}/${scanConfig.model}`);
 
     // Use the actual max_tokens from model_configurations
     const effectiveConfig = {
@@ -997,7 +997,7 @@ serve(async (req) => {
     const needsProcessing = flaggedComments.length > 0
 
     if (!needsProcessing) {
-      console.log(`${logPrefix} [POSTPROCESS] No comments need post-processing`)
+      console.log(`${logPrefix} [RUNID-BATCH] No comments need post-processing`)
       return new Response(
         JSON.stringify({
           success: true,
@@ -1025,7 +1025,7 @@ serve(async (req) => {
 
     try {
       // Batch sizing is now handled client-side
-      console.log(`${logPrefix} [CLIENT_MANAGED] Processing ${flaggedComments.length} comments as single batch (client-managed batching)`);
+      console.log(`${logPrefix} [RUNID-BATCH] Processing ${flaggedComments.length} comments as single batch (client-managed batching)`);
       
       // Route each comment to Scan A/B model based on identifiable flags; random if both; for concerning-only use concerning flags, else random
       type GroupKey = string;
@@ -1127,8 +1127,8 @@ serve(async (req) => {
       const safetyMultiplierConservative = 1 - (safetyMarginPercent / 100);
       const conservativeInputLimitSafe = Math.floor(conservativeInputLimit * safetyMultiplierConservative);
       const conservativeOutputLimitSafe = Math.floor(conservativeOutputLimit * safetyMultiplierConservative);
-      console.log(`${logPrefix} [CLIENT_MANAGED] Conservative limits across models: input=${conservativeInputLimit}, output=${conservativeOutputLimit}`);
-      console.log(`${logPrefix} [CLIENT_MANAGED] Safety-adjusted conservative limits: input=${conservativeInputLimitSafe}, output=${conservativeOutputLimitSafe} (margin=${safetyMarginPercent}%)`);
+      console.log(`${logPrefix} [RUNID-BATCH] Conservative limits across models: input=${conservativeInputLimit}, output=${conservativeOutputLimit}`);
+      console.log(`${logPrefix} [RUNID-BATCH] Safety-adjusted conservative limits: input=${conservativeInputLimitSafe}, output=${conservativeOutputLimitSafe} (margin=${safetyMarginPercent}%)`);
 
       // Build per-model state with contexts and chunks first
       type Ctx = { chunk: any[]; sentinelRed: string; sentinelReph: string; promptRed: string; promptReph: string; rawRed?: string|null; rawReph?: string|null };
@@ -1142,7 +1142,7 @@ serve(async (req) => {
         if (!groupModelCfgError && groupModelCfg) {
           groupMaxTokens = groupModelCfg.output_token_limit || groupMaxTokens;
         } else if (groupModelCfgError) {
-          console.warn(`${logPrefix} [POSTPROCESS] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError?.message);
+          console.warn(`${logPrefix} [RUNID-BATCH] Warning: Could not fetch model_configurations for ${key}:`, groupModelCfgError?.message);
         }
 
 
@@ -1150,7 +1150,7 @@ serve(async (req) => {
         
         // Process all comments as a single batch (client-managed batching)
         let chunks = [group.items];
-        console.log(`${logPrefix} [POSTPROCESS] Processing group ${key}: ${group.items.length} comments in ${chunks.length} chunks (client-managed batching)`);
+        console.log(`${logPrefix} [RUNID-BATCH] Processing group ${key}: ${group.items.length} comments in ${chunks.length} chunks (client-managed batching)`);
 
         const redactionMode = (scanConfig.redaction_output_mode === 'spans') ? 'spans' : 'full_text';
         const contexts: Ctx[] = chunks.map((ch) => {
@@ -1227,7 +1227,7 @@ serve(async (req) => {
         }
       }));
       } else {
-        console.log(`${logPrefix} [POSTPROCESS] Skipping redaction phase per requestPhaseMode='${requestPhaseMode}'`);
+        console.log(`${logPrefix} [RUNID-BATCH] Skipping redaction phase per requestPhaseMode='${requestPhaseMode}'`);
       }
 
       // Phase 2: after all redactions complete, run rephrases for all models in parallel (sequential within each model)
@@ -1277,7 +1277,7 @@ serve(async (req) => {
         }
       }));
       } else {
-        console.log(`${logPrefix} [POSTPROCESS] Skipping rephrase phase per requestPhaseMode='${requestPhaseMode}'`);
+        console.log(`${logPrefix} [RUNID-BATCH] Skipping rephrase phase per requestPhaseMode='${requestPhaseMode}'`);
       }
 
       // Phase 3: parse/align and push results for all groups
@@ -1459,13 +1459,13 @@ serve(async (req) => {
                  let rawText = String(rawAny ?? "");
                  if (rawText) {
                    const preview = rawText.length > 600 ? (rawText.slice(0, 600) + '…') : rawText;
-                   console.log(`[POSTPROCESS][SPANS][DEBUG] Raw redaction content length=${rawText.length} preview=`, preview);
+                   console.log(`[RUNID-BATCH][SPANS][DEBUG] Raw redaction content length=${rawText.length} preview=`, preview);
                  }
                  // Attempt direct JSON.parse
                  try {
                    const parsedAny = JSON.parse(rawText);
                    if (Array.isArray(parsedAny)) {
-                     console.log(`[POSTPROCESS][SPANS][DEBUG] Direct JSON.parse succeeded with array length=${parsedAny.length}`);
+                     console.log(`[RUNID-BATCH][SPANS][DEBUG] Direct JSON.parse succeeded with array length=${parsedAny.length}`);
                      for (const obj of parsedAny as Array<{ index?: number|string; redact?: string[] }>) {
                        const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
                        const idx = (typeof idxVal === 'number' && Number.isFinite(idxVal)) ? idxVal : -1;
@@ -1474,10 +1474,10 @@ serve(async (req) => {
                      }
                    } else if (typeof parsedAny === 'string') {
                      rawText = parsedAny;
-                     console.log('[POSTPROCESS][SPANS][DEBUG] Direct parse returned string; will continue with extracted string.');
+                     console.log('[RUNID-BATCH][SPANS][DEBUG] Direct parse returned string; will continue with extracted string.');
                    }
                  } catch (e) {
-                   console.warn('[POSTPROCESS][SPANS][DEBUG] Direct JSON.parse failed:', e);
+                   console.warn('[RUNID-BATCH][SPANS][DEBUG] Direct JSON.parse failed:', e);
                  }
 
                  // If still empty, extract JSON array region
@@ -1486,7 +1486,7 @@ serve(async (req) => {
                    const end = rawText.lastIndexOf("]");
                    let jsonStr = (start >= 0 && end > start) ? rawText.substring(start, end + 1) : rawText;
                    const jsonPreview = jsonStr.length > 600 ? (jsonStr.slice(0, 600) + '…') : jsonStr;
-                   console.log(`[POSTPROCESS][SPANS][DEBUG] Candidate JSON slice length=${jsonStr.length} preview=`, jsonPreview);
+                   console.log(`[RUNID-BATCH][SPANS][DEBUG] Candidate JSON slice length=${jsonStr.length} preview=`, jsonPreview);
                    // Sanitize common issues
                    jsonStr = jsonStr
                      .replace(/^[\u200B\s`]*json\s*/i, "")
@@ -1496,7 +1496,7 @@ serve(async (req) => {
                      .replace(/,(\s*[}\]])/g, '$1');
                    try {
                      const parsed = JSON.parse(jsonStr) as Array<{ index?: number|string; redact?: string[] }>;
-                     console.log(`[POSTPROCESS][SPANS][DEBUG] Sanitized JSON.parse succeeded with array length=${Array.isArray(parsed) ? parsed.length : 0}`);
+                     console.log(`[RUNID-BATCH][SPANS][DEBUG] Sanitized JSON.parse succeeded with array length=${Array.isArray(parsed) ? parsed.length : 0}`);
                      if (Array.isArray(parsed)) {
                        for (const obj of parsed) {
                          const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
@@ -1506,7 +1506,7 @@ serve(async (req) => {
                        }
                      }
                    } catch (e1) {
-                     console.warn('[POSTPROCESS][SPANS][DEBUG] Sanitized JSON.parse failed:', e1);
+                     console.warn('[RUNID-BATCH][SPANS][DEBUG] Sanitized JSON.parse failed:', e1);
                      // If it looks like a JSON string containing an array (escaped quotes), unescape and retry
                      const looksEscaped = /\\"index\\"|\\"redact\\"/.test(jsonStr) || /\\\[/.test(jsonStr);
                      if (looksEscaped) {
@@ -1517,10 +1517,10 @@ serve(async (req) => {
                          .replace(/\\t/g, ' ')
                          .replace(/\\\\/g, '\\');
                        const unescPreview = unescaped.length > 600 ? (unescaped.slice(0, 600) + '…') : unescaped;
-                       console.log('[POSTPROCESS][SPANS][DEBUG] Trying unescaped JSON parse. preview=', unescPreview);
+                       console.log('[RUNID-BATCH][SPANS][DEBUG] Trying unescaped JSON parse. preview=', unescPreview);
                        try {
                          const parsed2 = JSON.parse(unescaped) as Array<{ index?: number|string; redact?: string[] }>;
-                         console.log(`[POSTPROCESS][SPANS][DEBUG] Unescaped JSON.parse succeeded with length=${Array.isArray(parsed2) ? parsed2.length : 0}`);
+                         console.log(`[RUNID-BATCH][SPANS][DEBUG] Unescaped JSON.parse succeeded with length=${Array.isArray(parsed2) ? parsed2.length : 0}`);
                          if (Array.isArray(parsed2)) {
                            for (const obj of parsed2) {
                              const idxVal = typeof obj?.index === 'string' ? parseInt(obj.index as unknown as string, 10) : obj?.index;
@@ -1530,13 +1530,13 @@ serve(async (req) => {
                            }
                          }
                        } catch (e2) {
-                         console.warn('[POSTPROCESS][SPANS][DEBUG] Unescaped JSON.parse failed:', e2);
+                         console.warn('[RUNID-BATCH][SPANS][DEBUG] Unescaped JSON.parse failed:', e2);
                        }
                      }
                    }
                  }
                } catch (e) {
-                 console.warn("[POSTPROCESS][SPANS] Failed to parse JSON spans; attempting regex fallback.", e);
+                 console.warn("[RUNID-BATCH][SPANS] Failed to parse JSON spans; attempting regex fallback.", e);
                }
                // Regex fallback if parse failed or empty – run on both raw and an unescaped view
                if (spansByIdx.size === 0) {
@@ -1568,7 +1568,7 @@ serve(async (req) => {
                        found += 1;
                      }
                    }
-                   console.log(`[POSTPROCESS][SPANS][DEBUG] Regex extractor(${tag}) matched objects=${found}`);
+                   console.log(`[RUNID-BATCH][SPANS][DEBUG] Regex extractor(${tag}) matched objects=${found}`);
                  };
                  const rawAll = String(ctx.rawRed || "");
                  tryRegexExtract(rawAll, 'raw');
@@ -1577,7 +1577,7 @@ serve(async (req) => {
                    tryRegexExtract(unesc, 'unescaped');
                  }
                  if (spansByIdx.size === 0) {
-                   console.warn('[POSTPROCESS][SPANS] Regex fallback found no spans. Falling back to policy only.');
+                   console.warn('[RUNID-BATCH][SPANS] Regex fallback found no spans. Falling back to policy only.');
                  }
                }
                // Build per-item redacted outputs by applying spans to the original text
@@ -1600,7 +1600,7 @@ serve(async (req) => {
                  const minKey = Math.min(...ordinalKeys);
                  const looksOrdinal = minKey >= 1 && maxKey <= ctx.chunk.length;
                  if (looksOrdinal) {
-                   console.warn('[POSTPROCESS][SPANS][DEBUG] Applying ordinal index fallback for chunk of length', ctx.chunk.length);
+                   console.warn('[RUNID-BATCH][SPANS][DEBUG] Applying ordinal index fallback for chunk of length', ctx.chunk.length);
                    redTexts = ctx.chunk.map((comment: any, idx: number) => {
                      const spans = spansByIdx.get(idx + 1) || [];
                      const applied = (spans.length > 0)
@@ -1612,7 +1612,7 @@ serve(async (req) => {
                }
                // Fallback: if still no change, apply spans to any comment whose text contains any span substring
                if (!redTexts.some((t, i) => (t || '').trim() !== String((ctx.chunk[i]?.text) || '').trim()) && spansByIdx.size > 0) {
-                 console.warn('[POSTPROCESS][SPANS][DEBUG] Applying substring fallback within chunk');
+                 console.warn('[RUNID-BATCH][SPANS][DEBUG] Applying substring fallback within chunk');
                  redTexts = ctx.chunk.map((comment: any) => {
                    const base = String(comment.originalText || comment.text || '');
                    // Merge all spans arrays
@@ -1736,10 +1736,10 @@ serve(async (req) => {
         }
       }
     } catch (error) {
-      console.error('[POSTPROCESS] Error during AI processing:', error);
+      console.error('[RUNID-BATCH] Error during AI processing:', error);
       
       // Fallback: process comments individually without AI
-      console.log('[POSTPROCESS] Falling back to individual processing due to AI error');
+      console.log('[RUNID-BATCH] Falling back to individual processing due to AI error');
       for (const comment of flaggedComments) {
         let mode = comment.mode;
         if (!mode) {
@@ -1810,7 +1810,7 @@ serve(async (req) => {
        totalRunTimeMs: totalRunTimeMs
      }
 
-     console.log(`${logPrefix} [POSTPROCESS] Completed: ${redactedCount} redacted, ${rephrasedCount} rephrased, ${originalCount} original`)
+     console.log(`${logPrefix} [RUNID-BATCH] Completed: ${redactedCount} redacted, ${rephrasedCount} rephrased, ${originalCount} original`)
      console.log(`${logPrefix} [TIMING] Total run time: ${totalRunTimeMs}ms (${(totalRunTimeMs / 1000).toFixed(1)}s)`)
 
      return new Response(
@@ -1819,7 +1819,7 @@ serve(async (req) => {
      )
 
   } catch (error) {
-    console.error('[POSTPROCESS] Error:', error)
+    console.error('[RUNID-BATCH] Error:', error)
     return new Response(
       JSON.stringify({ 
         success: false, 
