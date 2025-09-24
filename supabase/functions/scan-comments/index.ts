@@ -295,26 +295,35 @@ const processAdjudicationBatches = async (
 };
 
 serve(async (req) => {
-  console.log('Edge function called with method:', req.method);
-  
-  // Build CORS headers for this request
-  const origin = req.headers.get('origin');
-  const corsHeaders = buildCorsHeaders(origin);
-  console.log('[RUNID-BATCH] Origin:', origin);
-
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  const overallStartTime = Date.now(); // Track overall process time
-      const MAX_EXECUTION_TIME = 140 * 1000; // 140 seconds max execution time (2.33 minutes)
-
+  // Top-level error handling to ensure CORS headers are always returned
+  let corsHeaders: any;
   try {
+    console.log('[SCAN-COMMENTS] Edge function called with method:', req.method);
+    console.log('[SCAN-COMMENTS] Request URL:', req.url);
+    console.log('[SCAN-COMMENTS] Request headers:', Object.fromEntries(req.headers.entries()));
+    
+    // Build CORS headers for this request
+    const origin = req.headers.get('origin');
+    corsHeaders = buildCorsHeaders(origin);
+    console.log('[SCAN-COMMENTS] Origin:', origin);
+    console.log('[SCAN-COMMENTS] CORS headers built successfully');
+
+    // Handle CORS preflight requests
+    if (req.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
+    const overallStartTime = Date.now(); // Track overall process time
+    const MAX_EXECUTION_TIME = 140 * 1000; // 140 seconds max execution time (2.33 minutes)
+
+    try {
+    console.log('[SCAN-COMMENTS] Starting main try block');
     const requestBody = await req.json();
+    console.log('[SCAN-COMMENTS] Request body parsed successfully');
     // Generate a per-request scanRunId for log correlation
     const scanRunId = requestBody.scanRunId || String(Math.floor(1000 + Math.random() * 9000));
     (globalThis as any).__scanRunId = scanRunId;
+    console.log('[SCAN-COMMENTS] Scan run ID set:', scanRunId);
 
     // Authenticate user first
     const authHeader = req.headers.get('Authorization');
@@ -1591,14 +1600,44 @@ serve(async (req) => {
       adjudicationCompleted: false
     };
     return new Response(JSON.stringify(responseNoAdj), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  } catch (error) {
-    console.error('Error in scan-comments function:', error);
+    } catch (error) {
+      console.error('Error in scan-comments function:', error);
+      
+      // Ensure we always have CORS headers, even if there was an error building them
+      const fallbackCorsHeaders = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Max-Age': '86400',
+        'Access-Control-Allow-Credentials': 'true',
+        'Vary': 'Origin'
+      };
+      
+      console.log('Returning error response with CORS headers:', fallbackCorsHeaders);
+      return new Response(JSON.stringify({ 
+        error: `Error in scan-comments function: ${error.message}` 
+      }), { 
+        headers: { ...fallbackCorsHeaders, 'Content-Type': 'application/json' }, 
+        status: 500 
+      });
+    }
+  } catch (topLevelError) {
+    // Top-level error handling for function setup issues
+    console.error('Top-level error in scan-comments function:', topLevelError);
     
-    console.log('Returning error response with CORS headers:', corsHeaders);
+    const fallbackCorsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Max-Age': '86400',
+      'Access-Control-Allow-Credentials': 'true',
+      'Vary': 'Origin'
+    };
+    
     return new Response(JSON.stringify({ 
-      error: `Error in scan-comments function: ${error.message}` 
+      error: `Top-level error in scan-comments function: ${topLevelError.message}` 
     }), { 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+      headers: { ...fallbackCorsHeaders, 'Content-Type': 'application/json' }, 
       status: 500 
     });
   }
