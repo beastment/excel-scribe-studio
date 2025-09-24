@@ -57,6 +57,7 @@ interface AdjudicationRequest {
   scanRunId?: string;
   batchIndex?: number; // Track which batch this is
   batchKey?: string; // Unique key for this batch to prevent duplicates
+  clientCalculatedOutputTokens?: number; // Client-calculated output tokens for this batch
 }
 //
 interface AdjudicationResponse {
@@ -300,7 +301,7 @@ serve(async (req) => {
 
   try {
     const request: AdjudicationRequest = await req.json();
-    const { comments, adjudicatorConfig, scanRunId, batchIndex, batchKey } = request;
+    const { comments, adjudicatorConfig, scanRunId, batchIndex, batchKey, clientCalculatedOutputTokens } = request;
     
     if (!comments || !Array.isArray(comments) || comments.length === 0) {
       console.log(`[RUNID-BATCH] No comments provided; returning success with empty results`);
@@ -568,13 +569,17 @@ serve(async (req) => {
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}/${batchedComments.length}] Processing ${batch.length} comments`);
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Estimated tokens: ${batchTotalTokens} (${batchEstimatedInputTokens} input + ${batchEstimatedOutputTokens} output)`);
         
+        // Determine maxTokens: use client-calculated value if provided, otherwise fall back to dashboard value
+        const maxTokensToUse = clientCalculatedOutputTokens || actualMaxTokens;
+        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Using maxTokens: ${maxTokensToUse} (${clientCalculatedOutputTokens ? 'client-calculated' : 'dashboard fallback'})`);
+        
         // Call AI for this batch
         const rawResponse = await callAI(
           adjudicatorCfg.provider,
           adjudicatorCfg.model,
           prompt,
           batchInput,
-          actualMaxTokens,
+          maxTokensToUse,
           user.id,
           runId.toString(),
           aiLogger,

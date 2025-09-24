@@ -108,7 +108,8 @@ const processAdjudicationBatches = async (
   authHeader: string,
   safetyMarginPercent: number = 10,
   aiLogger: AILogger,
-  user: any
+  user: any,
+  clientCalculatedAdjudicatorOutputTokens?: number
 ): Promise<any[]> => {
   // Calculate optimal batch size for adjudicator
   console.log(`[RUNID-BATCH] Calculating optimal batch size for ${commentsToAdjudicate.length} comments...`);
@@ -221,7 +222,8 @@ const processAdjudicationBatches = async (
           },
           scanRunId: scanRunId,
           batchIndex: batchIndex,
-          batchKey: batchKey
+          batchKey: batchKey,
+          clientCalculatedOutputTokens: clientCalculatedAdjudicatorOutputTokens
         },
         headers: {
           authorization: authHeader
@@ -353,6 +355,7 @@ serve(async (req) => {
     const checkStatusOnly = Boolean(requestBody.checkStatusOnly);
     const skipAdjudication = Boolean(requestBody.skipAdjudication);
     const clientManagedBatching = Boolean(requestBody.clientManagedBatching);
+    const clientCalculatedAdjudicatorOutputTokens = Number.isFinite(requestBody.clientCalculatedAdjudicatorOutputTokens) ? Number(requestBody.clientCalculatedAdjudicatorOutputTokens) : undefined;
     // Optional runtime controls to ensure timely partial responses for large datasets
     const requestedMaxBatchesPerRequest = Number.isFinite(requestBody.maxBatchesPerRequest) ? Math.max(1, Math.min(50, Number(requestBody.maxBatchesPerRequest))) : undefined;
     const requestedMaxRunMs = Number.isFinite(requestBody.maxRunMs) ? Math.max(10000, Math.min(140000, Number(requestBody.maxRunMs))) : undefined;
@@ -1445,7 +1448,8 @@ serve(async (req) => {
               authHeader || '',
               safetyMarginPercent, // Use the same safety margin as scan-comments
               aiLogger,
-              user
+              user,
+              clientCalculatedAdjudicatorOutputTokens
             );
 
             // Update the comments with adjudicated results

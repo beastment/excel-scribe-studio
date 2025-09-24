@@ -588,7 +588,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     scanBResult: c.adjudicationData?.scanBResult || c.scanBResult,
                     agreements: c.adjudicationData?.agreements || c.agreements
                   })),
-                  scanRunId
+                  scanRunId,
+                  clientCalculatedOutputTokens: batch.length * tokensPerComment
                 },
                 headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
               });
