@@ -242,6 +242,38 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
     // Generate a short 4-digit scanRunId so backend logs can be filtered to this click
     const scanRunId = String(Math.floor(1000 + Math.random() * 9000));
+    
+    // Clean up old deduplication entries to prevent localStorage from growing indefinitely
+    try {
+      const keysToRemove: string[] = [];
+      const now = Date.now();
+      const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+      
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('pp:ttl:') || key.startsWith('pp:'))) {
+          try {
+            const value = localStorage.getItem(key);
+            if (value) {
+              const timestamp = Number(value);
+              if (!Number.isNaN(timestamp) && now - timestamp > maxAge) {
+                keysToRemove.push(key);
+              }
+            }
+          } catch (_) {
+            // If we can't parse the value, remove it
+            keysToRemove.push(key);
+          }
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      if (keysToRemove.length > 0) {
+        console.log(`[CLEANUP] Removed ${keysToRemove.length} old deduplication entries`);
+      }
+    } catch (error) {
+      console.warn('[CLEANUP] Failed to clean up old deduplication entries:', error);
+    }
+    
     // Reset requested batches tracker for this run
     requestedBatchesRef.current = new Set<number>();
 
@@ -824,16 +856,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 try { await gate.promise; } catch (_) {}
               }
             }
-            // Time-window dedup across runs (prevents duplicates even if scanRunId changes)
+            // Time-window dedup within the same run (prevents duplicates within the same scan run)
             try {
-              const ttlKey = `pp:ttl:${submitKey}`;
+              const ttlKey = `pp:ttl:${scanRunId}:${submitKey}`;
               const now = Date.now();
               const ttlMs = 2 * 60 * 1000; // 2 minutes
               const prev = window.localStorage.getItem(ttlKey);
               if (prev) {
                 const ts = Number(prev);
                 if (!Number.isNaN(ts) && now - ts < ttlMs) {
-                  console.warn('[PHASE3][DEDUP][TTL] Skipping (recently submitted):', submitKey);
+                  console.warn('[PHASE3][DEDUP][TTL] Skipping (recently submitted in this run):', submitKey);
                   continue;
                 }
               }
@@ -849,11 +881,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               }
               window.localStorage.setItem(storageKey, 'pending');
             } catch (_) {}
-            if (postProcessInFlightRef.current.has(submitKey)) {
-              console.warn('[PHASE3][INFLIGHT] Skipping (already in flight):', submitKey);
+            const inFlightKey = `${scanRunId}:${submitKey}`;
+            if (postProcessInFlightRef.current.has(inFlightKey)) {
+              console.warn('[PHASE3][INFLIGHT] Skipping (already in flight in this run):', submitKey);
               continue;
             }
-            postProcessInFlightRef.current.add(submitKey);
+            postProcessInFlightRef.current.add(inFlightKey);
             console.log('[PHASE3][SUBMIT] key=', submitKey);
             const { data: ppData, error: ppErr } = await supabase.functions.invoke('post-process-comments', {
             body: {
@@ -884,7 +917,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 routingMode
               }
             });
-            postProcessInFlightRef.current.delete(submitKey);
+            postProcessInFlightRef.current.delete(inFlightKey);
             try { window.localStorage.setItem(storageKey, 'done'); } catch (_) {}
             if (ppErr) {
               console.error('[PHASE3] post-process error:', ppErr);
