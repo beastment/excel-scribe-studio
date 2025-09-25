@@ -35,119 +35,6 @@ const getPreciseTokensGlobal = async (text: string, provider: string, model: str
   }
 };
 
-// Helper function to validate completeness and resubmit missing items
-const validateAndResubmitMissing = async (
-  scanAResults: any,
-  scanBResults: any,
-  comments: any[],
-  scanA: any,
-  scanB: any,
-  scanATokenLimits: any,
-  scanBTokenLimits: any,
-  user: any,
-  scanRunId: string,
-  aiLogger: AILogger,
-  batchStart: number
-): Promise<{ scanAResults: any, scanBResults: any }> => {
-  
-  console.log(`[VALIDATION] Checking completeness for ${comments.length} comments starting at index ${batchStart + 1}`);
-  
-  // Parse results from both scans
-  const scanAPartial = scanAResults ? parsePartialResults(scanAResults, comments.length, batchStart) : { parsedResults: [], missingIndices: Array.from({length: comments.length}, (_, i) => batchStart + i), hasPartialResults: false };
-  const scanBPartial = scanBResults ? parsePartialResults(scanBResults, comments.length, batchStart) : { parsedResults: [], missingIndices: Array.from({length: comments.length}, (_, i) => batchStart + i), hasPartialResults: false };
-  
-  console.log(`[VALIDATION] Scan A: ${scanAPartial.parsedResults.length} results, ${scanAPartial.missingIndices.length} missing`);
-  console.log(`[VALIDATION] Scan B: ${scanBPartial.parsedResults.length} results, ${scanBPartial.missingIndices.length} missing`);
-  
-  // Check if we have complete results from both models
-  const scanAComplete = scanAPartial.missingIndices.length === 0;
-  const scanBComplete = scanBPartial.missingIndices.length === 0;
-  
-  if (scanAComplete && scanBComplete) {
-    console.log(`[VALIDATION] Both scans have complete results, no resubmission needed`);
-    return { scanAResults, scanBResults };
-  }
-  
-  console.log(`[VALIDATION] Incomplete results detected - Scan A complete: ${scanAComplete}, Scan B complete: ${scanBComplete}`);
-  
-  // Identify missing items for each model
-  const missingForScanA = scanAPartial.missingIndices.map(index => comments[index - batchStart]);
-  const missingForScanB = scanBPartial.missingIndices.map(index => comments[index - batchStart]);
-  
-  console.log(`[VALIDATION] Missing for Scan A: ${missingForScanA.length} items`);
-  console.log(`[VALIDATION] Missing for Scan B: ${missingForScanB.length} items`);
-  
-  let finalScanAResults = scanAResults;
-  let finalScanBResults = scanBResults;
-  
-  // Resubmit missing items to Scan A
-  if (missingForScanA.length > 0) {
-    console.log(`[VALIDATION] Resubmitting ${missingForScanA.length} items to Scan A`);
-    
-    const batchInput = buildBatchInput(missingForScanA, batchStart);
-    try {
-      const scanAResponse = await callAI(
-        scanA.provider, 
-        scanA.model, 
-        scanA.analysis_prompt, 
-        batchInput, 
-        'batch_analysis', 
-        user.id, 
-        scanRunId, 
-        'scan_a', 
-        aiLogger, 
-        scanATokenLimits.output_token_limit, 
-        scanA.temperature
-      );
-      
-      // Combine with existing results
-      finalScanAResults = scanAResults ? `${scanAResults}\n${scanAResponse}` : scanAResponse;
-      console.log(`[VALIDATION] Scan A resubmission successful`);
-      
-    } catch (error) {
-      console.error(`[VALIDATION] Scan A resubmission failed:`, error);
-      // Use fallback for missing items
-      const fallbackResults = missingForScanA.map((_, index) => `i:${batchStart + index + 1}\nA:N\nB:N`).join('\n');
-      finalScanAResults = scanAResults ? `${scanAResults}\n${fallbackResults}` : fallbackResults;
-    }
-  }
-  
-  // Resubmit missing items to Scan B
-  if (missingForScanB.length > 0) {
-    console.log(`[VALIDATION] Resubmitting ${missingForScanB.length} items to Scan B`);
-    
-    const batchInput = buildBatchInput(missingForScanB, batchStart);
-    try {
-      const scanBResponse = await callAI(
-        scanB.provider, 
-        scanB.model, 
-        scanB.analysis_prompt, 
-        batchInput, 
-        'batch_analysis', 
-        user.id, 
-        scanRunId, 
-        'scan_b', 
-        aiLogger, 
-        scanBTokenLimits.output_token_limit, 
-        scanB.temperature
-      );
-      
-      // Combine with existing results
-      finalScanBResults = scanBResults ? `${scanBResults}\n${scanBResponse}` : scanBResponse;
-      console.log(`[VALIDATION] Scan B resubmission successful`);
-      
-    } catch (error) {
-      console.error(`[VALIDATION] Scan B resubmission failed:`, error);
-      // Use fallback for missing items
-      const fallbackResults = missingForScanB.map((_, index) => `i:${batchStart + index + 1}\nA:N\nB:N`).join('\n');
-      finalScanBResults = scanBResults ? `${scanBResults}\n${fallbackResults}` : fallbackResults;
-    }
-  }
-  
-  console.log(`[VALIDATION] Validation complete - both models should now have complete results`);
-  return { scanAResults: finalScanAResults, scanBResults: finalScanBResults };
-};
-
 // Helper function to parse partial results and identify missing comments
 const parsePartialResults = (responseText: string, totalComments: number, batchStart: number): { 
   parsedResults: string[], 
@@ -155,15 +42,12 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
   hasPartialResults: boolean 
 } => {
   if (!responseText || responseText.trim().length === 0) {
-    console.log(`[PARTIAL_PARSE] Empty response - all ${totalComments} comments missing`);
     return { parsedResults: [], missingIndices: Array.from({length: totalComments}, (_, i) => batchStart + i), hasPartialResults: false };
   }
   
   const lines = responseText.split('\n').filter(line => line.trim().length > 0);
   const parsedResults: string[] = [];
   const foundIndices = new Set<number>();
-  
-  console.log(`[PARTIAL_PARSE] Parsing ${lines.length} lines from response (first 200 chars: ${responseText.substring(0, 200)})`);
   
   // Parse each line looking for the format: i:X A:Y B:Z
   for (const line of lines) {
@@ -173,23 +57,14 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
       const scanA = match[2];
       const scanB = match[3];
       
-      console.log(`[PARTIAL_PARSE] Found result: i:${index} A:${scanA} B:${scanB} (batchStart: ${batchStart + 1}, totalComments: ${totalComments})`);
-      
       // Check if this index is within our expected range
       if (index >= batchStart + 1 && index <= batchStart + totalComments) {
         const relativeIndex = index - batchStart - 1;
         if (relativeIndex >= 0 && relativeIndex < totalComments) {
           parsedResults[relativeIndex] = line;
           foundIndices.add(relativeIndex);
-          console.log(`[PARTIAL_PARSE] Added result at relative index ${relativeIndex}`);
-        } else {
-          console.log(`[PARTIAL_PARSE] Index ${index} out of range (relative: ${relativeIndex})`);
         }
-      } else {
-        console.log(`[PARTIAL_PARSE] Index ${index} outside expected range [${batchStart + 1}, ${batchStart + totalComments}]`);
       }
-    } else {
-      console.log(`[PARTIAL_PARSE] Line doesn't match pattern: ${line}`);
     }
   }
   
@@ -205,27 +80,22 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
   
   console.log(`[PARTIAL_PARSE] Found ${parsedResults.length} valid results out of ${totalComments} comments`);
   console.log(`[PARTIAL_PARSE] Missing indices: ${missingIndices.length > 0 ? missingIndices.join(', ') : 'none'}`);
-  console.log(`[PARTIAL_PARSE] Found indices: ${Array.from(foundIndices).map(i => batchStart + i).join(', ')}`);
   
   return { parsedResults, missingIndices, hasPartialResults };
 };
 
 // Helper function to detect harmful content responses that should trigger batch splitting
 const isHarmfulContentResponse = (responseText: string, provider: string, model: string, totalComments: number, batchStart: number): boolean => {
-  console.log(`[HARMFUL_DETECTION] Checking response from ${provider}/${model} (${totalComments} comments, batchStart: ${batchStart})`);
-  console.log(`[HARMFUL_DETECTION] Response length: ${responseText?.length || 0} characters`);
-  
   if (!responseText || responseText.trim().length === 0) {
-    console.log(`[HARMFUL_DETECTION] Empty response - marking as harmful`);
     return true; // Empty response means complete failure
   }
   
   // First, check if we have any valid partial results
-  const { hasPartialResults, parsedResults } = parsePartialResults(responseText, totalComments, batchStart);
+  const { hasPartialResults } = parsePartialResults(responseText, totalComments, batchStart);
   
   // If we have partial results, don't split - we can work with what we have
   if (hasPartialResults) {
-    console.log(`[HARMFUL_DETECTION] Found ${parsedResults.length} partial results, not splitting batch`);
+    console.log(`[HARMFUL_DETECTION] Found partial results, not splitting batch`);
     return false;
   }
   
@@ -280,19 +150,37 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     lowerResponse.includes(pattern)
   );
   
-  // Additional checks for very short responses or unexpected format
+  // Additional check: if response is very short and contains specific refusal language
+  const isShortRefusal = responseText.length < 150 && (
+    lowerResponse.includes('i cannot analyze') || 
+    lowerResponse.includes('i refuse to analyze') || 
+    lowerResponse.includes('i cannot process') ||
+    lowerResponse.includes('i cannot help') ||
+    lowerResponse.includes('i cannot assist') ||
+    lowerResponse.includes('i cannot comply') ||
+    lowerResponse.includes('violates content policy') ||
+    lowerResponse.includes('violates safety guidelines')
+  );
+  
+  // Check if response doesn't contain expected analysis format (i:X, A:Y, B:Z)
   const hasExpectedFormat = lowerResponse.includes('i:') && (lowerResponse.includes('a:') || lowerResponse.includes('b:'));
   const isUnexpectedFormat = !hasExpectedFormat && responseText.length > 50;
-  const isVeryShort = responseText.length < 100;
   
-  const isHarmful = containsHarmfulPattern || (isUnexpectedFormat && isVeryShort);
+  // Check for very short responses that might be refusals
+  const isVeryShort = responseText.length < 100 && (
+    lowerResponse.includes('cannot') || 
+    lowerResponse.includes('refuse') || 
+    lowerResponse.includes('unable') ||
+    lowerResponse.includes('policy') ||
+    lowerResponse.includes('violate') ||
+    lowerResponse.includes('inappropriate') ||
+    lowerResponse.includes('harmful') ||
+    lowerResponse.includes('concerning') ||
+    lowerResponse.includes('unsafe') ||
+    lowerResponse.includes('sensitive')
+  );
   
-  console.log(`[HARMFUL_DETECTION] Analysis results:`);
-  console.log(`[HARMFUL_DETECTION] - Contains harmful pattern: ${containsHarmfulPattern}`);
-  console.log(`[HARMFUL_DETECTION] - Has expected format: ${hasExpectedFormat}`);
-  console.log(`[HARMFUL_DETECTION] - Unexpected format: ${isUnexpectedFormat}`);
-  console.log(`[HARMFUL_DETECTION] - Very short: ${isVeryShort}`);
-  console.log(`[HARMFUL_DETECTION] - Final decision: ${isHarmful ? 'HARMFUL - will split' : 'SAFE - no splitting'}`);
+  const isHarmful = containsHarmfulPattern || isShortRefusal || (isUnexpectedFormat && isVeryShort);
   
   if (isHarmful) {
     console.log(`[HARMFUL_DETECTION] Detected harmful content response from ${provider}/${model}:`, responseText.substring(0, 200) + '...');
@@ -1350,7 +1238,7 @@ serve(async (req) => {
         }
       }
 
-      // Re-enabled: Use improved recursive splitting to handle harmful content detection
+      // Use improved recursive splitting to handle harmful content detection
       console.log(`[RECURSIVE_SPLIT] Processing batch of ${batch.length} comments with improved harmful content detection`);
       
       const recursiveResults = await processBatchWithRecursiveSplitting(
@@ -1555,7 +1443,7 @@ serve(async (req) => {
         }
       }
       
-      // Re-enabled: Use improved recursive splitting to handle harmful content detection
+      // Use improved recursive splitting to handle harmful content detection
       console.log(`[RECURSIVE_SPLIT] Processing server-managed batch of ${batch.length} comments with improved harmful content detection`);
       
       const recursiveResults = await processBatchWithRecursiveSplitting(
@@ -1805,7 +1693,7 @@ serve(async (req) => {
             );
             if (wtB > 0) await new Promise(r => setTimeout(r, wtB));
           }
-          // Re-enabled: Use improved recursive splitting for tail batch as well
+          // Use improved recursive splitting for tail batch as well
           console.log(`[RECURSIVE_SPLIT] Processing tail batch of ${tailBatch.length} comments with improved harmful content detection`);
           
           const tailRecursiveResults = await processBatchWithRecursiveSplitting(
