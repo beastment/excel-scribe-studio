@@ -1364,30 +1364,17 @@ serve(async (req) => {
         }
       }
 
-      // Use improved recursive splitting to handle harmful content detection
-      console.log(`[RECURSIVE_SPLIT] Processing batch of ${batch.length} comments with improved harmful content detection`);
+      // TEMPORARILY DISABLED: Use improved recursive splitting to handle harmful content detection
+      console.log(`[RECURSIVE_SPLIT] TEMPORARILY DISABLED - Processing batch of ${batch.length} comments with standard processing`);
       
-      const recursiveResults = await processBatchWithRecursiveSplitting(
-        batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, 3, 0, false, false, null, null
-      );
+      // Use standard processing instead of recursive splitting
+      const settled = await Promise.allSettled([
+        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+      ]);
       
-      // TEMPORARILY DISABLED: Validate completeness and resubmit missing items before proceeding
-      // const validatedResults = await validateAndResubmitMissing(
-      //   recursiveResults.scanAResults,
-      //   recursiveResults.scanBResults,
-      //   batch,
-      //   scanA,
-      //   scanB,
-      //   scanATokenLimits,
-      //   scanBTokenLimits,
-      //   user,
-      //   scanRunId,
-      //   aiLogger,
-      //   batchStart
-      // );
-      
-      const scanAResultsClient = recursiveResults.scanAResults;
-      const scanBResultsClient = recursiveResults.scanBResults;
+      const scanAResultsClient = settled[0].status === 'fulfilled' ? settled[0].value : null;
+      const scanBResultsClient = settled[1].status === 'fulfilled' ? settled[1].value : null;
       const batchEndTimeClient = Date.now();
       console.log(`[PERFORMANCE] Batch ${batchStart + 1}-${batchEnd} processed in ${batchEndTimeClient - batchStartTime}ms (parallel AI calls)`);
 
@@ -1584,30 +1571,17 @@ serve(async (req) => {
         }
       }
       
-      // Use improved recursive splitting to handle harmful content detection
-      console.log(`[RECURSIVE_SPLIT] Processing server-managed batch of ${batch.length} comments with improved harmful content detection`);
+      // TEMPORARILY DISABLED: Use improved recursive splitting to handle harmful content detection
+      console.log(`[RECURSIVE_SPLIT] TEMPORARILY DISABLED - Processing server-managed batch of ${batch.length} comments with standard processing`);
       
-      const recursiveResults = await processBatchWithRecursiveSplitting(
-        batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, currentBatchStart, 3, 0, false, false, null, null
-      );
+      // Use standard processing instead of recursive splitting
+      const settled = await Promise.allSettled([
+        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+      ]);
       
-      // TEMPORARILY DISABLED: Validate completeness and resubmit missing items before proceeding
-      // const validatedResults = await validateAndResubmitMissing(
-      //   recursiveResults.scanAResults,
-      //   recursiveResults.scanBResults,
-      //   batch,
-      //   scanA,
-      //   scanB,
-      //   scanATokenLimits,
-      //   scanBTokenLimits,
-      //   user,
-      //   scanRunId,
-      //   aiLogger,
-      //   currentBatchStart
-      // );
-      
-      const scanAResults = recursiveResults.scanAResults;
-      const scanBResults = recursiveResults.scanBResults;
+      const scanAResults = settled[0].status === 'fulfilled' ? settled[0].value : null;
+      const scanBResults = settled[1].status === 'fulfilled' ? settled[1].value : null;
       const batchEndTime = Date.now();
       console.log(`[PERFORMANCE] Batch ${currentBatchStart + 1}-${batchEnd} processed in ${batchEndTime - batchStartTime}ms (parallel AI calls)`);
       
@@ -1849,30 +1823,17 @@ serve(async (req) => {
             );
             if (wtB > 0) await new Promise(r => setTimeout(r, wtB));
           }
-          // Use improved recursive splitting for tail batch as well
-          console.log(`[RECURSIVE_SPLIT] Processing tail batch of ${tailBatch.length} comments with improved harmful content detection`);
+          // TEMPORARILY DISABLED: Use improved recursive splitting for tail batch as well
+          console.log(`[RECURSIVE_SPLIT] TEMPORARILY DISABLED - Processing tail batch of ${tailBatch.length} comments with standard processing`);
           
-          const tailRecursiveResults = await processBatchWithRecursiveSplitting(
-            tailBatch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, tailStartIndex, 3, 0, false, false, null, null
-          );
+          // Use standard processing instead of recursive splitting
+          const tailSettled = await Promise.allSettled([
+            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, tailBatchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, tailBatchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+          ]);
           
-          // TEMPORARILY DISABLED: Validate completeness and resubmit missing items before proceeding
-          // const tailValidatedResults = await validateAndResubmitMissing(
-          //   tailRecursiveResults.scanAResults,
-          //   tailRecursiveResults.scanBResults,
-          //   tailBatch,
-          //   scanA,
-          //   scanB,
-          //   scanATokenLimits,
-          //   scanBTokenLimits,
-          //   user,
-          //   scanRunId,
-          //   aiLogger,
-          //   tailStartIndex
-          // );
-          
-          const tailA = tailRecursiveResults.scanAResults;
-          const tailB = tailRecursiveResults.scanBResults;
+          const tailA = tailSettled[0].status === 'fulfilled' ? tailSettled[0].value : null;
+          const tailB = tailSettled[1].status === 'fulfilled' ? tailSettled[1].value : null;
           const tailAArray = parseBatchResults(tailA, tailBatch.length, 'Scan A (tail)', tailStartIndex + 1);
           const tailBArray = parseBatchResults(tailB, tailBatch.length, 'Scan B (tail)', tailStartIndex + 1);
           const maxTail = Math.max(tailAArray.length, tailBArray.length);
