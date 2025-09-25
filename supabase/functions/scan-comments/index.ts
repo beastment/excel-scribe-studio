@@ -333,7 +333,9 @@ const processBatchWithRecursiveSplitting = async (
   aiLogger: AILogger,
   batchStart: number,
   maxSplits: number = 3, // Maximum number of splits to prevent infinite recursion
-  currentSplit: number = 0
+  currentSplit: number = 0,
+  scanAFailed: boolean = false, // Whether Scan A failed in parent batch
+  scanBFailed: boolean = false  // Whether Scan B failed in parent batch
 ): Promise<{ scanAResults: any, scanBResults: any }> => {
   
   if (comments.length === 0) {
@@ -346,60 +348,111 @@ const processBatchWithRecursiveSplitting = async (
     // Build batch input
     const batchInput = buildBatchInput(comments, batchStart);
     
-    // Make AI calls
-    const settled = await Promise.allSettled([
-      callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
-      callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
-    ]);
-    
     let scanAResults: any = null;
     let scanBResults: any = null;
-    let scanAFailed = false;
-    let scanBFailed = false;
+    let currentScanAFailed = false;
+    let currentScanBFailed = false;
     
-    // Process Scan A results
-    if (settled[0].status === 'fulfilled') {
-      scanAResults = settled[0].value;
-      console.log(`[RECURSIVE_SPLIT] Scan A response (first 200 chars):`, scanAResults?.substring(0, 200));
+    // Only call failed models, preserve successful results
+    if (scanAFailed || scanBFailed) {
+      console.log(`[RECURSIVE_SPLIT] Only calling failed models: ${scanAFailed ? 'Scan A' : ''}${scanAFailed && scanBFailed ? ' and ' : ''}${scanBFailed ? 'Scan B' : ''}`);
       
-      // Check if Scan A detected harmful content
-      if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model)) {
-        console.log(`[RECURSIVE_SPLIT] Scan A detected harmful content, will split batch`);
-        scanAFailed = true;
-      } else {
-        console.log(`[RECURSIVE_SPLIT] Scan A response appears normal, no splitting needed`);
+      const callsToMake: Promise<any>[] = [];
+      if (scanAFailed) {
+        callsToMake.push(callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature));
+      }
+      if (scanBFailed) {
+        callsToMake.push(callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature));
+      }
+      
+      const settled = await Promise.allSettled(callsToMake);
+      
+      let settledIndex = 0;
+      if (scanAFailed) {
+        if (settled[settledIndex].status === 'fulfilled') {
+          scanAResults = (settled[settledIndex] as PromiseFulfilledResult<any>).value;
+          console.log(`[RECURSIVE_SPLIT] Scan A response (first 200 chars):`, scanAResults?.substring(0, 200));
+          
+          if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model)) {
+            console.log(`[RECURSIVE_SPLIT] Scan A still detected harmful content, will split batch`);
+            currentScanAFailed = true;
+          } else {
+            console.log(`[RECURSIVE_SPLIT] Scan A response appears normal, no splitting needed`);
+          }
+        } else {
+          console.log(`[RECURSIVE_SPLIT] Scan A failed with error, will split batch`);
+          currentScanAFailed = true;
+        }
+        settledIndex++;
+      }
+      
+      if (scanBFailed) {
+        if (settled[settledIndex].status === 'fulfilled') {
+          scanBResults = (settled[settledIndex] as PromiseFulfilledResult<any>).value;
+          console.log(`[RECURSIVE_SPLIT] Scan B response (first 200 chars):`, scanBResults?.substring(0, 200));
+          
+          if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model)) {
+            console.log(`[RECURSIVE_SPLIT] Scan B still detected harmful content, will split batch`);
+            currentScanBFailed = true;
+          } else {
+            console.log(`[RECURSIVE_SPLIT] Scan B response appears normal, no splitting needed`);
+          }
+        } else {
+          console.log(`[RECURSIVE_SPLIT] Scan B failed with error, will split batch`);
+          currentScanBFailed = true;
+        }
       }
     } else {
-      console.log(`[RECURSIVE_SPLIT] Scan A failed with error, will split batch`);
-      scanAFailed = true;
-    }
-    
-    // Process Scan B results
-    if (settled[1].status === 'fulfilled') {
-      scanBResults = settled[1].value;
-      console.log(`[RECURSIVE_SPLIT] Scan B response (first 200 chars):`, scanBResults?.substring(0, 200));
+      // First attempt - call both models
+      console.log(`[RECURSIVE_SPLIT] First attempt - calling both models`);
       
-      // Check if Scan B detected harmful content
-      if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model)) {
-        console.log(`[RECURSIVE_SPLIT] Scan B detected harmful content, will split batch`);
-        scanBFailed = true;
+      const settled = await Promise.allSettled([
+        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+      ]);
+      
+      // Process Scan A results
+      if (settled[0].status === 'fulfilled') {
+        scanAResults = settled[0].value;
+        console.log(`[RECURSIVE_SPLIT] Scan A response (first 200 chars):`, scanAResults?.substring(0, 200));
+        
+        if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model)) {
+          console.log(`[RECURSIVE_SPLIT] Scan A detected harmful content, will split batch`);
+          currentScanAFailed = true;
+        } else {
+          console.log(`[RECURSIVE_SPLIT] Scan A response appears normal, no splitting needed`);
+        }
       } else {
-        console.log(`[RECURSIVE_SPLIT] Scan B response appears normal, no splitting needed`);
+        console.log(`[RECURSIVE_SPLIT] Scan A failed with error, will split batch`);
+        currentScanAFailed = true;
       }
-    } else {
-      console.log(`[RECURSIVE_SPLIT] Scan B failed with error, will split batch`);
-      scanBFailed = true;
+      
+      // Process Scan B results
+      if (settled[1].status === 'fulfilled') {
+        scanBResults = settled[1].value;
+        console.log(`[RECURSIVE_SPLIT] Scan B response (first 200 chars):`, scanBResults?.substring(0, 200));
+        
+        if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model)) {
+          console.log(`[RECURSIVE_SPLIT] Scan B detected harmful content, will split batch`);
+          currentScanBFailed = true;
+        } else {
+          console.log(`[RECURSIVE_SPLIT] Scan B response appears normal, no splitting needed`);
+        }
+      } else {
+        console.log(`[RECURSIVE_SPLIT] Scan B failed with error, will split batch`);
+        currentScanBFailed = true;
+      }
     }
     
     // If both scans succeeded, return the results
-    if (!scanAFailed && !scanBFailed) {
+    if (!currentScanAFailed && !currentScanBFailed) {
       console.log(`[RECURSIVE_SPLIT] Both scans succeeded, returning results`);
       return { scanAResults, scanBResults };
     }
     
     // If we need to split and haven't reached max splits
-    if ((scanAFailed || scanBFailed) && currentSplit < maxSplits && comments.length > 1) {
-      console.log(`[RECURSIVE_SPLIT] Splitting batch of ${comments.length} comments due to ${scanAFailed ? 'Scan A' : ''}${scanAFailed && scanBFailed ? ' and ' : ''}${scanBFailed ? 'Scan B' : ''} failure`);
+    if ((currentScanAFailed || currentScanBFailed) && currentSplit < maxSplits && comments.length > 1) {
+      console.log(`[RECURSIVE_SPLIT] Splitting batch of ${comments.length} comments due to ${currentScanAFailed ? 'Scan A' : ''}${currentScanAFailed && currentScanBFailed ? ' and ' : ''}${currentScanBFailed ? 'Scan B' : ''} failure`);
       
       // Split the batch in half
       const midPoint = Math.floor(comments.length / 2);
@@ -408,13 +461,13 @@ const processBatchWithRecursiveSplitting = async (
       
       console.log(`[RECURSIVE_SPLIT] Splitting into ${firstHalf.length} and ${secondHalf.length} comments`);
       
-      // Process both halves recursively
+      // Process both halves recursively, but only resubmit failed models
       const firstHalfResults = await processBatchWithRecursiveSplitting(
-        firstHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1
+        firstHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed
       );
       
       const secondHalfResults = await processBatchWithRecursiveSplitting(
-        secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1
+        secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed
       );
       
       // Combine results safely
@@ -437,10 +490,10 @@ const processBatchWithRecursiveSplitting = async (
       console.warn(`[RECURSIVE_SPLIT] Max splits reached (${currentSplit}/${maxSplits}) or batch too small (${comments.length}), using fallback`);
       
       // Use fallback responses for failed scans
-      if (scanAFailed) {
+      if (currentScanAFailed) {
         scanAResults = `i:1\nA:N\nB:N`; // Default safe response
       }
-      if (scanBFailed) {
+      if (currentScanBFailed) {
         scanBResults = `i:1\nA:N\nB:N`; // Default safe response
       }
       
