@@ -155,6 +155,8 @@ const processBatchWithRecursiveSplitting = async (
     
     let scanAResults: any = null;
     let scanBResults: any = null;
+    let scanAFailed = false;
+    let scanBFailed = false;
     
     // Process Scan A results
     if (settled[0].status === 'fulfilled') {
@@ -162,49 +164,12 @@ const processBatchWithRecursiveSplitting = async (
       
       // Check if Scan A detected harmful content
       if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model)) {
-        console.log(`[RECURSIVE_SPLIT] Scan A detected harmful content, splitting batch of ${comments.length} comments`);
-        
-        if (currentSplit < maxSplits && comments.length > 1) {
-          // Split the batch in half
-          const midPoint = Math.floor(comments.length / 2);
-          const firstHalf = comments.slice(0, midPoint);
-          const secondHalf = comments.slice(midPoint);
-          
-          console.log(`[RECURSIVE_SPLIT] Splitting into ${firstHalf.length} and ${secondHalf.length} comments`);
-          
-          // Process both halves recursively
-          const firstHalfResults = await processBatchWithRecursiveSplitting(
-            firstHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1
-          );
-          
-          const secondHalfResults = await processBatchWithRecursiveSplitting(
-            secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1
-          );
-          
-          // Combine results safely
-          const combinedScanA = [
-            firstHalfResults.scanAResults,
-            secondHalfResults.scanAResults
-          ].filter(result => result !== null && result !== undefined).join('\n');
-          
-          const combinedScanB = [
-            firstHalfResults.scanBResults,
-            secondHalfResults.scanBResults
-          ].filter(result => result !== null && result !== undefined).join('\n');
-          
-          return {
-            scanAResults: combinedScanA || null,
-            scanBResults: combinedScanB || null
-          };
-        } else {
-          console.warn(`[RECURSIVE_SPLIT] Max splits reached or batch too small, using fallback for Scan A`);
-          // Use a fallback response or skip this batch
-          scanAResults = `i:1\nA:N\nB:N`; // Default safe response
-        }
+        console.log(`[RECURSIVE_SPLIT] Scan A detected harmful content, will split batch`);
+        scanAFailed = true;
       }
     } else {
-      const errMsg = settled[0].reason instanceof Error ? settled[0].reason.message : String(settled[0].reason);
-      console.error(`[SCAN_A] Error: ${errMsg}`);
+      console.log(`[RECURSIVE_SPLIT] Scan A failed with error, will split batch`);
+      scanAFailed = true;
     }
     
     // Process Scan B results
@@ -213,52 +178,69 @@ const processBatchWithRecursiveSplitting = async (
       
       // Check if Scan B detected harmful content
       if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model)) {
-        console.log(`[RECURSIVE_SPLIT] Scan B detected harmful content, splitting batch of ${comments.length} comments`);
-        
-        if (currentSplit < maxSplits && comments.length > 1) {
-          // Split the batch in half
-          const midPoint = Math.floor(comments.length / 2);
-          const firstHalf = comments.slice(0, midPoint);
-          const secondHalf = comments.slice(midPoint);
-          
-          console.log(`[RECURSIVE_SPLIT] Splitting into ${firstHalf.length} and ${secondHalf.length} comments`);
-          
-          // Process both halves recursively
-          const firstHalfResults = await processBatchWithRecursiveSplitting(
-            firstHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1
-          );
-          
-          const secondHalfResults = await processBatchWithRecursiveSplitting(
-            secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1
-          );
-          
-          // Combine results safely
-          const combinedScanA = [
-            firstHalfResults.scanAResults,
-            secondHalfResults.scanAResults
-          ].filter(result => result !== null && result !== undefined).join('\n');
-          
-          const combinedScanB = [
-            firstHalfResults.scanBResults,
-            secondHalfResults.scanBResults
-          ].filter(result => result !== null && result !== undefined).join('\n');
-          
-          return {
-            scanAResults: combinedScanA || null,
-            scanBResults: combinedScanB || null
-          };
-        } else {
-          console.warn(`[RECURSIVE_SPLIT] Max splits reached or batch too small, using fallback for Scan B`);
-          // Use a fallback response or skip this batch
-          scanBResults = `i:1\nA:N\nB:N`; // Default safe response
-        }
+        console.log(`[RECURSIVE_SPLIT] Scan B detected harmful content, will split batch`);
+        scanBFailed = true;
       }
     } else {
-      const errMsg = settled[1].reason instanceof Error ? settled[1].reason.message : String(settled[1].reason);
-      console.error(`[SCAN_B] Error: ${errMsg}`);
+      console.log(`[RECURSIVE_SPLIT] Scan B failed with error, will split batch`);
+      scanBFailed = true;
     }
     
-    return { scanAResults, scanBResults };
+    // If both scans succeeded, return the results
+    if (!scanAFailed && !scanBFailed) {
+      console.log(`[RECURSIVE_SPLIT] Both scans succeeded, returning results`);
+      return { scanAResults, scanBResults };
+    }
+    
+    // If we need to split and haven't reached max splits
+    if ((scanAFailed || scanBFailed) && currentSplit < maxSplits && comments.length > 1) {
+      console.log(`[RECURSIVE_SPLIT] Splitting batch of ${comments.length} comments due to ${scanAFailed ? 'Scan A' : ''}${scanAFailed && scanBFailed ? ' and ' : ''}${scanBFailed ? 'Scan B' : ''} failure`);
+      
+      // Split the batch in half
+      const midPoint = Math.floor(comments.length / 2);
+      const firstHalf = comments.slice(0, midPoint);
+      const secondHalf = comments.slice(midPoint);
+      
+      console.log(`[RECURSIVE_SPLIT] Splitting into ${firstHalf.length} and ${secondHalf.length} comments`);
+      
+      // Process both halves recursively
+      const firstHalfResults = await processBatchWithRecursiveSplitting(
+        firstHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1
+      );
+      
+      const secondHalfResults = await processBatchWithRecursiveSplitting(
+        secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1
+      );
+      
+      // Combine results safely
+      const combinedScanA = [
+        firstHalfResults.scanAResults,
+        secondHalfResults.scanAResults
+      ].filter(result => result !== null && result !== undefined).join('\n');
+      
+      const combinedScanB = [
+        firstHalfResults.scanBResults,
+        secondHalfResults.scanBResults
+      ].filter(result => result !== null && result !== undefined).join('\n');
+      
+      return {
+        scanAResults: combinedScanA || null,
+        scanBResults: combinedScanB || null
+      };
+    } else {
+      // Max splits reached or batch too small, use fallback
+      console.warn(`[RECURSIVE_SPLIT] Max splits reached (${currentSplit}/${maxSplits}) or batch too small (${comments.length}), using fallback`);
+      
+      // Use fallback responses for failed scans
+      if (scanAFailed) {
+        scanAResults = `i:1\nA:N\nB:N`; // Default safe response
+      }
+      if (scanBFailed) {
+        scanBResults = `i:1\nA:N\nB:N`; // Default safe response
+      }
+      
+      return { scanAResults, scanBResults };
+    }
     
   } catch (error) {
     console.error(`[RECURSIVE_SPLIT] Error processing batch:`, error);
