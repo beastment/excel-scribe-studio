@@ -35,9 +35,67 @@ const getPreciseTokensGlobal = async (text: string, provider: string, model: str
   }
 };
 
-// Helper function to detect harmful content responses that should trigger batch splitting
-const isHarmfulContentResponse = (responseText: string, provider: string, model: string): boolean => {
+// Helper function to parse partial results and identify missing comments
+const parsePartialResults = (responseText: string, totalComments: number, batchStart: number): { 
+  parsedResults: string[], 
+  missingIndices: number[], 
+  hasPartialResults: boolean 
+} => {
   if (!responseText || responseText.trim().length === 0) {
+    return { parsedResults: [], missingIndices: Array.from({length: totalComments}, (_, i) => batchStart + i), hasPartialResults: false };
+  }
+  
+  const lines = responseText.split('\n').filter(line => line.trim().length > 0);
+  const parsedResults: string[] = [];
+  const foundIndices = new Set<number>();
+  
+  // Parse each line looking for the format: i:X A:Y B:Z
+  for (const line of lines) {
+    const match = line.match(/^i:(\d+)\s+A:([YN])\s+B:([YN])/i);
+    if (match) {
+      const index = parseInt(match[1]);
+      const scanA = match[2];
+      const scanB = match[3];
+      
+      // Check if this index is within our expected range
+      if (index >= batchStart + 1 && index <= batchStart + totalComments) {
+        const relativeIndex = index - batchStart - 1;
+        if (relativeIndex >= 0 && relativeIndex < totalComments) {
+          parsedResults[relativeIndex] = line;
+          foundIndices.add(relativeIndex);
+        }
+      }
+    }
+  }
+  
+  // Find missing indices
+  const missingIndices: number[] = [];
+  for (let i = 0; i < totalComments; i++) {
+    if (!foundIndices.has(i)) {
+      missingIndices.push(batchStart + i);
+    }
+  }
+  
+  const hasPartialResults = parsedResults.length > 0;
+  
+  console.log(`[PARTIAL_PARSE] Found ${parsedResults.length} valid results out of ${totalComments} comments`);
+  console.log(`[PARTIAL_PARSE] Missing indices: ${missingIndices.length > 0 ? missingIndices.join(', ') : 'none'}`);
+  
+  return { parsedResults, missingIndices, hasPartialResults };
+};
+
+// Helper function to detect harmful content responses that should trigger batch splitting
+const isHarmfulContentResponse = (responseText: string, provider: string, model: string, totalComments: number, batchStart: number): boolean => {
+  if (!responseText || responseText.trim().length === 0) {
+    return true; // Empty response means complete failure
+  }
+  
+  // First, check if we have any valid partial results
+  const { hasPartialResults } = parsePartialResults(responseText, totalComments, batchStart);
+  
+  // If we have partial results, don't split - we can work with what we have
+  if (hasPartialResults) {
+    console.log(`[HARMFUL_DETECTION] Found partial results, not splitting batch`);
     return false;
   }
   
@@ -195,7 +253,7 @@ const processBatchWithRecursiveSplitting = async (
           scanAResults = (settled[settledIndex] as PromiseFulfilledResult<any>).value;
           console.log(`[RECURSIVE_SPLIT] Scan A response (first 200 chars):`, scanAResults?.substring(0, 200));
           
-          if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model)) {
+          if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model, comments.length, batchStart)) {
             console.log(`[RECURSIVE_SPLIT] Scan A still detected harmful content, will split batch`);
             currentScanAFailed = true;
           } else {
@@ -213,7 +271,7 @@ const processBatchWithRecursiveSplitting = async (
           scanBResults = (settled[settledIndex] as PromiseFulfilledResult<any>).value;
           console.log(`[RECURSIVE_SPLIT] Scan B response (first 200 chars):`, scanBResults?.substring(0, 200));
           
-          if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model)) {
+          if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model, comments.length, batchStart)) {
             console.log(`[RECURSIVE_SPLIT] Scan B still detected harmful content, will split batch`);
             currentScanBFailed = true;
           } else {
@@ -238,12 +296,12 @@ const processBatchWithRecursiveSplitting = async (
         scanAResults = settled[0].value;
         console.log(`[RECURSIVE_SPLIT] Scan A response (first 200 chars):`, scanAResults?.substring(0, 200));
         
-        if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model)) {
-          console.log(`[RECURSIVE_SPLIT] Scan A detected harmful content, will split batch`);
-          currentScanAFailed = true;
-        } else {
-          console.log(`[RECURSIVE_SPLIT] Scan A response appears normal, no splitting needed`);
-        }
+          if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model, comments.length, batchStart)) {
+            console.log(`[RECURSIVE_SPLIT] Scan A detected harmful content, will split batch`);
+            currentScanAFailed = true;
+          } else {
+            console.log(`[RECURSIVE_SPLIT] Scan A response appears normal, no splitting needed`);
+          }
       } else {
         console.log(`[RECURSIVE_SPLIT] Scan A failed with error, will split batch`);
         currentScanAFailed = true;
@@ -254,12 +312,12 @@ const processBatchWithRecursiveSplitting = async (
         scanBResults = settled[1].value;
         console.log(`[RECURSIVE_SPLIT] Scan B response (first 200 chars):`, scanBResults?.substring(0, 200));
         
-        if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model)) {
-          console.log(`[RECURSIVE_SPLIT] Scan B detected harmful content, will split batch`);
-          currentScanBFailed = true;
-        } else {
-          console.log(`[RECURSIVE_SPLIT] Scan B response appears normal, no splitting needed`);
-        }
+          if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model, comments.length, batchStart)) {
+            console.log(`[RECURSIVE_SPLIT] Scan B detected harmful content, will split batch`);
+            currentScanBFailed = true;
+          } else {
+            console.log(`[RECURSIVE_SPLIT] Scan B response appears normal, no splitting needed`);
+          }
       } else {
         console.log(`[RECURSIVE_SPLIT] Scan B failed with error, will split batch`);
         currentScanBFailed = true;
@@ -270,6 +328,56 @@ const processBatchWithRecursiveSplitting = async (
     if (!currentScanAFailed && !currentScanBFailed) {
       console.log(`[RECURSIVE_SPLIT] Both scans succeeded, returning results`);
       return { scanAResults, scanBResults };
+    }
+    
+    // Check for partial results before deciding to split
+    let hasPartialResults = false;
+    let missingComments: any[] = [];
+    
+    if (scanAResults || scanBResults) {
+      // Check if we have partial results from either scan
+      const scanAPartial = scanAResults ? parsePartialResults(scanAResults, comments.length, batchStart) : { hasPartialResults: false, missingIndices: [] };
+      const scanBPartial = scanBResults ? parsePartialResults(scanBResults, comments.length, batchStart) : { hasPartialResults: false, missingIndices: [] };
+      
+      if (scanAPartial.hasPartialResults || scanBPartial.hasPartialResults) {
+        hasPartialResults = true;
+        console.log(`[RECURSIVE_SPLIT] Found partial results - Scan A: ${scanAPartial.hasPartialResults}, Scan B: ${scanBPartial.hasPartialResults}`);
+        
+        // Find comments that are missing from both scans
+        const missingIndices = new Set([...scanAPartial.missingIndices, ...scanBPartial.missingIndices]);
+        missingComments = comments.filter((_, index) => missingIndices.has(batchStart + index));
+        
+        console.log(`[RECURSIVE_SPLIT] Missing ${missingComments.length} comments out of ${comments.length} total`);
+        
+        if (missingComments.length === 0) {
+          console.log(`[RECURSIVE_SPLIT] All comments have results, no splitting needed`);
+          return { scanAResults, scanBResults };
+        }
+      }
+    }
+    
+    // If we have partial results and missing comments, only resubmit the missing ones
+    if (hasPartialResults && missingComments.length > 0 && currentSplit < maxSplits) {
+      console.log(`[RECURSIVE_SPLIT] Resubmitting only ${missingComments.length} missing comments`);
+      
+      // Process only the missing comments
+      const missingResults = await processBatchWithRecursiveSplitting(
+        missingComments, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed, scanAResults, scanBResults
+      );
+      
+      // Combine partial results with missing results
+      const combinedScanA = scanAResults && missingResults.scanAResults ? 
+        `${scanAResults}\n${missingResults.scanAResults}` : 
+        (scanAResults || missingResults.scanAResults);
+      
+      const combinedScanB = scanBResults && missingResults.scanBResults ? 
+        `${scanBResults}\n${missingResults.scanBResults}` : 
+        (scanBResults || missingResults.scanBResults);
+      
+      return {
+        scanAResults: combinedScanA,
+        scanBResults: combinedScanB
+      };
     }
     
     // If we need to split and haven't reached max splits
