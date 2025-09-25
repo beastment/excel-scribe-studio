@@ -35,6 +35,117 @@ const getPreciseTokensGlobal = async (text: string, provider: string, model: str
   }
 };
 
+// Helper function to validate completeness and resubmit missing items
+const validateAndResubmitMissing = async (
+  scanAResults: any,
+  scanBResults: any,
+  comments: any[],
+  scanA: any,
+  scanB: any,
+  scanATokenLimits: any,
+  scanBTokenLimits: any,
+  user: any,
+  scanRunId: string,
+  aiLogger: AILogger,
+  batchStart: number
+): Promise<{ scanAResults: any, scanBResults: any }> => {
+  
+  console.log(`[VALIDATION] Checking completeness for ${comments.length} comments starting at index ${batchStart + 1}`);
+  
+  // Parse results from both scans
+  const scanAPartial = scanAResults ? parsePartialResults(scanAResults, comments.length, batchStart) : { parsedResults: [], missingIndices: Array.from({length: comments.length}, (_, i) => batchStart + i), hasPartialResults: false };
+  const scanBPartial = scanBResults ? parsePartialResults(scanBResults, comments.length, batchStart) : { parsedResults: [], missingIndices: Array.from({length: comments.length}, (_, i) => batchStart + i), hasPartialResults: false };
+  
+  console.log(`[VALIDATION] Scan A: ${scanAPartial.parsedResults.length} results, ${scanAPartial.missingIndices.length} missing`);
+  console.log(`[VALIDATION] Scan B: ${scanBPartial.parsedResults.length} results, ${scanBPartial.missingIndices.length} missing`);
+  
+  // Check if we have complete results from both models
+  const scanAComplete = scanAPartial.missingIndices.length === 0;
+  const scanBComplete = scanBPartial.missingIndices.length === 0;
+  
+  if (scanAComplete && scanBComplete) {
+    console.log(`[VALIDATION] Both scans have complete results, no resubmission needed`);
+    return { scanAResults, scanBResults };
+  }
+  
+  // Identify missing items for each model
+  const missingForScanA = scanAPartial.missingIndices.map(index => comments[index - batchStart]);
+  const missingForScanB = scanBPartial.missingIndices.map(index => comments[index - batchStart]);
+  
+  console.log(`[VALIDATION] Missing for Scan A: ${missingForScanA.length} items`);
+  console.log(`[VALIDATION] Missing for Scan B: ${missingForScanB.length} items`);
+  
+  let finalScanAResults = scanAResults;
+  let finalScanBResults = scanBResults;
+  
+  // Resubmit missing items to Scan A
+  if (missingForScanA.length > 0) {
+    console.log(`[VALIDATION] Resubmitting ${missingForScanA.length} items to Scan A`);
+    
+    const batchInput = buildBatchInput(missingForScanA, batchStart);
+    try {
+      const scanAResponse = await callAI(
+        scanA.provider, 
+        scanA.model, 
+        scanA.analysis_prompt, 
+        batchInput, 
+        'batch_analysis', 
+        user.id, 
+        scanRunId, 
+        'scan_a', 
+        aiLogger, 
+        scanATokenLimits.output_token_limit, 
+        scanA.temperature
+      );
+      
+      // Combine with existing results
+      finalScanAResults = scanAResults ? `${scanAResults}\n${scanAResponse}` : scanAResponse;
+      console.log(`[VALIDATION] Scan A resubmission successful`);
+      
+    } catch (error) {
+      console.error(`[VALIDATION] Scan A resubmission failed:`, error);
+      // Use fallback for missing items
+      const fallbackResults = missingForScanA.map((_, index) => `i:${batchStart + index + 1}\nA:N\nB:N`).join('\n');
+      finalScanAResults = scanAResults ? `${scanAResults}\n${fallbackResults}` : fallbackResults;
+    }
+  }
+  
+  // Resubmit missing items to Scan B
+  if (missingForScanB.length > 0) {
+    console.log(`[VALIDATION] Resubmitting ${missingForScanB.length} items to Scan B`);
+    
+    const batchInput = buildBatchInput(missingForScanB, batchStart);
+    try {
+      const scanBResponse = await callAI(
+        scanB.provider, 
+        scanB.model, 
+        scanB.analysis_prompt, 
+        batchInput, 
+        'batch_analysis', 
+        user.id, 
+        scanRunId, 
+        'scan_b', 
+        aiLogger, 
+        scanBTokenLimits.output_token_limit, 
+        scanB.temperature
+      );
+      
+      // Combine with existing results
+      finalScanBResults = scanBResults ? `${scanBResults}\n${scanBResponse}` : scanBResponse;
+      console.log(`[VALIDATION] Scan B resubmission successful`);
+      
+    } catch (error) {
+      console.error(`[VALIDATION] Scan B resubmission failed:`, error);
+      // Use fallback for missing items
+      const fallbackResults = missingForScanB.map((_, index) => `i:${batchStart + index + 1}\nA:N\nB:N`).join('\n');
+      finalScanBResults = scanBResults ? `${scanBResults}\n${fallbackResults}` : fallbackResults;
+    }
+  }
+  
+  console.log(`[VALIDATION] Validation complete - both models should now have complete results`);
+  return { scanAResults: finalScanAResults, scanBResults: finalScanBResults };
+};
+
 // Helper function to parse partial results and identify missing comments
 const parsePartialResults = (responseText: string, totalComments: number, batchStart: number): { 
   parsedResults: string[], 
@@ -1245,8 +1356,23 @@ serve(async (req) => {
         batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, 3, 0, false, false, null, null
       );
       
-      const scanAResultsClient = recursiveResults.scanAResults;
-      const scanBResultsClient = recursiveResults.scanBResults;
+      // Validate completeness and resubmit missing items before proceeding
+      const validatedResults = await validateAndResubmitMissing(
+        recursiveResults.scanAResults,
+        recursiveResults.scanBResults,
+        batch,
+        scanA,
+        scanB,
+        scanATokenLimits,
+        scanBTokenLimits,
+        user,
+        scanRunId,
+        aiLogger,
+        batchStart
+      );
+      
+      const scanAResultsClient = validatedResults.scanAResults;
+      const scanBResultsClient = validatedResults.scanBResults;
       const batchEndTimeClient = Date.now();
       console.log(`[PERFORMANCE] Batch ${batchStart + 1}-${batchEnd} processed in ${batchEndTimeClient - batchStartTime}ms (parallel AI calls)`);
 
@@ -1450,8 +1576,23 @@ serve(async (req) => {
         batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, currentBatchStart, 3, 0, false, false, null, null
       );
       
-      const scanAResults = recursiveResults.scanAResults;
-      const scanBResults = recursiveResults.scanBResults;
+      // Validate completeness and resubmit missing items before proceeding
+      const validatedResults = await validateAndResubmitMissing(
+        recursiveResults.scanAResults,
+        recursiveResults.scanBResults,
+        batch,
+        scanA,
+        scanB,
+        scanATokenLimits,
+        scanBTokenLimits,
+        user,
+        scanRunId,
+        aiLogger,
+        currentBatchStart
+      );
+      
+      const scanAResults = validatedResults.scanAResults;
+      const scanBResults = validatedResults.scanBResults;
       const batchEndTime = Date.now();
       console.log(`[PERFORMANCE] Batch ${currentBatchStart + 1}-${batchEnd} processed in ${batchEndTime - batchStartTime}ms (parallel AI calls)`);
       
@@ -1700,8 +1841,23 @@ serve(async (req) => {
             tailBatch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, tailStartIndex, 3, 0, false, false, null, null
           );
           
-          const tailA = tailRecursiveResults.scanAResults;
-          const tailB = tailRecursiveResults.scanBResults;
+          // Validate completeness and resubmit missing items before proceeding
+          const tailValidatedResults = await validateAndResubmitMissing(
+            tailRecursiveResults.scanAResults,
+            tailRecursiveResults.scanBResults,
+            tailBatch,
+            scanA,
+            scanB,
+            scanATokenLimits,
+            scanBTokenLimits,
+            user,
+            scanRunId,
+            aiLogger,
+            tailStartIndex
+          );
+          
+          const tailA = tailValidatedResults.scanAResults;
+          const tailB = tailValidatedResults.scanBResults;
           const tailAArray = parseBatchResults(tailA, tailBatch.length, 'Scan A (tail)', tailStartIndex + 1);
           const tailBArray = parseBatchResults(tailB, tailBatch.length, 'Scan B (tail)', tailStartIndex + 1);
           const maxTail = Math.max(tailAArray.length, tailBArray.length);
