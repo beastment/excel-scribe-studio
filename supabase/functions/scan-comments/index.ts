@@ -43,21 +43,52 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
   
   const lowerResponse = responseText.toLowerCase();
   
-  // More specific patterns that indicate actual harmful content detection (not normal analysis)
+  // Patterns that indicate actual harmful content detection (not normal analysis)
   const harmfulContentPatterns = [
+    // Direct refusals
     'i cannot analyze this content',
     'i refuse to analyze',
     'i cannot process this content',
     'i cannot help with this',
     'i cannot assist with this',
     'i cannot comply with this request',
+    'i cannot analyze',
+    'i refuse to',
+    'i cannot process',
+    'i cannot help',
+    'i cannot assist',
+    'i cannot comply',
+    
+    // Policy violations
     'this violates content policy',
     'this violates safety guidelines',
+    'violates content policy',
+    'violates safety guidelines',
+    'content policy violation',
+    'safety guidelines violation',
+    
+    // Content characterization
     'this content is inappropriate',
     'this content is harmful',
     'this content is concerning',
     'this content is unsafe',
     'this content is too sensitive',
+    'this content is problematic',
+    'this content is offensive',
+    'this content is disturbing',
+    'this content is graphic',
+    'this content is explicit',
+    'this content is violent',
+    'this content is threatening',
+    'this content is abusive',
+    'this content is harassing',
+    'this content is discriminatory',
+    'this content is hateful',
+    'this content is extremist',
+    'this content is illegal',
+    'this content is criminal',
+    
+    // Analysis refusals
     'i cannot analyze harmful content',
     'i cannot analyze concerning content',
     'i cannot analyze inappropriate content',
@@ -68,6 +99,8 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     'i cannot analyze this inappropriate content',
     'i cannot analyze this unsafe content',
     'i cannot analyze this sensitive content',
+    
+    // Because statements
     'i cannot analyze this content because it is harmful',
     'i cannot analyze this content because it is concerning',
     'i cannot analyze this content because it is inappropriate',
@@ -93,7 +126,155 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     'i cannot analyze this content because it potentially is',
     'i cannot analyze this content because it possibly is',
     'i cannot analyze this content because it likely is',
-    'i cannot analyze this content because it probably is'
+    'i cannot analyze this content because it probably is',
+    
+    // Additional refusal patterns
+    'i cannot provide analysis',
+    'i cannot provide assistance',
+    'i cannot provide help',
+    'i cannot provide support',
+    'i cannot provide guidance',
+    'i cannot provide advice',
+    'i cannot provide recommendations',
+    'i cannot provide suggestions',
+    'i cannot provide feedback',
+    'i cannot provide evaluation',
+    'i cannot provide assessment',
+    'i cannot provide review',
+    'i cannot provide commentary',
+    'i cannot provide opinion',
+    'i cannot provide insight',
+    'i cannot provide perspective',
+    'i cannot provide viewpoint',
+    'i cannot provide interpretation',
+    'i cannot provide explanation',
+    'i cannot provide clarification',
+    'i cannot provide information',
+    'i cannot provide details',
+    'i cannot provide specifics',
+    'i cannot provide particulars',
+    'i cannot provide facts',
+    'i cannot provide data',
+    'i cannot provide statistics',
+    'i cannot provide metrics',
+    'i cannot provide measurements',
+    'i cannot provide calculations',
+    'i cannot provide computations',
+    'i cannot provide processing',
+    'i cannot provide handling',
+    'i cannot provide management',
+    'i cannot provide treatment',
+    'i cannot provide care',
+    'i cannot provide attention',
+    'i cannot provide consideration',
+    'i cannot provide examination',
+    'i cannot provide inspection',
+    'i cannot provide investigation',
+    'i cannot provide research',
+    'i cannot provide study',
+    
+    // Short refusal patterns
+    'cannot analyze',
+    'refuse to analyze',
+    'cannot process',
+    'cannot help',
+    'cannot assist',
+    'cannot comply',
+    'cannot provide',
+    'cannot give',
+    'cannot offer',
+    'cannot supply',
+    'cannot deliver',
+    'cannot furnish',
+    'cannot present',
+    'cannot show',
+    'cannot display',
+    'cannot demonstrate',
+    'cannot illustrate',
+    'cannot explain',
+    'cannot describe',
+    'cannot detail',
+    'cannot specify',
+    'cannot outline',
+    'cannot summarize',
+    'cannot recap',
+    'cannot review',
+    'cannot evaluate',
+    'cannot assess',
+    'cannot judge',
+    'cannot rate',
+    'cannot score',
+    'cannot grade',
+    'cannot rank',
+    'cannot classify',
+    'cannot categorize',
+    'cannot sort',
+    'cannot organize',
+    'cannot arrange',
+    'cannot structure',
+    'cannot format',
+    'cannot style',
+    'cannot design',
+    'cannot create',
+    'cannot generate',
+    'cannot produce',
+    'cannot make',
+    'cannot build',
+    'cannot construct',
+    'cannot develop',
+    'cannot establish',
+    'cannot set up',
+    'cannot configure',
+    'cannot customize',
+    'cannot modify',
+    'cannot adjust',
+    'cannot adapt',
+    'cannot change',
+    'cannot alter',
+    'cannot transform',
+    'cannot convert',
+    'cannot translate',
+    'cannot interpret',
+    'cannot decode',
+    'cannot decrypt',
+    'cannot solve',
+    'cannot resolve',
+    'cannot fix',
+    'cannot repair',
+    'cannot correct',
+    'cannot improve',
+    'cannot enhance',
+    'cannot optimize',
+    'cannot maximize',
+    'cannot minimize',
+    'cannot reduce',
+    'cannot increase',
+    'cannot expand',
+    'cannot contract',
+    'cannot extend',
+    'cannot limit',
+    'cannot restrict',
+    'cannot constrain',
+    'cannot control',
+    'cannot manage',
+    'cannot handle',
+    'cannot deal with',
+    'cannot work with',
+    'cannot operate on',
+    'cannot function with',
+    'cannot perform on',
+    'cannot execute on',
+    'cannot run on',
+    'cannot process',
+    'cannot handle',
+    'cannot manage',
+    'cannot deal with',
+    'cannot work with',
+    'cannot operate on',
+    'cannot function with',
+    'cannot perform on',
+    'cannot execute on',
+    'cannot run on'
   ];
   
   // Check if response contains any of these specific patterns
@@ -113,7 +294,25 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     lowerResponse.includes('violates safety guidelines')
   );
   
-  const isHarmful = containsHarmfulPattern || isShortRefusal;
+  // Check if response doesn't contain expected analysis format (i:X, A:Y, B:Z)
+  const hasExpectedFormat = lowerResponse.includes('i:') && (lowerResponse.includes('a:') || lowerResponse.includes('b:'));
+  const isUnexpectedFormat = !hasExpectedFormat && responseText.length > 50;
+  
+  // Check for very short responses that might be refusals
+  const isVeryShort = responseText.length < 100 && (
+    lowerResponse.includes('cannot') || 
+    lowerResponse.includes('refuse') || 
+    lowerResponse.includes('unable') ||
+    lowerResponse.includes('policy') ||
+    lowerResponse.includes('violate') ||
+    lowerResponse.includes('inappropriate') ||
+    lowerResponse.includes('harmful') ||
+    lowerResponse.includes('concerning') ||
+    lowerResponse.includes('unsafe') ||
+    lowerResponse.includes('sensitive')
+  );
+  
+  const isHarmful = containsHarmfulPattern || isShortRefusal || (isUnexpectedFormat && isVeryShort);
   
   if (isHarmful) {
     console.log(`[HARMFUL_DETECTION] Detected harmful content response from ${provider}/${model}:`, responseText.substring(0, 200) + '...');
@@ -161,11 +360,14 @@ const processBatchWithRecursiveSplitting = async (
     // Process Scan A results
     if (settled[0].status === 'fulfilled') {
       scanAResults = settled[0].value;
+      console.log(`[RECURSIVE_SPLIT] Scan A response (first 200 chars):`, scanAResults?.substring(0, 200));
       
       // Check if Scan A detected harmful content
       if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model)) {
         console.log(`[RECURSIVE_SPLIT] Scan A detected harmful content, will split batch`);
         scanAFailed = true;
+      } else {
+        console.log(`[RECURSIVE_SPLIT] Scan A response appears normal, no splitting needed`);
       }
     } else {
       console.log(`[RECURSIVE_SPLIT] Scan A failed with error, will split batch`);
@@ -175,11 +377,14 @@ const processBatchWithRecursiveSplitting = async (
     // Process Scan B results
     if (settled[1].status === 'fulfilled') {
       scanBResults = settled[1].value;
+      console.log(`[RECURSIVE_SPLIT] Scan B response (first 200 chars):`, scanBResults?.substring(0, 200));
       
       // Check if Scan B detected harmful content
       if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model)) {
         console.log(`[RECURSIVE_SPLIT] Scan B detected harmful content, will split batch`);
         scanBFailed = true;
+      } else {
+        console.log(`[RECURSIVE_SPLIT] Scan B response appears normal, no splitting needed`);
       }
     } else {
       console.log(`[RECURSIVE_SPLIT] Scan B failed with error, will split batch`);
