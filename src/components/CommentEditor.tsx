@@ -550,6 +550,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             .single();
           const inputTokenLimit: number = Number.isFinite(modelCfg?.input_token_limit) && modelCfg.input_token_limit > 0 ? modelCfg.input_token_limit : 128000;
           const outputTokenLimit: number = Number.isFinite(modelCfg?.output_token_limit) && modelCfg.output_token_limit > 0 ? modelCfg.output_token_limit : 8192;
+          const tpmLimit: number | null = Number.isFinite(modelCfg?.tpm_limit) && modelCfg.tpm_limit > 0 ? modelCfg.tpm_limit : null;
+          const rpmLimit: number | null = Number.isFinite(modelCfg?.rpm_limit) && modelCfg.rpm_limit > 0 ? modelCfg.rpm_limit : null;
 
           const { data: batchSizingData } = await supabase
             .from('batch_sizing_config')
@@ -579,8 +581,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           // Calculate per-batch size based on token limits
           const maxIn = Math.floor(inputTokenLimit * safetyMultiplier);
           const maxOut = Math.floor(outputTokenLimit * safetyMultiplier);
+          const maxTpm = tpmLimit ? Math.floor(tpmLimit * safetyMultiplier) : null;
           const promptTokens = estimateTokens(analysisPrompt);
           const availableForComments = Math.max(0, maxIn - promptTokens);
+          
           let perBatch = 0;
           let usedInput = 0;
           for (let i = 0; i < needsAdj.length; i++) {
@@ -592,6 +596,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               break;
             }
           }
+          
           // Enforce output token constraint
           if (perBatch > 0) {
             const maxByOutput = Math.floor(maxOut / Math.max(1, tokensPerComment));
@@ -599,13 +604,31 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           } else {
             perBatch = 1;
           }
-          console.log(`[ADJ][BATCH_CALC] provider=${provider} model=${model} safety=${safetyMarginPercent}% promptTokens=${promptTokens} perBatch=${perBatch}`);
+          
+          // Enforce TPM constraint (most restrictive)
+          if (maxTpm && perBatch > 0) {
+            // Calculate total tokens per batch (input + output)
+            const estimatedInputTokens = promptTokens + usedInput;
+            const estimatedOutputTokens = perBatch * tokensPerComment;
+            const totalTokensPerBatch = estimatedInputTokens + estimatedOutputTokens;
+            
+            if (totalTokensPerBatch > maxTpm) {
+              // Calculate tokens per comment (input + output)
+              const tokensPerCommentTotal = (usedInput / perBatch) + tokensPerComment;
+              const maxByTpm = Math.floor(maxTpm / tokensPerCommentTotal);
+              const originalPerBatch = perBatch;
+              perBatch = Math.max(1, Math.min(perBatch, maxByTpm));
+              console.log(`[ADJ][TPM_CONSTRAINT] Reduced batch size from ${originalPerBatch} to ${perBatch} due to TPM limit (${totalTokensPerBatch} > ${maxTpm})`);
+            }
+          }
+          
+          console.log(`[ADJ][BATCH_CALC] provider=${provider} model=${model} safety=${safetyMarginPercent}% promptTokens=${promptTokens} perBatch=${perBatch} tpmLimit=${tpmLimit || 'none'}`);
 
           // Ensure Authorization header is included for adjudicator invoke
           const { data: sessionData } = await supabase.auth.getSession();
           const accessToken = sessionData?.session?.access_token;
           // Helper: invoke adjudicator with retry/backoff on transient rate limits
-          const invokeAdjudicatorWithRetry = async (batch: any[]): Promise<any | null> => {
+          const invokeAdjudicatorWithRetry = async (batch: any[]): Promise<{ data: any | null; error: any | null; isTpmExceeded: boolean }> => {
             const maxAttempts = 3;
             const baseDelayMs = 1200;
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -625,28 +648,41 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                 },
                 headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
               });
-              if (!adjErr) return adjData;
+              if (!adjErr) return { data: adjData, error: null, isTpmExceeded: false };
               const msg = String(adjErr?.message || adjErr);
               const isRateLimited = msg.includes('429') || /Too\s*Many\s*Requests/i.test(msg);
-              const isRetryable = isRateLimited || /ETIMEDOUT|ECONNRESET|ENETUNREACH|5\d{2}/i.test(msg);
-              console.warn(`[PHASE2] Adjudicator attempt ${attempt} failed${isRateLimited ? ' (429)' : ''}:`, adjErr);
+              const isTpmExceeded = msg.includes('TPM limit') || msg.includes('exceed TPM limit');
+              const isRetryable = isRateLimited || isTpmExceeded || /ETIMEDOUT|ECONNRESET|ENETUNREACH|5\d{2}/i.test(msg);
+              console.warn(`[PHASE2] Adjudicator attempt ${attempt} failed${isRateLimited ? ' (429)' : ''}${isTpmExceeded ? ' (TPM exceeded)' : ''}:`, adjErr);
               if (attempt < maxAttempts && isRetryable) {
                 const sleep = baseDelayMs * attempt + Math.floor(Math.random() * 400);
                 await new Promise(res => setTimeout(res, sleep));
                 continue;
               }
-              return null;
+              return { data: null, error: adjErr, isTpmExceeded };
             }
-            return null;
+            return { data: null, error: null, isTpmExceeded: false };
           };
 
           for (let i = 0; i < needsAdj.length; i += perBatch) {
-            const batch = needsAdj.slice(i, i + perBatch);
-            const adjData = await invokeAdjudicatorWithRetry(batch);
-            if (!adjData) {
+            let batch = needsAdj.slice(i, i + perBatch);
+            let result = await invokeAdjudicatorWithRetry(batch);
+            
+            // If TPM limit exceeded, try with smaller batch
+            if (!result.data && result.isTpmExceeded && batch.length > 1) {
+              console.warn(`[PHASE2] TPM limit exceeded for batch of ${batch.length}, trying with smaller batch`);
+              // Try with half the batch size
+              const smallerBatchSize = Math.max(1, Math.floor(batch.length / 2));
+              batch = needsAdj.slice(i, i + smallerBatchSize);
+              result = await invokeAdjudicatorWithRetry(batch);
+            }
+            
+            if (!result.data) {
               console.error('[PHASE2] Adjudicator failed after retries; continuing without adjudication for this batch');
               continue;
             }
+            
+            const adjData = result.data;
             if (adjData?.adjudicatedComments && Array.isArray(adjData.adjudicatedComments)) {
               const adjMap = new Map(adjData.adjudicatedComments.map((r: any) => [r.id, r]));
               (data as any).comments = (data.comments as any[]).map((c: any) => {

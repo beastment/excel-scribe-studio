@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { AILogger } from './ai-logger.ts';
-import { enforceRateLimits } from './tpm-tracker.ts';
 
 
 const corsHeaders = {
@@ -481,6 +480,19 @@ serve(async (req) => {
 
       console.log(`${logPrefix} [RATE_LIMITS] TPM limit: ${tpmLimit || 'none'}, RPM limit: ${rpmLimit || 'none'} for ${adjudicatorCfg.provider}/${adjudicatorCfg.model}`);
 
+      // Validate that the request doesn't exceed TPM limits
+      if (tpmLimit && totalEstimatedTokens > tpmLimit) {
+        console.error(`${logPrefix} [TPM_VALIDATION] Request would exceed TPM limit: ${totalEstimatedTokens} > ${tpmLimit}`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            adjudicatedComments: [],
+            summary: { total: comments.length, resolved: 0, errors: comments.length },
+            error: `Request would exceed TPM limit of ${tpmLimit} tokens (estimated ${totalEstimatedTokens} tokens). Please reduce batch size on client side.`
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
 
       // Duplicate guard remains unchanged
       try {
@@ -540,30 +552,11 @@ serve(async (req) => {
         }
       };
 
-      // Smart batch sizing based on TPM limits
-      let batchedComments: typeof needsAdjudication[] = [];
+      // Batch sizing is handled client-side to avoid edge function timeouts
+      console.log(`${logPrefix} [CLIENT_MANAGED] Processing ${needsAdjudication.length} comments as single batch (client-managed batching)`);
       
-      if (tpmLimit && totalEstimatedTokens > tpmLimit) {
-        console.log(`${logPrefix} [SMART_BATCHING] Total tokens (${totalEstimatedTokens}) exceed TPM limit (${tpmLimit}), splitting into smaller batches`);
-        
-        // Calculate optimal batch size considering TPM limits
-        const maxTokensPerBatch = Math.floor(tpmLimit * (1 - safetyMarginPercent / 100));
-        const estimatedTokensPerComment = Math.ceil(estimatedInputTokens / needsAdjudication.length) + tokensPerComment;
-        const maxCommentsPerBatch = Math.floor(maxTokensPerBatch / estimatedTokensPerComment);
-        
-        console.log(`${logPrefix} [SMART_BATCHING] Max tokens per batch: ${maxTokensPerBatch}, Max comments per batch: ${maxCommentsPerBatch}`);
-        
-        // Split comments into batches
-        for (let i = 0; i < needsAdjudication.length; i += maxCommentsPerBatch) {
-          const batch = needsAdjudication.slice(i, i + maxCommentsPerBatch);
-          batchedComments.push(batch);
-        }
-        
-        console.log(`${logPrefix} [SMART_BATCHING] Split ${needsAdjudication.length} comments into ${batchedComments.length} batches`);
-      } else {
-        console.log(`${logPrefix} [CLIENT_MANAGED] Processing ${needsAdjudication.length} comments as single batch (within TPM limits)`);
-        batchedComments = [needsAdjudication];
-      }
+      // Process all comments as a single batch
+      const batchedComments: typeof needsAdjudication[] = [needsAdjudication];
 
       // Initialize AI logger for this adjudication run
       const aiLogger = new AILogger();
@@ -593,23 +586,6 @@ serve(async (req) => {
         // Determine maxTokens: use client-calculated value if provided, otherwise fall back to dashboard value
         const maxTokensToUse = clientCalculatedOutputTokens || actualMaxTokens;
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Using maxTokens: ${maxTokensToUse} (${clientCalculatedOutputTokens ? 'client-calculated' : 'dashboard fallback'})`);
-        
-        // Enforce rate limits (TPM/RPM) before making the AI call
-        try {
-          await enforceRateLimits(
-            adjudicatorCfg.provider,
-            adjudicatorCfg.model,
-            batchTotalTokens,
-            1, // 1 request per batch
-            tpmLimit,
-            rpmLimit,
-            `${logPrefix} [BATCH ${batchIndex + 1}]`
-          );
-        } catch (rateLimitError) {
-          console.error(`${logPrefix} [BATCH ${batchIndex + 1}] [RATE_LIMIT_ERROR]`, rateLimitError);
-          console.log(`${logPrefix} [BATCH ${batchIndex + 1}] [RATE_LIMIT_ERROR] Skipping this batch due to rate limit error`);
-          continue; // Skip this batch
-        }
         
         // Call AI for this batch
         const rawResponse = await callAI(
