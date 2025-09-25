@@ -99,6 +99,8 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     return false;
   }
   
+  console.log(`[HARMFUL_DETECTION] No partial results found, checking for harmful content patterns...`);
+  
   const lowerResponse = responseText.toLowerCase();
   
   // Patterns that indicate actual harmful content detection (not normal analysis)
@@ -143,6 +145,10 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     'cannot respond',
     'will not respond',
     'refuse to respond',
+    'cannot classify',
+    'will not classify',
+    'refuse to classify',
+    'I apologize'
   ];
   
   // Check if response contains any of these specific patterns
@@ -182,6 +188,16 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
   
   const isHarmful = containsHarmfulPattern || isShortRefusal || (isUnexpectedFormat && isVeryShort);
   
+  console.log(`[HARMFUL_DETECTION] Analysis for ${provider}/${model}:`, {
+    containsHarmfulPattern,
+    isShortRefusal,
+    isUnexpectedFormat,
+    isVeryShort,
+    isHarmful,
+    responseLength: responseText.length,
+    responsePreview: responseText.substring(0, 200) + '...'
+  });
+  
   if (isHarmful) {
     console.log(`[HARMFUL_DETECTION] Detected harmful content response from ${provider}/${model}:`, responseText.substring(0, 200) + '...');
   }
@@ -213,6 +229,8 @@ const processBatchWithRecursiveSplitting = async (
   }
   
   console.log(`[RECURSIVE_SPLIT] Processing batch of ${comments.length} comments (split ${currentSplit}/${maxSplits})`);
+  console.log(`[RECURSIVE_SPLIT] Parent failure flags: scanAFailed=${scanAFailed}, scanBFailed=${scanBFailed}`);
+  console.log(`[RECURSIVE_SPLIT] Parent results: scanAResults=${!!parentScanAResults}, scanBResults=${!!parentScanBResults}`);
   
   try {
     // Build batch input

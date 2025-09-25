@@ -190,6 +190,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       scanBResult?: any;
     }>;
   } => {
+    console.log(`[VALIDATION] Starting validation of ${comments.length} comments`);
+    
     const missingDetails: Array<{
       commentId: string;
       commentIndex: number;
@@ -203,10 +205,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       const scanAResult = comment.adjudicationData?.scanAResult || comment.scanAResult;
       const scanBResult = comment.adjudicationData?.scanBResult || comment.scanBResult;
       
-      const missingScanA = !scanAResult || !scanAResult.concerning || scanAResult.concerning === undefined;
-      const missingScanB = !scanBResult || !scanBResult.concerning || scanBResult.concerning === undefined;
+      // More lenient validation - check if the result object exists and has the expected structure
+      const missingScanA = !scanAResult || typeof scanAResult !== 'object' || 
+        (scanAResult.concerning === undefined && scanAResult.identifiable === undefined);
+      const missingScanB = !scanBResult || typeof scanBResult !== 'object' || 
+        (scanBResult.concerning === undefined && scanBResult.identifiable === undefined);
       
       if (missingScanA || missingScanB) {
+        console.log(`[VALIDATION] Missing results for comment ${index + 1}:`, {
+          commentId: comment.id,
+          missingScanA,
+          missingScanB,
+          scanAResult,
+          scanBResult
+        });
         missingDetails.push({
           commentId: comment.id,
           commentIndex: index + 1,
@@ -216,6 +228,12 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           scanBResult
         });
       }
+    });
+    
+    console.log(`[VALIDATION] Validation complete:`, {
+      hasMissingResults: missingDetails.length > 0,
+      missingCount: missingDetails.length,
+      totalComments: comments.length
     });
     
     return {
