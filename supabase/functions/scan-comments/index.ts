@@ -43,49 +43,74 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
   
   const lowerResponse = responseText.toLowerCase();
   
-  // Common patterns that indicate harmful content detection
+  // More specific patterns that indicate actual harmful content detection (not normal analysis)
   const harmfulContentPatterns = [
-    'harmful content',
-    'concerning content',
-    'inappropriate content',
-    'unsafe content',
-    'violates content policy',
-    'content policy violation',
-    'cannot analyze',
-    'refuse to analyze',
-    'unable to process',
-    'cannot process this content',
-    'content is too sensitive',
-    'sensitive content',
-    'harmful or concerning',
-    'potentially harmful',
-    'inappropriate or harmful',
-    'violates safety guidelines',
-    'safety guidelines',
-    'content moderation',
-    'moderation policy',
-    'ethical guidelines',
-    'responsible ai',
-    'ai safety',
-    'cannot comply',
-    'cannot assist',
-    'unable to assist',
-    'refuse to assist',
-    'cannot help',
-    'unable to help'
+    'i cannot analyze this content',
+    'i refuse to analyze',
+    'i cannot process this content',
+    'i cannot help with this',
+    'i cannot assist with this',
+    'i cannot comply with this request',
+    'this violates content policy',
+    'this violates safety guidelines',
+    'this content is inappropriate',
+    'this content is harmful',
+    'this content is concerning',
+    'this content is unsafe',
+    'this content is too sensitive',
+    'i cannot analyze harmful content',
+    'i cannot analyze concerning content',
+    'i cannot analyze inappropriate content',
+    'i cannot analyze unsafe content',
+    'i cannot analyze sensitive content',
+    'i cannot analyze this harmful content',
+    'i cannot analyze this concerning content',
+    'i cannot analyze this inappropriate content',
+    'i cannot analyze this unsafe content',
+    'i cannot analyze this sensitive content',
+    'i cannot analyze this content because it is harmful',
+    'i cannot analyze this content because it is concerning',
+    'i cannot analyze this content because it is inappropriate',
+    'i cannot analyze this content because it is unsafe',
+    'i cannot analyze this content because it is sensitive',
+    'i cannot analyze this content because it violates',
+    'i cannot analyze this content because it contains',
+    'i cannot analyze this content because it may contain',
+    'i cannot analyze this content because it appears to contain',
+    'i cannot analyze this content because it seems to contain',
+    'i cannot analyze this content because it looks like it contains',
+    'i cannot analyze this content because it might contain',
+    'i cannot analyze this content because it could contain',
+    'i cannot analyze this content because it potentially contains',
+    'i cannot analyze this content because it possibly contains',
+    'i cannot analyze this content because it likely contains',
+    'i cannot analyze this content because it probably contains',
+    'i cannot analyze this content because it seems to be',
+    'i cannot analyze this content because it appears to be',
+    'i cannot analyze this content because it looks like it is',
+    'i cannot analyze this content because it might be',
+    'i cannot analyze this content because it could be',
+    'i cannot analyze this content because it potentially is',
+    'i cannot analyze this content because it possibly is',
+    'i cannot analyze this content because it likely is',
+    'i cannot analyze this content because it probably is'
   ];
   
-  // Check if response contains any of these patterns
+  // Check if response contains any of these specific patterns
   const containsHarmfulPattern = harmfulContentPatterns.some(pattern => 
     lowerResponse.includes(pattern)
   );
   
-  // Additional check: if response is very short and contains refusal language
-  const isShortRefusal = responseText.length < 200 && (
-    lowerResponse.includes('cannot') || 
-    lowerResponse.includes('unable') || 
-    lowerResponse.includes('refuse') ||
-    lowerResponse.includes('policy')
+  // Additional check: if response is very short and contains specific refusal language
+  const isShortRefusal = responseText.length < 150 && (
+    lowerResponse.includes('i cannot analyze') || 
+    lowerResponse.includes('i refuse to analyze') || 
+    lowerResponse.includes('i cannot process') ||
+    lowerResponse.includes('i cannot help') ||
+    lowerResponse.includes('i cannot assist') ||
+    lowerResponse.includes('i cannot comply') ||
+    lowerResponse.includes('violates content policy') ||
+    lowerResponse.includes('violates safety guidelines')
   );
   
   const isHarmful = containsHarmfulPattern || isShortRefusal;
@@ -156,10 +181,20 @@ const processBatchWithRecursiveSplitting = async (
             secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1
           );
           
-          // Combine results
+          // Combine results safely
+          const combinedScanA = [
+            firstHalfResults.scanAResults,
+            secondHalfResults.scanAResults
+          ].filter(result => result !== null && result !== undefined).join('\n');
+          
+          const combinedScanB = [
+            firstHalfResults.scanBResults,
+            secondHalfResults.scanBResults
+          ].filter(result => result !== null && result !== undefined).join('\n');
+          
           return {
-            scanAResults: firstHalfResults.scanAResults + '\n' + secondHalfResults.scanAResults,
-            scanBResults: firstHalfResults.scanBResults + '\n' + secondHalfResults.scanBResults
+            scanAResults: combinedScanA || null,
+            scanBResults: combinedScanB || null
           };
         } else {
           console.warn(`[RECURSIVE_SPLIT] Max splits reached or batch too small, using fallback for Scan A`);
@@ -197,10 +232,20 @@ const processBatchWithRecursiveSplitting = async (
             secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1
           );
           
-          // Combine results
+          // Combine results safely
+          const combinedScanA = [
+            firstHalfResults.scanAResults,
+            secondHalfResults.scanAResults
+          ].filter(result => result !== null && result !== undefined).join('\n');
+          
+          const combinedScanB = [
+            firstHalfResults.scanBResults,
+            secondHalfResults.scanBResults
+          ].filter(result => result !== null && result !== undefined).join('\n');
+          
           return {
-            scanAResults: firstHalfResults.scanAResults + '\n' + secondHalfResults.scanAResults,
-            scanBResults: firstHalfResults.scanBResults + '\n' + secondHalfResults.scanBResults
+            scanAResults: combinedScanA || null,
+            scanBResults: combinedScanB || null
           };
         } else {
           console.warn(`[RECURSIVE_SPLIT] Max splits reached or batch too small, using fallback for Scan B`);
@@ -1023,36 +1068,15 @@ serve(async (req) => {
         }
       }
 
-      // Temporarily disable recursive splitting to debug the issue
-      console.log(`[DEBUG] Processing batch of ${batch.length} comments without recursive splitting`);
+      // Use improved recursive splitting to handle harmful content detection
+      console.log(`[RECURSIVE_SPLIT] Processing batch of ${batch.length} comments with improved harmful content detection`);
       
-      const settledClient = await Promise.allSettled([
-        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
-        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
-      ]);
+      const recursiveResults = await processBatchWithRecursiveSplitting(
+        batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart
+      );
       
-      let scanAResultsClient: any = null;
-      let scanBResultsClient: any = null;
-      if (settledClient[0].status === 'fulfilled') {
-        scanAResultsClient = settledClient[0].value;
-        console.log(`[DEBUG] Scan A results length: ${scanAResultsClient?.length || 0}`);
-      } else {
-        const errMsg = settledClient[0].reason instanceof Error ? settledClient[0].reason.message : String(settledClient[0].reason);
-        console.error(`[SCAN_A] Error: ${errMsg}`);
-        if (aiLogger) {
-          await aiLogger.logResponse(user.id, scanRunId, 'scan-comments', scanA.provider, scanA.model, 'batch_analysis', 'scan_a', '', errMsg, undefined);
-        }
-      }
-      if (settledClient[1].status === 'fulfilled') {
-        scanBResultsClient = settledClient[1].value;
-        console.log(`[DEBUG] Scan B results length: ${scanBResultsClient?.length || 0}`);
-      } else {
-        const errMsg = settledClient[1].reason instanceof Error ? settledClient[1].reason.message : String(settledClient[1].reason);
-        console.error(`[SCAN_B] Error: ${errMsg}`);
-        if (aiLogger) {
-          await aiLogger.logResponse(user.id, scanRunId, 'scan-comments', scanB.provider, scanB.model, 'batch_analysis', 'scan_b', '', errMsg, undefined);
-        }
-      }
+      const scanAResultsClient = recursiveResults.scanAResults;
+      const scanBResultsClient = recursiveResults.scanBResults;
       const batchEndTimeClient = Date.now();
       console.log(`[PERFORMANCE] Batch ${batchStart + 1}-${batchEnd} processed in ${batchEndTimeClient - batchStartTime}ms (parallel AI calls)`);
 
@@ -1249,36 +1273,15 @@ serve(async (req) => {
         }
       }
       
-      // Temporarily disable recursive splitting to debug the issue
-      console.log(`[DEBUG] Processing server-managed batch of ${batch.length} comments without recursive splitting`);
+      // Use improved recursive splitting to handle harmful content detection
+      console.log(`[RECURSIVE_SPLIT] Processing server-managed batch of ${batch.length} comments with improved harmful content detection`);
       
-      const settled = await Promise.allSettled([
-        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
-        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
-      ]);
+      const recursiveResults = await processBatchWithRecursiveSplitting(
+        batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, currentBatchStart
+      );
       
-      let scanAResults: any = null;
-      let scanBResults: any = null;
-      if (settled[0].status === 'fulfilled') {
-        scanAResults = settled[0].value;
-        console.log(`[DEBUG] Scan A results length: ${scanAResults?.length || 0}`);
-      } else {
-        const errMsg = settled[0].reason instanceof Error ? settled[0].reason.message : String(settled[0].reason);
-        console.error(`[SCAN_A] Error: ${errMsg}`);
-        if (aiLogger) {
-          await aiLogger.logResponse(user.id, scanRunId, 'scan-comments', scanA.provider, scanA.model, 'batch_analysis', 'scan_a', '', errMsg, undefined);
-        }
-      }
-      if (settled[1].status === 'fulfilled') {
-        scanBResults = settled[1].value;
-        console.log(`[DEBUG] Scan B results length: ${scanBResults?.length || 0}`);
-      } else {
-        const errMsg = settled[1].reason instanceof Error ? settled[1].reason.message : String(settled[1].reason);
-        console.error(`[SCAN_B] Error: ${errMsg}`);
-        if (aiLogger) {
-          await aiLogger.logResponse(user.id, scanRunId, 'scan-comments', scanB.provider, scanB.model, 'batch_analysis', 'scan_b', '', errMsg, undefined);
-        }
-      }
+      const scanAResults = recursiveResults.scanAResults;
+      const scanBResults = recursiveResults.scanBResults;
       const batchEndTime = Date.now();
       console.log(`[PERFORMANCE] Batch ${currentBatchStart + 1}-${batchEnd} processed in ${batchEndTime - batchStartTime}ms (parallel AI calls)`);
       
@@ -1520,18 +1523,15 @@ serve(async (req) => {
             );
             if (wtB > 0) await new Promise(r => setTimeout(r, wtB));
           }
-          // Temporarily disable recursive splitting for tail batch
-          console.log(`[DEBUG] Processing tail batch of ${tailBatch.length} comments without recursive splitting`);
+          // Use improved recursive splitting for tail batch as well
+          console.log(`[RECURSIVE_SPLIT] Processing tail batch of ${tailBatch.length} comments with improved harmful content detection`);
           
-          const settledTail = await Promise.allSettled([
-            callAI(scanA.provider, scanA.model, scanA.analysis_prompt, tailBatchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
-            callAI(scanB.provider, scanB.model, scanB.analysis_prompt, tailBatchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
-          ]);
+          const tailRecursiveResults = await processBatchWithRecursiveSplitting(
+            tailBatch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, tailStartIndex
+          );
           
-          let tailA: any = null;
-          let tailB: any = null;
-          if (settledTail[0].status === 'fulfilled') tailA = settledTail[0].value;
-          if (settledTail[1].status === 'fulfilled') tailB = settledTail[1].value;
+          const tailA = tailRecursiveResults.scanAResults;
+          const tailB = tailRecursiveResults.scanBResults;
           const tailAArray = parseBatchResults(tailA, tailBatch.length, 'Scan A (tail)', tailStartIndex + 1);
           const tailBArray = parseBatchResults(tailB, tailBatch.length, 'Scan B (tail)', tailStartIndex + 1);
           const maxTail = Math.max(tailAArray.length, tailBArray.length);
