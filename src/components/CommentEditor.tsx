@@ -68,6 +68,19 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [defaultMode, setDefaultMode] = useState<'redact' | 'rephrase'>('redact');
+  const [validationWarning, setValidationWarning] = useState<{
+    hasMissing: boolean;
+    missingCount: number;
+    totalComments: number;
+    missingDetails: Array<{
+      commentId: string;
+      commentIndex: number;
+      missingScanA: boolean;
+      missingScanB: boolean;
+      scanAResult?: any;
+      scanBResult?: any;
+    }>;
+  } | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [localHasScanRun, setLocalHasScanRun] = useState(false);
@@ -163,6 +176,56 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
     } : comment);
     onCommentsUpdate(updatedComments);
   };
+  // Validation function to check for complete scan results
+  const validateScanResults = (comments: any[]): {
+    hasMissingResults: boolean;
+    missingCount: number;
+    totalComments: number;
+    missingDetails: Array<{
+      commentId: string;
+      commentIndex: number;
+      missingScanA: boolean;
+      missingScanB: boolean;
+      scanAResult?: any;
+      scanBResult?: any;
+    }>;
+  } => {
+    const missingDetails: Array<{
+      commentId: string;
+      commentIndex: number;
+      missingScanA: boolean;
+      missingScanB: boolean;
+      scanAResult?: any;
+      scanBResult?: any;
+    }> = [];
+    
+    comments.forEach((comment, index) => {
+      const scanAResult = comment.adjudicationData?.scanAResult || comment.scanAResult;
+      const scanBResult = comment.adjudicationData?.scanBResult || comment.scanBResult;
+      
+      const missingScanA = !scanAResult || !scanAResult.concerning || scanAResult.concerning === undefined;
+      const missingScanB = !scanBResult || !scanBResult.concerning || scanBResult.concerning === undefined;
+      
+      if (missingScanA || missingScanB) {
+        missingDetails.push({
+          commentId: comment.id,
+          commentIndex: index + 1,
+          missingScanA,
+          missingScanB,
+          scanAResult,
+          scanBResult
+        });
+      }
+    });
+    
+    return {
+      hasMissingResults: missingDetails.length > 0,
+      missingCount: missingDetails.length,
+      totalComments: comments.length,
+      missingDetails
+    };
+  };
+
   const toggleCommentMode = async (commentId: string, mode: 'redact' | 'rephrase' | 'revert' | 'edit') => {
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
@@ -515,6 +578,33 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       setScanProgress(30);
       toast.info('Phase 1 complete: Comments scanned and flagged');
       console.log('[PHASE1] Completed initial scanning.');
+
+      // Validate that we have results from both models for every comment
+      console.log('[VALIDATION] Checking for complete scan results...');
+      const validationResults = validateScanResults(data.comments as any[]);
+      
+      if (validationResults.hasMissingResults) {
+        console.warn('[VALIDATION] Missing scan results detected:', validationResults.missingDetails);
+        console.warn(`[VALIDATION] Missing ${validationResults.missingCount} results out of ${validationResults.totalComments} comments`);
+        
+        // Show warning in debug panel
+        setValidationWarning({
+          hasMissing: true,
+          missingCount: validationResults.missingCount,
+          totalComments: validationResults.totalComments,
+          missingDetails: validationResults.missingDetails
+        });
+        
+        toast.warning(`Warning: ${validationResults.missingCount} comments missing scan results. Check console for details.`);
+      } else {
+        console.log('[VALIDATION] All comments have complete scan results from both models');
+        setValidationWarning({
+          hasMissing: false,
+          missingCount: 0,
+          totalComments: validationResults.totalComments,
+          missingDetails: []
+        });
+      }
 
       // Phase 2: Adjudication (client-orchestrated)
       setScanProgress(60);
@@ -1796,6 +1886,51 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           }}
         />
       </div>
+
+      {/* Debug: Validation Warning */}
+      {debugMode && isAdmin && validationWarning && (
+        <div className="mb-6">
+          <Card className={`p-4 ${validationWarning.hasMissing ? 'border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-950/30' : 'border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950/30'}`}>
+            <h4 className={`text-sm font-semibold mb-3 ${validationWarning.hasMissing ? 'text-orange-800 dark:text-orange-200' : 'text-green-800 dark:text-green-200'}`}>
+              {validationWarning.hasMissing ? '⚠️ Validation Warning: Missing Scan Results' : '✅ Validation Passed: Complete Scan Results'}
+            </h4>
+            <div className="space-y-2">
+              <p className="text-sm">
+                <strong>Total Comments:</strong> {validationWarning.totalComments}
+              </p>
+              <p className="text-sm">
+                <strong>Missing Results:</strong> {validationWarning.missingCount}
+              </p>
+              {validationWarning.hasMissing && validationWarning.missingDetails.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Missing Details:</p>
+                  <div className="max-h-40 overflow-y-auto">
+                    {validationWarning.missingDetails.map((detail, index) => (
+                      <div key={index} className="text-xs p-2 bg-white/50 dark:bg-black/20 rounded mb-1">
+                        <strong>Comment #{detail.commentIndex}</strong> (ID: {detail.commentId})
+                        <br />
+                        Missing Scan A: {detail.missingScanA ? 'Yes' : 'No'}
+                        <br />
+                        Missing Scan B: {detail.missingScanB ? 'Yes' : 'No'}
+                        {detail.scanAResult && (
+                          <div className="mt-1">
+                            <strong>Scan A Result:</strong> {JSON.stringify(detail.scanAResult, null, 2)}
+                          </div>
+                        )}
+                        {detail.scanBResult && (
+                          <div className="mt-1">
+                            <strong>Scan B Result:</strong> {JSON.stringify(detail.scanBResult, null, 2)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Debug Raw Data: Final Prompts */}
       {debugMode && isAdmin && (debugPrompts.scanA || debugPrompts.scanB || debugPrompts.adjudicator || debugPrompts.redaction || debugPrompts.rephrase) && (
