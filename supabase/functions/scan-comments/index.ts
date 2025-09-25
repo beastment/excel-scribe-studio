@@ -68,6 +68,8 @@ const validateAndResubmitMissing = async (
     return { scanAResults, scanBResults };
   }
   
+  console.log(`[VALIDATION] Incomplete results detected - Scan A complete: ${scanAComplete}, Scan B complete: ${scanBComplete}`);
+  
   // Identify missing items for each model
   const missingForScanA = scanAPartial.missingIndices.map(index => comments[index - batchStart]);
   const missingForScanB = scanBPartial.missingIndices.map(index => comments[index - batchStart]);
@@ -153,12 +155,15 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
   hasPartialResults: boolean 
 } => {
   if (!responseText || responseText.trim().length === 0) {
+    console.log(`[PARTIAL_PARSE] Empty response - all ${totalComments} comments missing`);
     return { parsedResults: [], missingIndices: Array.from({length: totalComments}, (_, i) => batchStart + i), hasPartialResults: false };
   }
   
   const lines = responseText.split('\n').filter(line => line.trim().length > 0);
   const parsedResults: string[] = [];
   const foundIndices = new Set<number>();
+  
+  console.log(`[PARTIAL_PARSE] Parsing ${lines.length} lines from response (first 200 chars: ${responseText.substring(0, 200)})`);
   
   // Parse each line looking for the format: i:X A:Y B:Z
   for (const line of lines) {
@@ -168,14 +173,23 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
       const scanA = match[2];
       const scanB = match[3];
       
+      console.log(`[PARTIAL_PARSE] Found result: i:${index} A:${scanA} B:${scanB} (batchStart: ${batchStart + 1}, totalComments: ${totalComments})`);
+      
       // Check if this index is within our expected range
       if (index >= batchStart + 1 && index <= batchStart + totalComments) {
         const relativeIndex = index - batchStart - 1;
         if (relativeIndex >= 0 && relativeIndex < totalComments) {
           parsedResults[relativeIndex] = line;
           foundIndices.add(relativeIndex);
+          console.log(`[PARTIAL_PARSE] Added result at relative index ${relativeIndex}`);
+        } else {
+          console.log(`[PARTIAL_PARSE] Index ${index} out of range (relative: ${relativeIndex})`);
         }
+      } else {
+        console.log(`[PARTIAL_PARSE] Index ${index} outside expected range [${batchStart + 1}, ${batchStart + totalComments}]`);
       }
+    } else {
+      console.log(`[PARTIAL_PARSE] Line doesn't match pattern: ${line}`);
     }
   }
   
@@ -191,6 +205,7 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
   
   console.log(`[PARTIAL_PARSE] Found ${parsedResults.length} valid results out of ${totalComments} comments`);
   console.log(`[PARTIAL_PARSE] Missing indices: ${missingIndices.length > 0 ? missingIndices.join(', ') : 'none'}`);
+  console.log(`[PARTIAL_PARSE] Found indices: ${Array.from(foundIndices).map(i => batchStart + i).join(', ')}`);
   
   return { parsedResults, missingIndices, hasPartialResults };
 };
@@ -1356,23 +1371,23 @@ serve(async (req) => {
         batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, 3, 0, false, false, null, null
       );
       
-      // Validate completeness and resubmit missing items before proceeding
-      const validatedResults = await validateAndResubmitMissing(
-        recursiveResults.scanAResults,
-        recursiveResults.scanBResults,
-        batch,
-        scanA,
-        scanB,
-        scanATokenLimits,
-        scanBTokenLimits,
-        user,
-        scanRunId,
-        aiLogger,
-        batchStart
-      );
+      // TEMPORARILY DISABLED: Validate completeness and resubmit missing items before proceeding
+      // const validatedResults = await validateAndResubmitMissing(
+      //   recursiveResults.scanAResults,
+      //   recursiveResults.scanBResults,
+      //   batch,
+      //   scanA,
+      //   scanB,
+      //   scanATokenLimits,
+      //   scanBTokenLimits,
+      //   user,
+      //   scanRunId,
+      //   aiLogger,
+      //   batchStart
+      // );
       
-      const scanAResultsClient = validatedResults.scanAResults;
-      const scanBResultsClient = validatedResults.scanBResults;
+      const scanAResultsClient = recursiveResults.scanAResults;
+      const scanBResultsClient = recursiveResults.scanBResults;
       const batchEndTimeClient = Date.now();
       console.log(`[PERFORMANCE] Batch ${batchStart + 1}-${batchEnd} processed in ${batchEndTimeClient - batchStartTime}ms (parallel AI calls)`);
 
@@ -1576,23 +1591,23 @@ serve(async (req) => {
         batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, currentBatchStart, 3, 0, false, false, null, null
       );
       
-      // Validate completeness and resubmit missing items before proceeding
-      const validatedResults = await validateAndResubmitMissing(
-        recursiveResults.scanAResults,
-        recursiveResults.scanBResults,
-        batch,
-        scanA,
-        scanB,
-        scanATokenLimits,
-        scanBTokenLimits,
-        user,
-        scanRunId,
-        aiLogger,
-        currentBatchStart
-      );
+      // TEMPORARILY DISABLED: Validate completeness and resubmit missing items before proceeding
+      // const validatedResults = await validateAndResubmitMissing(
+      //   recursiveResults.scanAResults,
+      //   recursiveResults.scanBResults,
+      //   batch,
+      //   scanA,
+      //   scanB,
+      //   scanATokenLimits,
+      //   scanBTokenLimits,
+      //   user,
+      //   scanRunId,
+      //   aiLogger,
+      //   currentBatchStart
+      // );
       
-      const scanAResults = validatedResults.scanAResults;
-      const scanBResults = validatedResults.scanBResults;
+      const scanAResults = recursiveResults.scanAResults;
+      const scanBResults = recursiveResults.scanBResults;
       const batchEndTime = Date.now();
       console.log(`[PERFORMANCE] Batch ${currentBatchStart + 1}-${batchEnd} processed in ${batchEndTime - batchStartTime}ms (parallel AI calls)`);
       
@@ -1841,23 +1856,23 @@ serve(async (req) => {
             tailBatch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, tailStartIndex, 3, 0, false, false, null, null
           );
           
-          // Validate completeness and resubmit missing items before proceeding
-          const tailValidatedResults = await validateAndResubmitMissing(
-            tailRecursiveResults.scanAResults,
-            tailRecursiveResults.scanBResults,
-            tailBatch,
-            scanA,
-            scanB,
-            scanATokenLimits,
-            scanBTokenLimits,
-            user,
-            scanRunId,
-            aiLogger,
-            tailStartIndex
-          );
+          // TEMPORARILY DISABLED: Validate completeness and resubmit missing items before proceeding
+          // const tailValidatedResults = await validateAndResubmitMissing(
+          //   tailRecursiveResults.scanAResults,
+          //   tailRecursiveResults.scanBResults,
+          //   tailBatch,
+          //   scanA,
+          //   scanB,
+          //   scanATokenLimits,
+          //   scanBTokenLimits,
+          //   user,
+          //   scanRunId,
+          //   aiLogger,
+          //   tailStartIndex
+          // );
           
-          const tailA = tailValidatedResults.scanAResults;
-          const tailB = tailValidatedResults.scanBResults;
+          const tailA = tailRecursiveResults.scanAResults;
+          const tailB = tailRecursiveResults.scanBResults;
           const tailAArray = parseBatchResults(tailA, tailBatch.length, 'Scan A (tail)', tailStartIndex + 1);
           const tailBArray = parseBatchResults(tailB, tailBatch.length, 'Scan B (tail)', tailStartIndex + 1);
           const maxTail = Math.max(tailAArray.length, tailBArray.length);
