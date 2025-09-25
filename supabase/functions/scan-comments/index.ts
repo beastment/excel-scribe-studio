@@ -145,7 +145,9 @@ const processBatchWithRecursiveSplitting = async (
   maxSplits: number = 3, // Maximum number of splits to prevent infinite recursion
   currentSplit: number = 0,
   scanAFailed: boolean = false, // Whether Scan A failed in parent batch
-  scanBFailed: boolean = false  // Whether Scan B failed in parent batch
+  scanBFailed: boolean = false,  // Whether Scan B failed in parent batch
+  parentScanAResults: any = null, // Successful Scan A results from parent batch
+  parentScanBResults: any = null  // Successful Scan B results from parent batch
 ): Promise<{ scanAResults: any, scanBResults: any }> => {
   
   if (comments.length === 0) {
@@ -166,6 +168,16 @@ const processBatchWithRecursiveSplitting = async (
     // Only call failed models, preserve successful results
     if (scanAFailed || scanBFailed) {
       console.log(`[RECURSIVE_SPLIT] Only calling failed models: ${scanAFailed ? 'Scan A' : ''}${scanAFailed && scanBFailed ? ' and ' : ''}${scanBFailed ? 'Scan B' : ''}`);
+      
+      // Use parent results for successful models
+      if (!scanAFailed && parentScanAResults) {
+        scanAResults = parentScanAResults;
+        console.log(`[RECURSIVE_SPLIT] Using preserved Scan A results from parent batch`);
+      }
+      if (!scanBFailed && parentScanBResults) {
+        scanBResults = parentScanBResults;
+        console.log(`[RECURSIVE_SPLIT] Using preserved Scan B results from parent batch`);
+      }
       
       const callsToMake: Promise<any>[] = [];
       if (scanAFailed) {
@@ -273,11 +285,11 @@ const processBatchWithRecursiveSplitting = async (
       
       // Process both halves recursively, but only resubmit failed models
       const firstHalfResults = await processBatchWithRecursiveSplitting(
-        firstHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed
+        firstHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed, scanAResults, scanBResults
       );
       
       const secondHalfResults = await processBatchWithRecursiveSplitting(
-        secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed
+        secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed, scanAResults, scanBResults
       );
       
       // Combine results safely
@@ -1122,7 +1134,7 @@ serve(async (req) => {
       console.log(`[RECURSIVE_SPLIT] Processing batch of ${batch.length} comments with improved harmful content detection`);
       
       const recursiveResults = await processBatchWithRecursiveSplitting(
-        batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart
+        batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, 3, 0, false, false, null, null
       );
       
       const scanAResultsClient = recursiveResults.scanAResults;
@@ -1327,7 +1339,7 @@ serve(async (req) => {
       console.log(`[RECURSIVE_SPLIT] Processing server-managed batch of ${batch.length} comments with improved harmful content detection`);
       
       const recursiveResults = await processBatchWithRecursiveSplitting(
-        batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, currentBatchStart
+        batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, currentBatchStart, 3, 0, false, false, null, null
       );
       
       const scanAResults = recursiveResults.scanAResults;
@@ -1577,7 +1589,7 @@ serve(async (req) => {
           console.log(`[RECURSIVE_SPLIT] Processing tail batch of ${tailBatch.length} comments with improved harmful content detection`);
           
           const tailRecursiveResults = await processBatchWithRecursiveSplitting(
-            tailBatch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, tailStartIndex
+            tailBatch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, tailStartIndex, 3, 0, false, false, null, null
           );
           
           const tailA = tailRecursiveResults.scanAResults;
