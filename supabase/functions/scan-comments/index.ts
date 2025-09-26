@@ -324,13 +324,17 @@ const processBatchWithRecursiveSplitting = async (
       if (settled[0].status === 'fulfilled') {
         scanAResults = settled[0].value;
         console.log(`[RECURSIVE_SPLIT] Scan A response (first 200 chars):`, scanAResults?.substring(0, 200));
+        console.log(`[RECURSIVE_SPLIT] Scan A response length: ${scanAResults?.length || 0} chars`);
         
-          if (isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model, comments.length, batchStart)) {
-            console.log(`[RECURSIVE_SPLIT] Scan A detected harmful content, will split batch`);
-            currentScanAFailed = true;
-          } else {
-            console.log(`[RECURSIVE_SPLIT] Scan A response appears normal, no splitting needed`);
-          }
+        const isHarmful = isHarmfulContentResponse(scanAResults, scanA.provider, scanA.model, comments.length, batchStart);
+        console.log(`[RECURSIVE_SPLIT] Scan A harmful content detection result: ${isHarmful}`);
+        
+        if (isHarmful) {
+          console.log(`[RECURSIVE_SPLIT] Scan A detected harmful content, will split batch`);
+          currentScanAFailed = true;
+        } else {
+          console.log(`[RECURSIVE_SPLIT] Scan A response appears normal, no splitting needed`);
+        }
       } else {
         console.log(`[RECURSIVE_SPLIT] Scan A failed with error, will split batch`);
         currentScanAFailed = true;
@@ -340,13 +344,17 @@ const processBatchWithRecursiveSplitting = async (
       if (settled[1].status === 'fulfilled') {
         scanBResults = settled[1].value;
         console.log(`[RECURSIVE_SPLIT] Scan B response (first 200 chars):`, scanBResults?.substring(0, 200));
+        console.log(`[RECURSIVE_SPLIT] Scan B response length: ${scanBResults?.length || 0} chars`);
         
-          if (isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model, comments.length, batchStart)) {
-            console.log(`[RECURSIVE_SPLIT] Scan B detected harmful content, will split batch`);
-            currentScanBFailed = true;
-          } else {
-            console.log(`[RECURSIVE_SPLIT] Scan B response appears normal, no splitting needed`);
-          }
+        const isHarmful = isHarmfulContentResponse(scanBResults, scanB.provider, scanB.model, comments.length, batchStart);
+        console.log(`[RECURSIVE_SPLIT] Scan B harmful content detection result: ${isHarmful}`);
+        
+        if (isHarmful) {
+          console.log(`[RECURSIVE_SPLIT] Scan B detected harmful content, will split batch`);
+          currentScanBFailed = true;
+        } else {
+          console.log(`[RECURSIVE_SPLIT] Scan B response appears normal, no splitting needed`);
+        }
       } else {
         console.log(`[RECURSIVE_SPLIT] Scan B failed with error, will split batch`);
         currentScanBFailed = true;
