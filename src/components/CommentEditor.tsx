@@ -1968,7 +1968,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               )}
               
               {/* Expandable Full Scan Results */}
-              {!validationWarning.hasMissing && (
+              {validationWarning.totalComments > 0 && (
                 <div className="mt-4">
                   <details className="group">
                     <summary className="cursor-pointer text-sm font-medium text-green-800 dark:text-green-200 hover:text-green-900 dark:hover:text-green-100">
