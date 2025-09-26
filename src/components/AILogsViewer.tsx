@@ -49,6 +49,8 @@ export function AILogsViewer({
   } = useAuth();
   const [logs, setLogs] = useState<AILog[]>([]);
   const [modelFilter, setModelFilter] = useState<string>('');
+  const [modeFilter, setModeFilter] = useState<string>('');
+  const [phaseFilter, setPhaseFilter] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
   const [showFullContent, setShowFullContent] = useState(true); // Auto-expand by default
@@ -475,6 +477,18 @@ export function AILogsViewer({
               <option value="">All Models</option>
               {Array.from(new Set(logs.map(l => `${l.provider}/${l.model}`))).sort().map(k => <option key={k} value={k}>{k}</option>)}
             </select>
+            
+            {/* Mode Filter */}
+            <select className="border rounded px-2 py-1 text-sm" value={modeFilter} onChange={e => setModeFilter(e.target.value)} title="Filter by Mode">
+              <option value="">All Modes</option>
+              {Array.from(new Set(logs.map(l => l.request_type).filter(Boolean))).sort().map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+            
+            {/* Phase Filter */}
+            <select className="border rounded px-2 py-1 text-sm" value={phaseFilter} onChange={e => setPhaseFilter(e.target.value)} title="Filter by Phase">
+              <option value="">All Phases</option>
+              {Array.from(new Set(logs.map(l => l.phase).filter(Boolean))).sort().map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
             <Button variant="outline" size="sm" onClick={() => setShowFullContent(!showFullContent)}>
               {showFullContent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               {showFullContent ? 'Hide Details' : 'Show Details'}
@@ -638,7 +652,11 @@ export function AILogsViewer({
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold">Recent Activity</h3>
                 <ScrollArea className="h-64">
-                  {logs.filter(l => !modelFilter || `${l.provider}/${l.model}` === modelFilter).slice(0, 50).map(log => <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedLog(log)}>
+                  {logs.filter(l => 
+                    (!modelFilter || `${l.provider}/${l.model}` === modelFilter) &&
+                    (!modeFilter || l.request_type === modeFilter) &&
+                    (!phaseFilter || l.phase === phaseFilter)
+                  ).slice(0, 50).map(log => <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedLog(log)}>
                       <div className="flex items-center gap-3">
                         <Badge variant="outline" className="text-xs">
                           {log.function_name}
@@ -672,7 +690,11 @@ export function AILogsViewer({
             
             <TabsContent value="detailed" className="space-y-4">
               <ScrollArea className="h-96">
-                {logs.filter(l => !modelFilter || `${l.provider}/${l.model}` === modelFilter).map(log => <Card key={log.id} className="mb-4">
+                {logs.filter(l => 
+                  (!modelFilter || `${l.provider}/${l.model}` === modelFilter) &&
+                  (!modeFilter || l.request_type === modeFilter) &&
+                  (!phaseFilter || l.phase === phaseFilter)
+                ).map(log => <Card key={log.id} className="mb-4">
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -786,7 +808,11 @@ export function AILogsViewer({
             <TabsContent value="raw" className="space-y-4">
               <ScrollArea className="h-96">
                 <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto">
-                  {JSON.stringify(logs, null, 2)}
+                  {JSON.stringify(logs.filter(l => 
+                    (!modelFilter || `${l.provider}/${l.model}` === modelFilter) &&
+                    (!modeFilter || l.request_type === modeFilter) &&
+                    (!phaseFilter || l.phase === phaseFilter)
+                  ), null, 2)}
                 </pre>
               </ScrollArea>
             </TabsContent>
