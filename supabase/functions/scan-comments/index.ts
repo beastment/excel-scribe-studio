@@ -433,12 +433,13 @@ const processBatchWithRecursiveSplitting = async (
       console.log(`[RECURSIVE_SPLIT] Splitting into ${firstHalf.length} and ${secondHalf.length} comments`);
       
       // Process both halves recursively, but only resubmit failed models
+      // For splitting, we don't pass parent results since we're starting fresh with smaller batches
       const firstHalfResults = await processBatchWithRecursiveSplitting(
-        firstHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed, scanAResults, scanBResults
+        firstHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1, false, false, null, null
       );
       
       const secondHalfResults = await processBatchWithRecursiveSplitting(
-        secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed, scanAResults, scanBResults
+        secondHalf, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart + midPoint, maxSplits, currentSplit + 1, false, false, null, null
       );
       
       // Combine results safely
