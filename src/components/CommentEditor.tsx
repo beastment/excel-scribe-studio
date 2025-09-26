@@ -205,17 +205,38 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       const scanAResult = comment.adjudicationData?.scanAResult || comment.scanAResult;
       const scanBResult = comment.adjudicationData?.scanBResult || comment.scanBResult;
       
-      // More lenient validation - check if the result object exists and has the expected structure
+      // Check if results are missing or are default padded results
+      const isDefaultResult = (result: any) => {
+        return result && 
+               typeof result === 'object' && 
+               result.concerning === false && 
+               result.identifiable === false &&
+               (!result.model || result.model === 'default');
+      };
+      
       const missingScanA = !scanAResult || typeof scanAResult !== 'object' || 
-        (scanAResult.concerning === undefined && scanAResult.identifiable === undefined);
+        (scanAResult.concerning === undefined && scanAResult.identifiable === undefined) ||
+        isDefaultResult(scanAResult);
       const missingScanB = !scanBResult || typeof scanBResult !== 'object' || 
-        (scanBResult.concerning === undefined && scanBResult.identifiable === undefined);
+        (scanBResult.concerning === undefined && scanBResult.identifiable === undefined) ||
+        isDefaultResult(scanBResult);
       
       if (missingScanA || missingScanB) {
+        const reasonA = !scanAResult ? 'no result' : 
+                       typeof scanAResult !== 'object' ? 'invalid type' :
+                       (scanAResult.concerning === undefined && scanAResult.identifiable === undefined) ? 'missing properties' :
+                       isDefaultResult(scanAResult) ? 'default padded' : 'unknown';
+        const reasonB = !scanBResult ? 'no result' : 
+                       typeof scanBResult !== 'object' ? 'invalid type' :
+                       (scanBResult.concerning === undefined && scanBResult.identifiable === undefined) ? 'missing properties' :
+                       isDefaultResult(scanBResult) ? 'default padded' : 'unknown';
+        
         console.log(`[VALIDATION] Missing results for comment ${index + 1}:`, {
           commentId: comment.id,
           missingScanA,
           missingScanB,
+          reasonA,
+          reasonB,
           scanAResult,
           scanBResult
         });
