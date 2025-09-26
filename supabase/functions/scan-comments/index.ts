@@ -76,10 +76,15 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
     }
   }
   
-  const hasPartialResults = parsedResults.length > 0;
+  // Check if we have significantly fewer results than expected (likely truncation)
+  const completionRatio = parsedResults.length / totalComments;
+  const isTruncated = completionRatio < 0.1; // Less than 10% completion suggests truncation
   
-  console.log(`[PARTIAL_PARSE] Found ${parsedResults.length} valid results out of ${totalComments} comments`);
+  const hasPartialResults = parsedResults.length > 0 && !isTruncated;
+  
+  console.log(`[PARTIAL_PARSE] Found ${parsedResults.length} valid results out of ${totalComments} comments (${(completionRatio * 100).toFixed(1)}%)`);
   console.log(`[PARTIAL_PARSE] Missing indices: ${missingIndices.length > 0 ? missingIndices.join(', ') : 'none'}`);
+  console.log(`[PARTIAL_PARSE] Is truncated: ${isTruncated} (completion ratio: ${completionRatio.toFixed(3)})`);
   
   return { parsedResults, missingIndices, hasPartialResults };
 };
@@ -91,12 +96,18 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
   }
   
   // First, check if we have any valid partial results
-  const { hasPartialResults } = parsePartialResults(responseText, totalComments, batchStart);
+  const { hasPartialResults, parsedResults } = parsePartialResults(responseText, totalComments, batchStart);
   
   // If we have partial results, don't split - we can work with what we have
   if (hasPartialResults) {
     console.log(`[HARMFUL_DETECTION] Found partial results, not splitting batch`);
     return false;
+  }
+  
+  // If we have very few results (likely truncation), trigger splitting
+  if (parsedResults.length > 0 && parsedResults.length < totalComments * 0.1) {
+    console.log(`[HARMFUL_DETECTION] Detected truncation (${parsedResults.length}/${totalComments} results), triggering split`);
+    return true;
   }
   
   console.log(`[HARMFUL_DETECTION] No partial results found, checking for harmful content patterns...`);
@@ -354,12 +365,16 @@ const processBatchWithRecursiveSplitting = async (
     
     if (scanAResults || scanBResults) {
       // Check if we have partial results from either scan
-      const scanAPartial = scanAResults ? parsePartialResults(scanAResults, comments.length, batchStart) : { hasPartialResults: false, missingIndices: [] };
-      const scanBPartial = scanBResults ? parsePartialResults(scanBResults, comments.length, batchStart) : { hasPartialResults: false, missingIndices: [] };
+      const scanAPartial = scanAResults ? parsePartialResults(scanAResults, comments.length, batchStart) : { hasPartialResults: false, missingIndices: [], parsedResults: [] };
+      const scanBPartial = scanBResults ? parsePartialResults(scanBResults, comments.length, batchStart) : { hasPartialResults: false, missingIndices: [], parsedResults: [] };
       
-      if (scanAPartial.hasPartialResults || scanBPartial.hasPartialResults) {
+      // Check for truncation (very few results)
+      const scanATruncated = scanAResults && scanAPartial.parsedResults.length > 0 && scanAPartial.parsedResults.length < comments.length * 0.1;
+      const scanBTruncated = scanBResults && scanBPartial.parsedResults.length > 0 && scanBPartial.parsedResults.length < comments.length * 0.1;
+      
+      if (scanAPartial.hasPartialResults || scanBPartial.hasPartialResults || scanATruncated || scanBTruncated) {
         hasPartialResults = true;
-        console.log(`[RECURSIVE_SPLIT] Found partial results - Scan A: ${scanAPartial.hasPartialResults}, Scan B: ${scanBPartial.hasPartialResults}`);
+        console.log(`[RECURSIVE_SPLIT] Found partial results - Scan A: ${scanAPartial.hasPartialResults} (truncated: ${scanATruncated}), Scan B: ${scanBPartial.hasPartialResults} (truncated: ${scanBTruncated})`);
         
         // Find comments that are missing from both scans
         const missingIndices = new Set([...scanAPartial.missingIndices, ...scanBPartial.missingIndices]);
