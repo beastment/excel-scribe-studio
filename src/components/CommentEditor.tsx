@@ -1966,6 +1966,47 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                   </div>
                 </div>
               )}
+              
+              {/* Expandable Full Scan Results */}
+              {!validationWarning.hasMissing && (
+                <div className="mt-4">
+                  <details className="group">
+                    <summary className="cursor-pointer text-sm font-medium text-green-800 dark:text-green-200 hover:text-green-900 dark:hover:text-green-100">
+                      📋 View Full Scan Results
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      <div className="bg-white/50 dark:bg-black/20 rounded p-3">
+                        <h5 className="text-xs font-semibold mb-2 text-blue-800 dark:text-blue-200">Scan A Results:</h5>
+                        <div className="max-h-40 overflow-y-auto">
+                          <pre className="text-xs font-mono whitespace-pre-wrap">
+                            {comments.map((comment, index) => {
+                              const scanAResult = comment.adjudicationData?.scanAResult || comment.scanAResult;
+                              if (!scanAResult) return null;
+                              const concerning = scanAResult.concerning ? 'Y' : 'N';
+                              const identifiable = scanAResult.identifiable ? 'Y' : 'N';
+                              return `i:${index + 1},A:${concerning},B:${identifiable}`;
+                            }).filter(Boolean).join('\n')}
+                          </pre>
+                        </div>
+                      </div>
+                      <div className="bg-white/50 dark:bg-black/20 rounded p-3">
+                        <h5 className="text-xs font-semibold mb-2 text-purple-800 dark:text-purple-200">Scan B Results:</h5>
+                        <div className="max-h-40 overflow-y-auto">
+                          <pre className="text-xs font-mono whitespace-pre-wrap">
+                            {comments.map((comment, index) => {
+                              const scanBResult = comment.adjudicationData?.scanBResult || comment.scanBResult;
+                              if (!scanBResult) return null;
+                              const concerning = scanBResult.concerning ? 'Y' : 'N';
+                              const identifiable = scanBResult.identifiable ? 'Y' : 'N';
+                              return `i:${index + 1},A:${concerning},B:${identifiable}`;
+                            }).filter(Boolean).join('\n')}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              )}
             </div>
           </Card>
         </div>
