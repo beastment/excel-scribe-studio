@@ -1984,7 +1984,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                               if (!scanAResult) return null;
                               const concerning = scanAResult.concerning ? 'Y' : 'N';
                               const identifiable = scanAResult.identifiable ? 'Y' : 'N';
-                              return `i:${index + 1},A:${concerning},B:${identifiable}`;
+                              return `i:${index + 1},Concerning:${concerning},Identifiable:${identifiable}`;
                             }).filter(Boolean).join('\n')}
                           </pre>
                         </div>
@@ -1998,7 +1998,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                               if (!scanBResult) return null;
                               const concerning = scanBResult.concerning ? 'Y' : 'N';
                               const identifiable = scanBResult.identifiable ? 'Y' : 'N';
-                              return `i:${index + 1},A:${concerning},B:${identifiable}`;
+                              return `i:${index + 1},Concerning:${concerning},Identifiable:${identifiable}`;
                             }).filter(Boolean).join('\n')}
                           </pre>
                         </div>
