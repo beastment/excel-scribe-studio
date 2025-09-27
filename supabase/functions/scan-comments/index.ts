@@ -491,9 +491,23 @@ const processBatchWithRecursiveSplitting = async (
         hasPartialResults = true;
         console.log(`[RECURSIVE_SPLIT] Found partial results - Scan A: ${scanAPartial.hasPartialResults} (truncated: ${scanATruncated}), Scan B: ${scanBPartial.hasPartialResults} (truncated: ${scanBTruncated})`);
         
-        // Find comments that are missing from both scans
-        missingIndicesSet = new Set<number>([...scanAPartial.missingIndices, ...scanBPartial.missingIndices]);
-        // Map local array positions to original indices (1-based)
+        // Determine which model(s) failed in this batch and choose missing set accordingly
+        const missingSetA = new Set<number>(scanAPartial.missingIndices);
+        const missingSetB = new Set<number>(scanBPartial.missingIndices);
+        if (currentScanAFailed && currentScanBFailed) {
+          // Both failed: union
+          missingIndicesSet = new Set<number>([...missingSetA, ...missingSetB]);
+        } else if (currentScanAFailed) {
+          // Only A failed: only A-missing
+          missingIndicesSet = missingSetA;
+        } else if (currentScanBFailed) {
+          // Only B failed: only B-missing
+          missingIndicesSet = missingSetB;
+        } else {
+          // Neither failed but we got here (defensive): no resubmission
+          missingIndicesSet = new Set<number>();
+        }
+        // Map local array positions to original indices (1-based) and filter strictly by chosen missing set
         missingComments = comments.filter((_, index) => missingIndicesSet.has(batchStart + index + 1));
         
         console.log(`[RECURSIVE_SPLIT] Missing ${missingComments.length} comments out of ${comments.length} total`);
