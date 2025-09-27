@@ -1976,56 +1976,27 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     </summary>
                     <div className="mt-3">
                       <div className="bg-white/50 dark:bg-black/20 rounded p-3">
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <h5 className="text-xs font-semibold mb-2 text-blue-800 dark:text-blue-200">Scan A</h5>
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-semibold mb-2 text-purple-800 dark:text-purple-200">Scan B</h5>
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-semibold mb-2 text-green-800 dark:text-green-200">Adjudicator</h5>
-                          </div>
-                        </div>
-                        <div className="max-h-64 overflow-y-auto">
-                          <div className="grid grid-cols-3 gap-3">
-                            <pre className="text-xs font-mono whitespace-pre-wrap">
-                              {comments.map((comment, index) => {
-                                const idx = typeof comment.scannedIndex === 'number' ? comment.scannedIndex : (index + 1);
-                                const r = comment.scanAResult || comment.adjudicationData?.scanAResult;
-                                if (!r) {
-                                  return `i:${idx},Concerning:?,Identifiable:?`;
-                                }
-                                const concerning = r.concerning ? "Y" : "N";
-                                const identifiable = r.identifiable ? "Y" : "N";
-                                return `i:${idx},Concerning:${concerning},Identifiable:${identifiable}`;
-                              }).join("\n")}
-                            </pre>
-                            <pre className="text-xs font-mono whitespace-pre-wrap">
-                              {comments.map((comment, index) => {
-                                const idx = typeof comment.scannedIndex === 'number' ? comment.scannedIndex : (index + 1);
-                                const r = comment.scanBResult || comment.adjudicationData?.scanBResult;
-                                if (!r) {
-                                  return `i:${idx},Concerning:?,Identifiable:?`;
-                                }
-                                const concerning = r.concerning ? "Y" : "N";
-                                const identifiable = r.identifiable ? "Y" : "N";
-                                return `i:${idx},Concerning:${concerning},Identifiable:${identifiable}`;
-                              }).join("\n")}
-                            </pre>
-                            <pre className="text-xs font-mono whitespace-pre-wrap">
-                              {comments.map((comment, index) => {
-                                const idx = typeof comment.scannedIndex === 'number' ? comment.scannedIndex : (index + 1);
-                                const r = comment.adjudicationResult || comment.debugInfo?.adjudicationResult;
-                                if (!r) {
-                                  return `i:${idx},Concerning:?,Identifiable:?`;
-                                }
-                                const concerning = r.concerning ? "Y" : "N";
-                                const identifiable = r.identifiable ? "Y" : "N";
-                                return `i:${idx},Concerning:${concerning},Identifiable:${identifiable}`;
-                              }).join("\n")}
-                            </pre>
-                          </div>
+                        <h5 className="text-xs font-semibold mb-2 text-green-800 dark:text-green-200">ScanA | ScanB | Adjudicator</h5>
+                        <div className="max-h-64 overflow-auto">
+                          <pre className="text-xs font-mono whitespace-pre">
+                            {comments.map((comment, index) => {
+                              const idx = typeof comment.scannedIndex === 'number' ? comment.scannedIndex : (index + 1);
+                              const a = comment.scanAResult || comment.adjudicationData?.scanAResult;
+                              const b = comment.scanBResult || comment.adjudicationData?.scanBResult;
+                              const adj = comment.adjudicationResult || comment.debugInfo?.adjudicationResult || comment.adjudicationData?.adjudicationResult;
+                              const aC = a ? (a.concerning ? 'Y' : 'N') : '?';
+                              const aI = a ? (a.identifiable ? 'Y' : 'N') : '?';
+                              const bC = b ? (b.concerning ? 'Y' : 'N') : '?';
+                              const bI = b ? (b.identifiable ? 'Y' : 'N') : '?';
+                              const jC = adj ? (adj.concerning ? 'Y' : 'N') : '?';
+                              const jI = adj ? (adj.identifiable ? 'Y' : 'N') : '?';
+                              const left = `i:${String(idx).padStart(4,' ')}  ScanA: C:${aC} I:${aI}`;
+                              const middle = `ScanB: C:${bC} I:${bI}`;
+                              const right = `Adj: C:${jC} I:${jI}`;
+                              const pad = (s: string, len: number) => s.length >= len ? s : (s + ' '.repeat(len - s.length));
+                              return `${pad(left, 28)}  ${pad(middle, 18)}  ${right}`;
+                            }).join("\n")}
+                          </pre>
                         </div>
                       </div>
                     </div>

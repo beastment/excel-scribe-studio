@@ -565,99 +565,23 @@ export function AILogsViewer({
                     <p className="text-sm text-blue-600 mt-1">
                       Showing {logs.length} AI interactions from the most recent scan run
                     </p>
+                    {runStats && (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                        <span className="px-2 py-1 rounded bg-blue-100 text-blue-800">
+                          Total Run Time: {formatProcessingTime(runStats.totalRunTime)}
+                        </span>
+                        <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-800">
+                          Avg Efficiency: {runStats.averageEfficiency.toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>}
               
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2">
-                      <Hash className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm font-medium">Total Requests</span>
-                    </div>
-                    <p className="text-2xl font-bold">{logs.length}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-green-500" />
-                      <span className="text-sm font-medium">Total Tokens</span>
-                    </div>
-                    <p className="text-2xl font-bold">
-                      {formatTokenCount(logs.reduce((sum, log) => sum + (log.request_tokens || 0) + (log.response_tokens || 0), 0))}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2">
-                      <Hash className="h-4 w-4 text-indigo-500" />
-                      <span className="text-sm font-medium">Comments Processed</span>
-                    </div>
-                    <p className="text-2xl font-bold">
-                      {logs.reduce((sum, log) => sum + extractCommentsCount(log.request_input), 0)}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-purple-500" />
-                      <span className="text-sm font-medium">Avg Response Time</span>
-                    </div>
-                    <p className="text-2xl font-bold">
-                      {formatProcessingTime(logs.filter(log => log.processing_time_ms).reduce((sum, log) => sum + (log.processing_time_ms || 0), 0) / logs.filter(log => log.processing_time_ms).length)}
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
+              {/* Removed: Total Requests, Total Tokens, Comments Processed, Avg Response Time */}
 
               {runStats && <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card>
-                      <CardContent className="pt-6">
-                        <div className="flex items-center gap-2">
-                          <Timer className="h-4 w-4 text-orange-500" />
-                          <span className="text-sm font-medium">Total Run Time</span>
-                        </div>
-                        <p className="text-2xl font-bold text-orange-600">
-                          {formatProcessingTime(runStats.totalRunTime)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          End-to-end process
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardContent className="pt-6">
-                        <div className="flex items-center gap-2">
-                          <Activity className="h-4 w-4 text-emerald-500" />
-                          <span className="text-sm font-medium">Avg Efficiency</span>
-                        </div>
-                        <p className="text-2xl font-bold text-emerald-600">
-                          {runStats.averageEfficiency.toFixed(1)}%
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          AI processing / Total time
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardContent className="pt-6">
-                        <div className="flex items-center gap-2">
-                          <BarChart3 className="h-4 w-4 text-indigo-500" />
-                          <span className="text-sm font-medium">Functions Used</span>
-                        </div>
-                        <p className="text-2xl font-bold text-indigo-600">
-                          {Object.keys(runStats.functions).length}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Different Edge Functions
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
+                  {/* Removed small stat boxes; key stats shown in Run ID card */}
 
                   <Card>
                     <CardHeader className="pb-2">
