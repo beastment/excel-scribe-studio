@@ -147,17 +147,7 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
   const parsedCount = parsedResults.length;
   const completionRatio = totalComments > 0 ? (parsedCount / totalComments) : 0;
 
-  // If we have substantial partial results (>= 30%), do not split
-  if (hasPartialResults && completionRatio >= 0.3) {
-    console.log(`[HARMFUL_DETECTION] Partial results coverage ${(completionRatio * 100).toFixed(1)}% >= 30%; not splitting`);
-    return false;
-  }
-
-  // If we have few partial results (< 30%), treat as truncation and split
-  if (parsedCount > 0 && completionRatio < 0.3) {
-    console.log(`[HARMFUL_DETECTION] Low coverage partials (${parsedCount}/${totalComments}, ${(completionRatio * 100).toFixed(1)}%), triggering split`);
-    return true;
-  }
+  // Note: do not early-return here; combine with refusal checks below
   
   console.log(`[HARMFUL_DETECTION] No partial results found, checking for harmful content patterns...`);
   
@@ -269,7 +259,21 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     lowerResponse.includes('will not restate')
   );
 
-  const isHarmful = containsHarmfulPattern || isShortRefusal || longRefusal || (isUnexpectedFormat && isVeryShort);
+  const refusalDetected = containsHarmfulPattern || isShortRefusal || longRefusal;
+
+  // If we have few partial results (< 30%), treat as truncation and split
+  if (parsedCount > 0 && completionRatio < 0.3) {
+    console.log(`[HARMFUL_DETECTION] Low coverage partials (${parsedCount}/${totalComments}, ${(completionRatio * 100).toFixed(1)}%), triggering split`);
+    return true;
+  }
+
+  // If refusal detected and batch incomplete, split
+  if (refusalDetected && parsedCount < totalComments) {
+    console.log(`[HARMFUL_DETECTION] Refusal detected with incomplete coverage (${parsedCount}/${totalComments}), triggering split`);
+    return true;
+  }
+
+  const isHarmful = refusalDetected || (isUnexpectedFormat && isVeryShort);
   
   console.log(`[HARMFUL_DETECTION] Analysis for ${provider}/${model}:`, {
     containsHarmfulPattern,
