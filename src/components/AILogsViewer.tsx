@@ -400,29 +400,16 @@ export function AILogsViewer({
       if (!groups[k]) groups[k] = [];
       groups[k].push(l);
     });
-    const parseRange = (input?: string): { min: number; max: number } | null => {
-      if (!input) return null;
-      const matches = input.match(/<<<ITEM (\d+)>>>/g);
-      if (!matches || matches.length === 0) return null;
-      const nums = matches.map(m => {
-        const mm = m.match(/<<<ITEM (\d+)>>>/);
-        return mm ? parseInt(mm[1]) : 0;
-      }).filter(n => n > 0);
-      if (nums.length === 0) return null;
-      const min = Math.min(...nums);
-      const max = Math.max(...nums);
-      return { min, max };
-    };
     Object.values(groups).forEach(arr => {
       // Compare all pairs to find subset ranges
       for (let i = 0; i < arr.length; i++) {
         const a = arr[i];
-        const ra = parseRange(a.request_input);
+        const ra = parseItemsRange(a.request_input);
         if (!ra) continue;
         for (let j = 0; j < arr.length; j++) {
           if (i === j) continue;
           const b = arr[j];
-          const rb = parseRange(b.request_input);
+          const rb = parseItemsRange(b.request_input);
           if (!rb) continue;
           const aContainsB = ra.min <= rb.min && ra.max >= rb.max && (ra.min !== rb.min || ra.max !== rb.max);
           if (aContainsB) {
@@ -434,7 +421,7 @@ export function AILogsViewer({
       // Heuristic: same numeric range but significantly different counts => splitting
       const byRange: Record<string, { logs: AILog[]; counts: number[] }> = {};
       arr.forEach(l => {
-        const r = parseRange(l.request_input);
+        const r = parseItemsRange(l.request_input);
         if (!r) return;
         const key = `${r.min}-${r.max}`;
         if (!byRange[key]) byRange[key] = { logs: [], counts: [] };

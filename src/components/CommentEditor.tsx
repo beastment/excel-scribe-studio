@@ -1996,10 +1996,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         <div className="max-h-64 overflow-auto">
                           <pre className="text-xs font-mono whitespace-pre">
                             {comments.map((comment, index) => {
-                              const idx = typeof comment.scannedIndex === 'number' ? comment.scannedIndex : (index + 1);
-                              const a = comment.scanAResult || comment.adjudicationData?.scanAResult;
-                              const b = comment.scanBResult || comment.adjudicationData?.scanBResult;
-                              const adj = comment.adjudicationResult || comment.debugInfo?.adjudicationResult || comment.adjudicationData?.adjudicationResult;
+                              const idx = (comment as any).scannedIndex || (index + 1);
+                              const a = (comment as any).scanAResult || (comment as any).adjudicationData?.scanAResult;
+                              const b = (comment as any).scanBResult || (comment as any).adjudicationData?.scanBResult;
+                              const adj = (comment as any).adjudicationResult || (comment as any).debugInfo?.adjudicationResult || (comment as any).adjudicationData?.adjudicationResult;
                               const aC = a ? (a.concerning ? 'Y' : 'N') : '?';
                               const aI = a ? (a.identifiable ? 'Y' : 'N') : '?';
                               const bC = b ? (b.concerning ? 'Y' : 'N') : '?';
