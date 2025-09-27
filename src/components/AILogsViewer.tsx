@@ -418,6 +418,24 @@ export function AILogsViewer({
           }
         }
       }
+      // Heuristic: same numeric range but significantly different counts => splitting
+      const byRange: Record<string, { logs: AILog[]; counts: number[] }> = {};
+      arr.forEach(l => {
+        const r = parseRange(l.request_input);
+        if (!r) return;
+        const key = `${r.min}-${r.max}`;
+        if (!byRange[key]) byRange[key] = { logs: [], counts: [] };
+        byRange[key].logs.push(l);
+        byRange[key].counts.push(extractCommentsCount(l.request_input));
+      });
+      Object.entries(byRange).forEach(([, group]) => {
+        if (group.logs.length < 2) return;
+        const maxCount = Math.max(...group.counts);
+        const minCount = Math.min(...group.counts);
+        if (maxCount > 0 && (minCount / maxCount) < 0.3) {
+          group.logs.forEach(l => set.add(l.id));
+        }
+      });
     });
     return set;
   }, [logs]);

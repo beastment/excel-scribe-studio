@@ -36,7 +36,12 @@ const getPreciseTokensGlobal = async (text: string, provider: string, model: str
 };
 
 // Helper function to parse partial results and identify missing comments
-const parsePartialResults = (responseText: string, totalComments: number, batchStart: number): {
+const parsePartialResults = (
+  responseText: string,
+  totalComments: number,
+  batchStart: number,
+  expectedIndices?: number[]
+): {
   parsedResults: string[];
   missingIndices: number[];
   hasPartialResults: boolean;
@@ -49,6 +54,14 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
   const parsedResults: string[] = [];
   const foundIndices = new Set<number>();
 
+  // Optional mapping for non-contiguous resubmissions
+  const safeExpected: number[] | null = Array.isArray(expectedIndices) && (expectedIndices as number[]).length > 0
+    ? (expectedIndices as number[])
+    : null;
+  const indexToPosition: Map<number, number> | null = safeExpected
+    ? new Map(safeExpected.map((idx, pos) => [idx, pos]))
+    : null;
+
   // State machine to support both single-line and multi-line formats
   let currentIndex: number | null = null;
   let aVal: 'Y' | 'N' | null = null;
@@ -56,14 +69,21 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
 
   const commitIfComplete = () => {
     if (currentIndex !== null && aVal && bVal) {
-      // Only accept indices within expected range
-      if (currentIndex >= batchStart + 1 && currentIndex <= batchStart + totalComments) {
-        const relativeIndex = currentIndex - batchStart - 1;
-        if (relativeIndex >= 0 && relativeIndex < totalComments) {
-          const line = `i:${currentIndex} A:${aVal} B:${bVal}`;
-          parsedResults[relativeIndex] = line;
-          foundIndices.add(relativeIndex);
+      // Position resolution: prefer explicit expectedIndices mapping when provided
+      let position: number | null = null;
+      if (indexToPosition && indexToPosition.has(currentIndex)) {
+        position = indexToPosition.get(currentIndex) ?? null;
+      } else if (!indexToPosition) {
+        // Fallback: continuous range based on batchStart
+        if (currentIndex >= batchStart + 1 && currentIndex <= batchStart + totalComments) {
+          const rel = currentIndex - batchStart - 1;
+          position = (rel >= 0 && rel < totalComments) ? rel : null;
         }
+      }
+      if (position !== null) {
+        const line = `i:${currentIndex} A:${aVal} B:${bVal}`;
+        parsedResults[position] = line;
+        foundIndices.add(position);
       }
       // Reset for next block
       currentIndex = null;
@@ -119,9 +139,18 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
 
   // Find missing indices
   const missingIndices: number[] = [];
-  for (let i = 0; i < totalComments; i++) {
-    if (!foundIndices.has(i)) {
-      missingIndices.push(batchStart + i);
+  if (indexToPosition && safeExpected) {
+    // Use expectedIndices to determine which original indices are missing
+    safeExpected.forEach((origIdx, pos) => {
+      if (!foundIndices.has(pos)) {
+        missingIndices.push(origIdx);
+      }
+    });
+  } else {
+    for (let i = 0; i < totalComments; i++) {
+      if (!foundIndices.has(i)) {
+        missingIndices.push(batchStart + i);
+      }
     }
   }
 
@@ -449,8 +478,9 @@ const processBatchWithRecursiveSplitting = async (
     
     if (scanAResults || scanBResults) {
       // Check if we have partial results from either scan
-      const scanAPartial = scanAResults ? parsePartialResults(scanAResults, comments.length, batchStart) : { hasPartialResults: false, missingIndices: [], parsedResults: [] };
-      const scanBPartial = scanBResults ? parsePartialResults(scanBResults, comments.length, batchStart) : { hasPartialResults: false, missingIndices: [], parsedResults: [] };
+      const expectedIdx: number[] = comments.map((_, idx) => batchStart + idx + 1);
+      const scanAPartial = scanAResults ? parsePartialResults(scanAResults, comments.length, batchStart, expectedIdx) : { hasPartialResults: false, missingIndices: [], parsedResults: [] };
+      const scanBPartial = scanBResults ? parsePartialResults(scanBResults, comments.length, batchStart, expectedIdx) : { hasPartialResults: false, missingIndices: [], parsedResults: [] };
       
       // Check for truncation (very few results)
       const scanATruncated = scanAResults && scanAPartial.parsedResults.length > 0 && scanAPartial.parsedResults.length < comments.length * 0.1;
@@ -477,9 +507,12 @@ const processBatchWithRecursiveSplitting = async (
     if (hasPartialResults && missingComments.length > 0 && currentSplit < maxSplits) {
       console.log(`[RECURSIVE_SPLIT] Resubmitting only ${missingComments.length} missing comments`);
       
-      // Process only the missing comments
+      // Process only the missing comments (pass adjusted batchStart based on smallest missing index)
+      const missingOriginalIndices = missingComments.map((_, k) => batchStart + k + 1);
+      const minMissingIndex = Math.min(...missingOriginalIndices);
+      const adjustedBatchStart = minMissingIndex - 1; // because indices are 1-based in the text
       const missingResults = await processBatchWithRecursiveSplitting(
-        missingComments, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed, scanAResults, scanBResults
+        missingComments, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, adjustedBatchStart, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed, scanAResults, scanBResults
       );
       
       // Combine partial results with missing results
