@@ -1974,33 +1974,58 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                     <summary className="cursor-pointer text-sm font-medium text-green-800 dark:text-green-200 hover:text-green-900 dark:hover:text-green-100">
                       📋 View Full Scan Results
                     </summary>
-                    <div className="mt-3 space-y-3">
+                    <div className="mt-3">
                       <div className="bg-white/50 dark:bg-black/20 rounded p-3">
-                        <h5 className="text-xs font-semibold mb-2 text-blue-800 dark:text-blue-200">Scan A Results:</h5>
-                        <div className="max-h-40 overflow-y-auto">
-                          <pre className="text-xs font-mono whitespace-pre-wrap">
-                            {comments.map((comment, index) => {
-                              const scanAResult = comment.scanAResult || comment.adjudicationData?.scanAResult;
-                              if (!scanAResult) return null;
-                              const concerning = scanAResult.concerning ? 'Y' : 'N';
-                              const identifiable = scanAResult.identifiable ? 'Y' : 'N';
-                              return `i:${index + 1},Concerning:${concerning},Identifiable:${identifiable}`;
-                            }).filter(Boolean).join('\n')}
-                          </pre>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <h5 className="text-xs font-semibold mb-2 text-blue-800 dark:text-blue-200">Scan A</h5>
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-semibold mb-2 text-purple-800 dark:text-purple-200">Scan B</h5>
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-semibold mb-2 text-green-800 dark:text-green-200">Adjudicator</h5>
+                          </div>
                         </div>
-                      </div>
-                      <div className="bg-white/50 dark:bg-black/20 rounded p-3">
-                        <h5 className="text-xs font-semibold mb-2 text-purple-800 dark:text-purple-200">Scan B Results:</h5>
-                        <div className="max-h-40 overflow-y-auto">
-                          <pre className="text-xs font-mono whitespace-pre-wrap">
-                            {comments.map((comment, index) => {
-                              const scanBResult = comment.scanBResult || comment.adjudicationData?.scanBResult;
-                              if (!scanBResult) return null;
-                              const concerning = scanBResult.concerning ? 'Y' : 'N';
-                              const identifiable = scanBResult.identifiable ? 'Y' : 'N';
-                              return `i:${index + 1},Concerning:${concerning},Identifiable:${identifiable}`;
-                            }).filter(Boolean).join('\n')}
-                          </pre>
+                        <div className="max-h-64 overflow-y-auto">
+                          <div className="grid grid-cols-3 gap-3">
+                            <pre className="text-xs font-mono whitespace-pre-wrap">
+                              {comments.map((comment, index) => {
+                                const idx = typeof comment.scannedIndex === 'number' ? comment.scannedIndex : (index + 1);
+                                const r = comment.scanAResult || comment.adjudicationData?.scanAResult;
+                                if (!r) {
+                                  return `i:${idx},Concerning:?,Identifiable:?`;
+                                }
+                                const concerning = r.concerning ? "Y" : "N";
+                                const identifiable = r.identifiable ? "Y" : "N";
+                                return `i:${idx},Concerning:${concerning},Identifiable:${identifiable}`;
+                              }).join("\n")}
+                            </pre>
+                            <pre className="text-xs font-mono whitespace-pre-wrap">
+                              {comments.map((comment, index) => {
+                                const idx = typeof comment.scannedIndex === 'number' ? comment.scannedIndex : (index + 1);
+                                const r = comment.scanBResult || comment.adjudicationData?.scanBResult;
+                                if (!r) {
+                                  return `i:${idx},Concerning:?,Identifiable:?`;
+                                }
+                                const concerning = r.concerning ? "Y" : "N";
+                                const identifiable = r.identifiable ? "Y" : "N";
+                                return `i:${idx},Concerning:${concerning},Identifiable:${identifiable}`;
+                              }).join("\n")}
+                            </pre>
+                            <pre className="text-xs font-mono whitespace-pre-wrap">
+                              {comments.map((comment, index) => {
+                                const idx = typeof comment.scannedIndex === 'number' ? comment.scannedIndex : (index + 1);
+                                const r = comment.adjudicationResult || comment.debugInfo?.adjudicationResult;
+                                if (!r) {
+                                  return `i:${idx},Concerning:?,Identifiable:?`;
+                                }
+                                const concerning = r.concerning ? "Y" : "N";
+                                const identifiable = r.identifiable ? "Y" : "N";
+                                return `i:${idx},Concerning:${concerning},Identifiable:${identifiable}`;
+                              }).join("\n")}
+                            </pre>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2012,44 +2037,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         </div>
       )}
 
-      {/* Debug Raw Data: Final Prompts */}
-      {debugMode && isAdmin && (debugPrompts.scanA || debugPrompts.scanB || debugPrompts.adjudicator || debugPrompts.redaction || debugPrompts.rephrase) && (
-        <div className="mb-6">
-          <Card className="p-4">
-            <h4 className="text-sm font-semibold mb-3">Debug: Final Prompts Sent to AI</h4>
-            {debugPrompts.scanA && (
-              <div className="mb-3">
-                <p className="text-xs font-medium">Scan A Prompt:</p>
-                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.scanA}</pre>
-              </div>
-            )}
-            {debugPrompts.scanB && (
-              <div className="mb-3">
-                <p className="text-xs font-medium">Scan B Prompt:</p>
-                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.scanB}</pre>
-              </div>
-            )}
-            {debugPrompts.adjudicator && (
-              <div className="mb-3">
-                <p className="text-xs font-medium">Adjudication Prompt:</p>
-                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.adjudicator}</pre>
-              </div>
-            )}
-            {debugPrompts.redaction && (
-              <div className="mb-3">
-                <p className="text-xs font-medium">Redaction Prompt (final):</p>
-                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.redaction}</pre>
-              </div>
-            )}
-            {debugPrompts.rephrase && (
-              <div>
-                <p className="text-xs font-medium">Rephrase Prompt:</p>
-                <pre className="text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">{debugPrompts.rephrase}</pre>
-              </div>
-            )}
-          </Card>
-        </div>
-      )}
+      {/* Removed Final Prompts debug panel per request */}
 
       {/* Comments List - Scrollable Container */}
       <div ref={scrollContainerRef} className="h-[70vh] overflow-y-auto border rounded-lg bg-background/50 backdrop-blur-sm">

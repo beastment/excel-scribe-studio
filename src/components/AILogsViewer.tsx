@@ -384,9 +384,40 @@ export function AILogsViewer({
         return 'bg-red-100 text-red-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
+      case 'splitting':
+        return 'bg-amber-100 text-amber-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
+  };
+  const isRefusalLikely = (text?: string): boolean => {
+    if (!text || typeof text !== 'string') return false;
+    const lower = text.toLowerCase();
+    const refusalKeywords: string[] = [
+      'cannot analyze',
+      'refuse to analyze',
+      'cannot process',
+      'cannot assist',
+      'cannot comply',
+      'violates content policy',
+      'violates safety guidelines',
+      'unsafe',
+      'harmful',
+      'concerning',
+      'inappropriate',
+      'sensitive'
+    ];
+    const hasExpectedFormat = lower.includes('i:') && (lower.includes('a:') || lower.includes('concerning:'));
+    const containsRefusal = refusalKeywords.some(k => lower.includes(k));
+    return !hasExpectedFormat && containsRefusal;
+  };
+  const getDisplayStatus = (log: AILog): 'success' | 'error' | 'pending' | 'splitting' => {
+    if (log.function_name === 'scan-comments' && (log.phase === 'scan_a' || log.phase === 'scan_b')) {
+      if (log.response_status === 'success' && isRefusalLikely(log.response_text)) {
+        return 'splitting';
+      }
+    }
+    return log.response_status;
   };
   const formatTokenCount = (tokens?: number) => {
     if (!tokens) return '0';
@@ -676,8 +707,8 @@ export function AILogsViewer({
                       </div>
                       <div className="flex items-center gap-3 text-sm text-muted-foreground">
                         <span>{formatTokenCount(log.request_tokens)} → {formatTokenCount(log.response_tokens)}</span>
-                        <Badge className={getStatusColor(log.response_status)}>
-                          {log.response_status}
+                        <Badge className={getStatusColor(getDisplayStatus(log))}>
+                          {getDisplayStatus(log)}
                         </Badge>
                         <span>{formatTimeDuration(log.time_started, log.time_finished)}</span>
                         <span>{formatProcessingTime(log.total_run_time_ms)}</span>
@@ -704,8 +735,8 @@ export function AILogsViewer({
                           {extractBatchInfo(log) && <Badge variant="secondary" className="text-xs">
                               {extractBatchInfo(log)}
                             </Badge>}
-                          <Badge className={getStatusColor(log.response_status)}>
-                            {log.response_status}
+                          <Badge className={getStatusColor(getDisplayStatus(log))}>
+                            {getDisplayStatus(log)}
                           </Badge>
                           {log.scan_run_id && <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
                               RUN: {log.scan_run_id}
