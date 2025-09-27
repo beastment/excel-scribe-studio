@@ -162,6 +162,9 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     'cannot generate',
     'will not generate',
     'refuse to generate',
+    'cannot repeat',
+    'will not repeat',
+    'refuse to repeat',
     'I apologize'
   ];
   
