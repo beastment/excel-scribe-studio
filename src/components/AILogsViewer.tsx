@@ -606,50 +606,47 @@ export function AILogsViewer({
               {/* RUN ID Display */}
               {mostRecentRunId && <Card className="bg-blue-50 border-blue-200">
                   <CardContent className="pt-6">
-                    <div className="flex items-center gap-2">
-                      <Hash className="h-5 w-5 text-blue-600" />
-                      <span className="text-lg font-semibold text-blue-800">Current Run ID: {mostRecentRunId}</span>
-                    </div>
-                    <p className="text-sm text-blue-600 mt-1">
-                      Showing {logs.length} AI interactions from the most recent scan run
-                    </p>
-                    {runStats && (
-                      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-                        <span className="px-2 py-1 rounded bg-blue-100 text-blue-800">
-                          Total Run Time: {formatProcessingTime(runStats.totalRunTime)}
-                        </span>
-                        <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-800">
-                          Avg Efficiency: {runStats.averageEfficiency.toFixed(1)}%
-                        </span>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Hash className="h-5 w-5 text-blue-600" />
+                          <span className="text-lg font-semibold text-blue-800">Current Run ID: {mostRecentRunId}</span>
+                        </div>
+                        <p className="text-sm text-blue-600 mt-1">
+                          Showing {logs.length} AI interactions from the most recent scan run
+                        </p>
+                        {runStats && (
+                          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                            <span className="px-2 py-1 rounded bg-blue-100 text-blue-800">
+                              Total Run Time: {formatProcessingTime(runStats.totalRunTime)}
+                            </span>
+                            <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-800">
+                              Avg Efficiency: {runStats.averageEfficiency.toFixed(1)}%
+                            </span>
+                          </div>
+                        )}
                       </div>
-                    )}
+                      {runStats && Object.keys(runStats.functions || {}).length > 0 && (
+                        <div className="min-w-[260px]">
+                          <div className="text-sm font-medium text-blue-900 mb-2">Function Breakdown</div>
+                          <div className="grid grid-cols-1 gap-2">
+                            {Object.entries(runStats.functions).map(([funcName, count]) => (
+                              <div key={funcName} className="flex justify-between items-center p-2 border rounded bg-white/70">
+                                <span className="text-xs font-medium capitalize text-blue-900">{funcName.replace(/-/g, ' ')}</span>
+                                <Badge variant="secondary" className="text-xs px-2 py-0.5">{count}</Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>}
               
               {/* Removed: Total Requests, Total Tokens, Comments Processed, Avg Response Time */}
 
               {runStats && <>
-                  {/* Removed small stat boxes; key stats shown in Run ID card */}
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Function Breakdown</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {Object.entries(runStats.functions).map(([funcName, count]) => <div key={funcName} className="flex justify-between items-center p-3 border rounded-lg">
-                            <span className="text-sm font-medium capitalize">
-                              {funcName.replace(/-/g, ' ')}
-                            </span>
-                            <Badge variant="secondary" className="text-lg px-3 py-1">
-                              {count}
-                            </Badge>
-                          </div>)}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  
+                  {/* Removed separate Function Breakdown card; integrated into Run ID card */}
                 </>}
               
               <div className="space-y-2">
@@ -659,7 +656,7 @@ export function AILogsViewer({
                     (!modelFilter || `${l.provider}/${l.model}` === modelFilter) &&
                     (!modeFilter || l.request_type === modeFilter) &&
                     (!phaseFilter || l.phase === phaseFilter)
-                  ).slice(0, 50).map(log => <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedLog(log)}>
+                  ).map(log => <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedLog(log)}>
                       <div className="flex items-center gap-3">
                         <Badge variant="outline" className="text-xs">
                           {log.function_name}

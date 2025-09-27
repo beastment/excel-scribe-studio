@@ -855,6 +855,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           }
         }
         console.log('[PHASE2] Client-side adjudication completed.');
+        try {
+          if (Array.isArray((data as any).comments)) {
+            onCommentsUpdate((data as any).comments);
+            console.log('[PHASE2] Propagated adjudication results to comments state');
+          }
+        } catch (e) {
+          console.warn('[PHASE2] Failed to propagate adjudication results to comments state:', e);
+        }
       } catch (adjEx) {
         console.warn('[PHASE2] Client-side adjudication skipped due to error:', adjEx);
       }

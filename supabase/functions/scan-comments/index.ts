@@ -144,16 +144,18 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
   
   // First, check if we have any valid partial results
   const { hasPartialResults, parsedResults } = parsePartialResults(responseText, totalComments, batchStart);
-  
-  // If we have partial results, don't split - we can work with what we have
-  if (hasPartialResults) {
-    console.log(`[HARMFUL_DETECTION] Found partial results, not splitting batch`);
+  const parsedCount = parsedResults.length;
+  const completionRatio = totalComments > 0 ? (parsedCount / totalComments) : 0;
+
+  // If we have substantial partial results (>= 30%), do not split
+  if (hasPartialResults && completionRatio >= 0.3) {
+    console.log(`[HARMFUL_DETECTION] Partial results coverage ${(completionRatio * 100).toFixed(1)}% >= 30%; not splitting`);
     return false;
   }
-  
-  // If we have very few results (likely truncation), trigger splitting
-  if (parsedResults.length > 0 && parsedResults.length < totalComments * 0.1) {
-    console.log(`[HARMFUL_DETECTION] Detected truncation (${parsedResults.length}/${totalComments} results), triggering split`);
+
+  // If we have few partial results (< 30%), treat as truncation and split
+  if (parsedCount > 0 && completionRatio < 0.3) {
+    console.log(`[HARMFUL_DETECTION] Low coverage partials (${parsedCount}/${totalComments}, ${(completionRatio * 100).toFixed(1)}%), triggering split`);
     return true;
   }
   
@@ -259,7 +261,15 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     lowerResponse.includes('sensitive')
   );
   
-  const isHarmful = containsHarmfulPattern || isShortRefusal || (isUnexpectedFormat && isVeryShort);
+  // Consider longer refusals harmful if they include explicit refusal phrases
+  const longRefusal = responseText.length >= 150 && (
+    lowerResponse.includes('cannot generate') ||
+    lowerResponse.includes('cannot restate') ||
+    lowerResponse.includes('will not generate') ||
+    lowerResponse.includes('will not restate')
+  );
+
+  const isHarmful = containsHarmfulPattern || isShortRefusal || longRefusal || (isUnexpectedFormat && isVeryShort);
   
   console.log(`[HARMFUL_DETECTION] Analysis for ${provider}/${model}:`, {
     containsHarmfulPattern,
