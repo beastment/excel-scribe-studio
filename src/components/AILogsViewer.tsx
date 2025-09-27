@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
@@ -376,6 +376,51 @@ export function AILogsViewer({
     a.click();
     window.URL.revokeObjectURL(url);
   };
+  const splittingIds = useMemo(() => {
+    const set = new Set<string>();
+    const candidateLogs = logs.filter(l => l.function_name === 'scan-comments' && (l.phase === 'scan_a' || l.phase === 'scan_b'));
+    // Group by provider/model/phase to compare comparable batches
+    const groups: Record<string, AILog[]> = {};
+    const keyOf = (l: AILog) => `${l.provider}/${l.model}/${l.phase}`;
+    candidateLogs.forEach(l => {
+      const k = keyOf(l);
+      if (!groups[k]) groups[k] = [];
+      groups[k].push(l);
+    });
+    const parseRange = (input?: string): { min: number; max: number } | null => {
+      if (!input) return null;
+      const matches = input.match(/<<<ITEM (\d+)>>>/g);
+      if (!matches || matches.length === 0) return null;
+      const nums = matches.map(m => {
+        const mm = m.match(/<<<ITEM (\d+)>>>/);
+        return mm ? parseInt(mm[1]) : 0;
+      }).filter(n => n > 0);
+      if (nums.length === 0) return null;
+      const min = Math.min(...nums);
+      const max = Math.max(...nums);
+      return { min, max };
+    };
+    Object.values(groups).forEach(arr => {
+      // Compare all pairs to find subset ranges
+      for (let i = 0; i < arr.length; i++) {
+        const a = arr[i];
+        const ra = parseRange(a.request_input);
+        if (!ra) continue;
+        for (let j = 0; j < arr.length; j++) {
+          if (i === j) continue;
+          const b = arr[j];
+          const rb = parseRange(b.request_input);
+          if (!rb) continue;
+          const aContainsB = ra.min <= rb.min && ra.max >= rb.max && (ra.min !== rb.min || ra.max !== rb.max);
+          if (aContainsB) {
+            set.add(a.id);
+            set.add(b.id);
+          }
+        }
+      }
+    });
+    return set;
+  }, [logs]);
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'success':
@@ -413,6 +458,9 @@ export function AILogsViewer({
   };
   const getDisplayStatus = (log: AILog): 'success' | 'error' | 'pending' | 'splitting' => {
     if (log.function_name === 'scan-comments' && (log.phase === 'scan_a' || log.phase === 'scan_b')) {
+      if (splittingIds.has(log.id)) {
+        return 'splitting';
+      }
       if (log.response_status === 'success' && isRefusalLikely(log.response_text)) {
         return 'splitting';
       }

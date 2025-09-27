@@ -829,12 +829,20 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                                      ` ScanB: Concerning ${bRes?.concerning ? "Y" : "N"}, Identifiable ${bRes?.identifiable ? "Y" : "N"}`;
                   const baseReason = String(r.reasoning || c.aiReasoning || "Resolved by adjudicator");
                   const combinedReason = `${baseReason}.${debugSuffix}`;
+                  const adjudicationResult = {
+                    concerning: Boolean(r.concerning),
+                    identifiable: Boolean(r.identifiable),
+                    reasoning: typeof r.reasoning === 'string' ? r.reasoning : undefined,
+                    model: typeof r.model === 'string' ? r.model : (typeof r.provider === 'string' && typeof r.model === 'string' ? `${r.provider}/${r.model}` : undefined)
+                  } as any;
                   return { 
                     ...c, 
                     concerning: resolvedConcerning,
                     identifiable: resolvedIdentifiable,
                     isAdjudicated: true, 
-                    aiReasoning: combinedReason
+                    aiReasoning: combinedReason,
+                    adjudicationResult,
+                    debugInfo: { ...(c.debugInfo || {}), adjudicationResult }
                   };
                 }
                 return c;

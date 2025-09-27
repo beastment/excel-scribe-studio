@@ -36,38 +36,87 @@ const getPreciseTokensGlobal = async (text: string, provider: string, model: str
 };
 
 // Helper function to parse partial results and identify missing comments
-const parsePartialResults = (responseText: string, totalComments: number, batchStart: number): { 
-  parsedResults: string[], 
-  missingIndices: number[], 
-  hasPartialResults: boolean 
+const parsePartialResults = (responseText: string, totalComments: number, batchStart: number): {
+  parsedResults: string[];
+  missingIndices: number[];
+  hasPartialResults: boolean;
 } => {
   if (!responseText || responseText.trim().length === 0) {
-    return { parsedResults: [], missingIndices: Array.from({length: totalComments}, (_, i) => batchStart + i), hasPartialResults: false };
+    return { parsedResults: [], missingIndices: Array.from({ length: totalComments }, (_, i) => batchStart + i), hasPartialResults: false };
   }
-  
-  const lines = responseText.split('\n').filter(line => line.trim().length > 0);
+
+  const lines = responseText.split('\n').map(l => l.trim()).filter(line => line.length > 0);
   const parsedResults: string[] = [];
   const foundIndices = new Set<number>();
-  
-  // Parse each line looking for the format: i:X A:Y B:Z
-  for (const line of lines) {
-    const match = line.match(/^i:(\d+)\s+A:([YN])\s+B:([YN])/i);
-    if (match) {
-      const index = parseInt(match[1]);
-      const scanA = match[2];
-      const scanB = match[3];
-      
-      // Check if this index is within our expected range
-      if (index >= batchStart + 1 && index <= batchStart + totalComments) {
-        const relativeIndex = index - batchStart - 1;
+
+  // State machine to support both single-line and multi-line formats
+  let currentIndex: number | null = null;
+  let aVal: 'Y' | 'N' | null = null;
+  let bVal: 'Y' | 'N' | null = null;
+
+  const commitIfComplete = () => {
+    if (currentIndex !== null && aVal && bVal) {
+      // Only accept indices within expected range
+      if (currentIndex >= batchStart + 1 && currentIndex <= batchStart + totalComments) {
+        const relativeIndex = currentIndex - batchStart - 1;
         if (relativeIndex >= 0 && relativeIndex < totalComments) {
+          const line = `i:${currentIndex} A:${aVal} B:${bVal}`;
           parsedResults[relativeIndex] = line;
           foundIndices.add(relativeIndex);
         }
       }
+      // Reset for next block
+      currentIndex = null;
+      aVal = null;
+      bVal = null;
     }
+  };
+
+  for (const raw of lines) {
+    const line = raw.replace(/\s+/g, ' ').trim();
+
+    // Try single-line first: allow optional commas and flexible spacing/orders
+    let m = line.match(/^i:\s*(\d+)\s*,?\s*A:\s*([YN])\s*,?\s*B:\s*([YN])$/i);
+    if (!m) {
+      // Some models might output B before A (rare) – handle that as well
+      m = line.match(/^i:\s*(\d+)\s*,?\s*B:\s*([YN])\s*,?\s*A:\s*([YN])$/i);
+      if (m) {
+        // Swap capture groups to A,B order
+        m = [m[0], m[1], m[3], m[2]] as unknown as RegExpMatchArray;
+      }
+    }
+    if (m) {
+      currentIndex = parseInt(m[1]);
+      aVal = (m[2].toUpperCase() as 'Y' | 'N');
+      bVal = (m[3].toUpperCase() as 'Y' | 'N');
+      commitIfComplete();
+      continue;
+    }
+
+    // Multi-line accumulation: i:NNN, then A:X, then B:Y in any order
+    const iMatch = line.match(/^i:\s*(\d+)$/i);
+    if (iMatch) {
+      // If previous index was incomplete, discard and start anew
+      currentIndex = parseInt(iMatch[1]);
+      aVal = null;
+      bVal = null;
+      continue;
+    }
+    const aMatch = line.match(/^a:\s*([YN])$/i);
+    if (aMatch) {
+      aVal = (aMatch[1].toUpperCase() as 'Y' | 'N');
+      commitIfComplete();
+      continue;
+    }
+    const bMatch = line.match(/^b:\s*([YN])$/i);
+    if (bMatch) {
+      bVal = (bMatch[1].toUpperCase() as 'Y' | 'N');
+      commitIfComplete();
+      continue;
+    }
+    // Ignore any unrelated lines
   }
-  
+
   // Find missing indices
   const missingIndices: number[] = [];
   for (let i = 0; i < totalComments; i++) {
@@ -75,17 +124,15 @@ const parsePartialResults = (responseText: string, totalComments: number, batchS
       missingIndices.push(batchStart + i);
     }
   }
-  
-  // Check if we have significantly fewer results than expected (likely truncation)
+
   const completionRatio = parsedResults.length / totalComments;
-  const isTruncated = completionRatio < 0.1; // Less than 10% completion suggests truncation
-  
+  const isTruncated = completionRatio < 0.1;
   const hasPartialResults = parsedResults.length > 0 && !isTruncated;
-  
+
   console.log(`[PARTIAL_PARSE] Found ${parsedResults.length} valid results out of ${totalComments} comments (${(completionRatio * 100).toFixed(1)}%)`);
   console.log(`[PARTIAL_PARSE] Missing indices: ${missingIndices.length > 0 ? missingIndices.join(', ') : 'none'}`);
   console.log(`[PARTIAL_PARSE] Is truncated: ${isTruncated} (completion ratio: ${completionRatio.toFixed(3)})`);
-  
+
   return { parsedResults, missingIndices, hasPartialResults };
 };
 
@@ -165,6 +212,15 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     'cannot repeat',
     'will not repeat',
     'refuse to repeat',
+    'cannot restate',
+    'will not restate',
+    'refuse to restate',
+    'cannot comment',
+    'will not comment',
+    'refuse to comment',
+    'cannot rephrase',
+    'will not rephrase',
+    'refuse to rephrase',
     'I apologize'
   ];
   
