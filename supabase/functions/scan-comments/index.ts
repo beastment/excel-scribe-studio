@@ -475,6 +475,7 @@ const processBatchWithRecursiveSplitting = async (
     // Check for partial results before deciding to split
     let hasPartialResults = false;
     let missingComments: any[] = [];
+    let missingIndicesSet: Set<number> = new Set<number>();
     
     if (scanAResults || scanBResults) {
       // Check if we have partial results from either scan
@@ -491,8 +492,9 @@ const processBatchWithRecursiveSplitting = async (
         console.log(`[RECURSIVE_SPLIT] Found partial results - Scan A: ${scanAPartial.hasPartialResults} (truncated: ${scanATruncated}), Scan B: ${scanBPartial.hasPartialResults} (truncated: ${scanBTruncated})`);
         
         // Find comments that are missing from both scans
-        const missingIndices = new Set([...scanAPartial.missingIndices, ...scanBPartial.missingIndices]);
-        missingComments = comments.filter((_, index) => missingIndices.has(batchStart + index));
+        missingIndicesSet = new Set<number>([...scanAPartial.missingIndices, ...scanBPartial.missingIndices]);
+        // Map local array positions to original indices (1-based)
+        missingComments = comments.filter((_, index) => missingIndicesSet.has(batchStart + index + 1));
         
         console.log(`[RECURSIVE_SPLIT] Missing ${missingComments.length} comments out of ${comments.length} total`);
         
@@ -508,8 +510,7 @@ const processBatchWithRecursiveSplitting = async (
       console.log(`[RECURSIVE_SPLIT] Resubmitting only ${missingComments.length} missing comments`);
       
       // Process only the missing comments (pass adjusted batchStart based on smallest missing index)
-      const missingOriginalIndices = missingComments.map((_, k) => batchStart + k + 1);
-      const minMissingIndex = Math.min(...missingOriginalIndices);
+      const minMissingIndex = Math.min(...Array.from(missingIndicesSet));
       const adjustedBatchStart = minMissingIndex - 1; // because indices are 1-based in the text
       const missingResults = await processBatchWithRecursiveSplitting(
         missingComments, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, adjustedBatchStart, maxSplits, currentSplit + 1, currentScanAFailed, currentScanBFailed, scanAResults, scanBResults

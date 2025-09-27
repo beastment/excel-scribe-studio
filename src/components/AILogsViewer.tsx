@@ -376,6 +376,19 @@ export function AILogsViewer({
     a.click();
     window.URL.revokeObjectURL(url);
   };
+  const parseItemsRange = (requestInput?: string): { min: number; max: number } | null => {
+    if (!requestInput) return null;
+    const matches = requestInput.match(/<<<ITEM (\d+)>>>/g);
+    if (!matches || matches.length === 0) return null;
+    const nums = matches.map(m => {
+      const mm = m.match(/<<<ITEM (\d+)>>>/);
+      return mm ? parseInt(mm[1]) : 0;
+    }).filter(n => n > 0);
+    if (nums.length === 0) return null;
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    return { min, max };
+  };
   const splittingIds = useMemo(() => {
     const set = new Set<string>();
     const candidateLogs = logs.filter(l => l.function_name === 'scan-comments' && (l.phase === 'scan_a' || l.phase === 'scan_b'));
@@ -475,6 +488,18 @@ export function AILogsViewer({
     return !hasExpectedFormat && containsRefusal;
   };
   const getDisplayStatus = (log: AILog): 'success' | 'error' | 'pending' | 'splitting' => {
+    // If this log already covers essentially the full numeric range, treat as success
+    if (log.function_name === 'scan-comments' && (log.phase === 'scan_a' || log.phase === 'scan_b')) {
+      const range = parseItemsRange(log.request_input);
+      if (range) {
+        const width = Math.max(1, range.max - range.min + 1);
+        const count = extractCommentsCount(log.request_input);
+        const coverage = count / width;
+        if (coverage >= 0.95) {
+          return 'success';
+        }
+      }
+    }
     if (log.function_name === 'scan-comments' && (log.phase === 'scan_a' || log.phase === 'scan_b')) {
       if (splittingIds.has(log.id)) {
         return 'splitting';
