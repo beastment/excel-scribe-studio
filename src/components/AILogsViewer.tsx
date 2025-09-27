@@ -533,12 +533,12 @@ export function AILogsViewer({
     if (s.length <= maxLength) return s;
     return s.substring(0, maxLength) + '...';
   };
-  const extractCommentsCount = (requestInput: string): number => {
+  function extractCommentsCount(requestInput: string): number {
     if (!requestInput) return 0;
     const matches = requestInput.match(/<<<ITEM \d+>>>/g);
     return matches ? matches.length : 0;
-  };
-  const extractBatchInfo = (log: AILog): string => {
+  }
+  function extractBatchInfo(log: AILog): string {
     if (!log.request_input) return '';
     const commentsCount = extractCommentsCount(log.request_input);
     if (commentsCount === 0) return '';
@@ -558,7 +558,7 @@ export function AILogsViewer({
     } else {
       return `Items ${minItem}-${maxItem}`;
     }
-  };
+  }
   if (!user) {
     return <Card>
         <CardHeader>
