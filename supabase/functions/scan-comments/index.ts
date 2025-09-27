@@ -149,10 +149,10 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     // Analysis refusals
     'cannot analyze',
     'will not analyze',
-    'cannot provide analysis',
-    'will not provide analysis',
+    'cannot provide',
+    'will not provide',
     'refuse to analyze',
-    'refuse to provide analysis',
+    'refuse to provide',
     'cannot respond',
     'will not respond',
     'refuse to respond',

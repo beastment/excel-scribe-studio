@@ -1979,20 +1979,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         <h5 className="text-xs font-semibold mb-2 text-blue-800 dark:text-blue-200">Scan A Results:</h5>
                         <div className="max-h-40 overflow-y-auto">
                           <pre className="text-xs font-mono whitespace-pre-wrap">
-                            {(() => {
-                              console.log('[DEBUG] Comments for Scan A:', comments.length);
-                              const results = comments.map((comment, index) => {
-                                const scanAResult = comment.adjudicationData?.scanAResult || comment.scanAResult;
-                                console.log(`[DEBUG] Comment ${index + 1} Scan A:`, scanAResult);
-                                console.log(`[DEBUG] Comment ${index + 1} full comment:`, comment);
-                                if (!scanAResult) return null;
-                                const concerning = scanAResult.concerning ? 'Y' : 'N';
-                                const identifiable = scanAResult.identifiable ? 'Y' : 'N';
-                                return `i:${index + 1},Concerning:${concerning},Identifiable:${identifiable}`;
-                              }).filter(Boolean);
-                              console.log('[DEBUG] Scan A Results:', results);
-                              return results.join('\n');
-                            })()}
+                            {comments.map((comment, index) => {
+                              const scanAResult = comment.adjudicationData?.scanAResult || comment.scanAResult;
+                              if (!scanAResult) return null;
+                              const concerning = scanAResult.concerning ? 'Y' : 'N';
+                              const identifiable = scanAResult.identifiable ? 'Y' : 'N';
+                              return `i:${index + 1},Concerning:${concerning},Identifiable:${identifiable}`;
+                            }).filter(Boolean).join('\n')}
                           </pre>
                         </div>
                       </div>
@@ -2000,20 +1993,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         <h5 className="text-xs font-semibold mb-2 text-purple-800 dark:text-purple-200">Scan B Results:</h5>
                         <div className="max-h-40 overflow-y-auto">
                           <pre className="text-xs font-mono whitespace-pre-wrap">
-                            {(() => {
-                              console.log('[DEBUG] Comments for Scan B:', comments.length);
-                              const results = comments.map((comment, index) => {
-                                const scanBResult = comment.adjudicationData?.scanBResult || comment.scanBResult;
-                                console.log(`[DEBUG] Comment ${index + 1} Scan B:`, scanBResult);
-                                console.log(`[DEBUG] Comment ${index + 1} full comment:`, comment);
-                                if (!scanBResult) return null;
-                                const concerning = scanBResult.concerning ? 'Y' : 'N';
-                                const identifiable = scanBResult.identifiable ? 'Y' : 'N';
-                                return `i:${index + 1},Concerning:${concerning},Identifiable:${identifiable}`;
-                              }).filter(Boolean);
-                              console.log('[DEBUG] Scan B Results:', results);
-                              return results.join('\n');
-                            })()}
+                            {comments.map((comment, index) => {
+                              const scanBResult = comment.adjudicationData?.scanBResult || comment.scanBResult;
+                              if (!scanBResult) return null;
+                              const concerning = scanBResult.concerning ? 'Y' : 'N';
+                              const identifiable = scanBResult.identifiable ? 'Y' : 'N';
+                              return `i:${index + 1},Concerning:${concerning},Identifiable:${identifiable}`;
+                            }).filter(Boolean).join('\n')}
                           </pre>
                         </div>
                       </div>
