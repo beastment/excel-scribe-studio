@@ -1980,7 +1980,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         <div className="max-h-40 overflow-y-auto">
                           <pre className="text-xs font-mono whitespace-pre-wrap">
                             {comments.map((comment, index) => {
-                              const scanAResult = comment.adjudicationData?.scanAResult || comment.scanAResult;
+                              const scanAResult = comment.scanAResult || comment.adjudicationData?.scanAResult;
                               if (!scanAResult) return null;
                               const concerning = scanAResult.concerning ? 'Y' : 'N';
                               const identifiable = scanAResult.identifiable ? 'Y' : 'N';
@@ -1994,7 +1994,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
                         <div className="max-h-40 overflow-y-auto">
                           <pre className="text-xs font-mono whitespace-pre-wrap">
                             {comments.map((comment, index) => {
-                              const scanBResult = comment.adjudicationData?.scanBResult || comment.scanBResult;
+                              const scanBResult = comment.scanBResult || comment.adjudicationData?.scanBResult;
                               if (!scanBResult) return null;
                               const concerning = scanBResult.concerning ? 'Y' : 'N';
                               const identifiable = scanBResult.identifiable ? 'Y' : 'N';
