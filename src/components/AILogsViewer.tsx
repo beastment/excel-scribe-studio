@@ -475,8 +475,16 @@ export function AILogsViewer({
     return !hasExpectedFormat && containsRefusal;
   };
   const getDisplayStatus = (log: AILog): 'success' | 'error' | 'pending' | 'splitting' => {
-    // If this log already covers essentially the full numeric range, treat as success
     if (log.function_name === 'scan-comments' && (log.phase === 'scan_a' || log.phase === 'scan_b')) {
+      // If this log is part of a splitting chain (superset/subset), mark as splitting
+      if (splittingIds.has(log.id)) {
+        return 'splitting';
+      }
+      // If response text looks like a refusal and thus likely triggered splitting
+      if (log.response_status === 'success' && isRefusalLikely(log.response_text)) {
+        return 'splitting';
+      }
+      // Otherwise, if it covers essentially the full numeric range, treat as success
       const range = parseItemsRange(log.request_input);
       if (range) {
         const width = Math.max(1, range.max - range.min + 1);
@@ -485,14 +493,6 @@ export function AILogsViewer({
         if (coverage >= 0.95) {
           return 'success';
         }
-      }
-    }
-    if (log.function_name === 'scan-comments' && (log.phase === 'scan_a' || log.phase === 'scan_b')) {
-      if (splittingIds.has(log.id)) {
-        return 'splitting';
-      }
-      if (log.response_status === 'success' && isRefusalLikely(log.response_text)) {
-        return 'splitting';
       }
     }
     return log.response_status;
