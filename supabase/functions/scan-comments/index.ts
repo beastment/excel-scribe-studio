@@ -479,7 +479,15 @@ const processBatchWithRecursiveSplitting = async (
     
     if (scanAResults || scanBResults) {
       // Check if we have partial results from either scan
-      const expectedIdx: number[] = comments.map((_, idx) => batchStart + idx + 1);
+      // Build expected indices per comment using stable original indices when available
+      const expectedIdx: number[] = comments.map((comment, idx) => {
+        const originalIdx = (typeof (comment as any)?.originalRow === 'number' && (comment as any).originalRow > 0)
+          ? (comment as any).originalRow
+          : (typeof (comment as any)?.scannedIndex === 'number' && (comment as any).scannedIndex > 0)
+            ? (comment as any).scannedIndex
+            : (batchStart + idx + 1);
+        return Number.isFinite(originalIdx) ? originalIdx : (batchStart + idx + 1);
+      });
       const scanAPartial = scanAResults ? parsePartialResults(scanAResults, comments.length, batchStart, expectedIdx) : { hasPartialResults: false, missingIndices: [], parsedResults: [] };
       const scanBPartial = scanBResults ? parsePartialResults(scanBResults, comments.length, batchStart, expectedIdx) : { hasPartialResults: false, missingIndices: [], parsedResults: [] };
       
@@ -507,8 +515,15 @@ const processBatchWithRecursiveSplitting = async (
           // Neither failed but we got here (defensive): no resubmission
           missingIndicesSet = new Set<number>();
         }
-        // Map local array positions to original indices (1-based) and filter strictly by chosen missing set
-        missingComments = comments.filter((_, index) => missingIndicesSet.has(batchStart + index + 1));
+        // Filter strictly by chosen missing set using each comment's stable original index
+        missingComments = comments.filter((comment, index) => {
+          const originalIdx = (typeof (comment as any)?.originalRow === 'number' && (comment as any).originalRow > 0)
+            ? (comment as any).originalRow
+            : (typeof (comment as any)?.scannedIndex === 'number' && (comment as any).scannedIndex > 0)
+              ? (comment as any).scannedIndex
+              : (batchStart + index + 1);
+          return missingIndicesSet.has(originalIdx);
+        });
         
         console.log(`[RECURSIVE_SPLIT] Missing ${missingComments.length} comments out of ${comments.length} total`);
         
