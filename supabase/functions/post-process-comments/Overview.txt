@@ -45,6 +45,12 @@ Implementation notes:
 - Maintains consistency across all processed comments
 - Provides fallback mechanisms for policy violations
 
+### 6. Recursive Splitting for Content Filters
+- When a provider returns refusal/policy messages or partial outputs, the function recursively splits batches and resubmits smaller subsets.
+- Partial coverage triggers resubmission of only the missing items where possible; otherwise the batch is split in half.
+- Redaction spans results across splits are merged; full_text results are converted to ITEM-tagged blocks for alignment and then merged.
+- Safe fallbacks are applied when splitting reaches limits.
+
 ## Technical Architecture
 
 ### Input Processing

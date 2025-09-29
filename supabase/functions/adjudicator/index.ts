@@ -208,6 +208,179 @@ async function callAI(provider: string, model: string, prompt: string, input: st
   }
 }
 
+// Detect harmful/refusal-like responses and partial coverage
+function isHarmfulContentResponse(responseText: string, provider: string, model: string): boolean {
+  if (!responseText || responseText.trim().length === 0) return true;
+  const lower = responseText.toLowerCase();
+  const refusalPatterns = [
+    'violates content policy', 'violates safety guidelines', 'content policy violation',
+    'safety guidelines violation', 'inappropriate', 'harmful', 'unsafe', 'sensitive',
+    'cannot analyze', 'will not analyze', 'refuse to analyze', 'cannot provide', 'will not provide',
+    'refuse to provide', 'cannot respond', 'will not respond', 'refuse to respond',
+    'cannot classify', 'will not classify', 'refuse to classify',
+    'cannot generate', 'will not generate', 'refuse to generate',
+    'cannot rephrase', 'will not rephrase', 'refuse to rephrase', 'i apologize'
+  ];
+  const containsRefusal = refusalPatterns.some(p => lower.includes(p));
+  // Very short refusals are likely filters
+  const veryShortRefusal = responseText.length < 120 && (lower.includes('cannot') || lower.includes('refuse') || lower.includes('policy'));
+  if (containsRefusal || veryShortRefusal) {
+    console.log(`[RECURSIVE_SPLIT][ADJ] Refusal detected for ${provider}/${model}`);
+    return true;
+  }
+  return false;
+}
+
+// Partial parser tolerant to incomplete adjudication outputs
+function parseAdjudicationPartialResults(response: string, expectedIds: number[]): {
+  results: Array<{ index: number; concerning: boolean; identifiable: boolean }>;
+  missingIds: number[];
+  hasPartial: boolean;
+} {
+  const results: Array<{ index: number; concerning: boolean; identifiable: boolean }> = [];
+  const foundIds = new Set<number>();
+  const text = String(response || '');
+
+  // Try simple key-value format first
+  try {
+    const lines = text.split('\n');
+    let cur: { index: number | null; concerning?: boolean; identifiable?: boolean } = { index: null };
+    const flush = () => {
+      if (typeof cur.index === 'number' && typeof cur.concerning === 'boolean' && typeof cur.identifiable === 'boolean') {
+        results.push({ index: cur.index, concerning: cur.concerning, identifiable: cur.identifiable });
+        foundIds.add(cur.index);
+      }
+      cur = { index: null };
+    };
+    for (const raw of lines) {
+      const line = raw.trim();
+      const mi = /^i:\s*(\d+)$/i.exec(line);
+      if (mi) {
+        flush();
+        cur.index = parseInt(mi[1], 10);
+        continue;
+      }
+      const ma = /^a:\s*([YN])$/i.exec(line);
+      if (ma) {
+        cur.concerning = ma[1].toUpperCase() === 'Y';
+        continue;
+      }
+      const mb = /^b:\s*([YN])$/i.exec(line);
+      if (mb) {
+        cur.identifiable = mb[1].toUpperCase() === 'Y';
+        continue;
+      }
+    }
+    flush();
+  } catch (_) {
+    // ignore
+  }
+
+  // If nothing, try JSON array form
+  if (results.length === 0) {
+    try {
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed)) {
+          for (let i = 0; i < parsed.length; i++) {
+            const item = parsed[i] as { index?: number; concerning?: unknown; identifiable?: unknown };
+            const idx = typeof item.index === 'number' ? item.index : (i + 1);
+            const c = Boolean(item.concerning);
+            const id = Boolean(item.identifiable);
+            results.push({ index: idx, concerning: c, identifiable: id });
+            foundIds.add(idx);
+          }
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  const missingIds = expectedIds.filter(id => !foundIds.has(id));
+  return { results, missingIds, hasPartial: results.length > 0 && results.length < expectedIds.length };
+}
+
+async function processAdjudicationWithRecursiveSplitting(
+  comments: Array<{ id: string; originalText: string; originalRow?: number; scannedIndex?: number; scanAResult: { concerning: boolean; identifiable: boolean }; scanBResult: { concerning: boolean; identifiable: boolean } }>,
+  provider: string,
+  model: string,
+  prompt: string,
+  maxTokens: number,
+  userId: string,
+  runId: string,
+  aiLogger: any,
+  temperature: number,
+  maxSplits: number = 3,
+  currentSplit: number = 0
+): Promise<Array<{ index: number; concerning: boolean; identifiable: boolean }>> {
+  if (comments.length === 0) return [];
+
+  const getItemId = (c: { originalRow?: number; scannedIndex?: number }, i: number): number => {
+    if (typeof c.originalRow === 'number' && Number.isFinite(c.originalRow) && c.originalRow > 0) return c.originalRow;
+    if (typeof c.scannedIndex === 'number' && Number.isFinite(c.scannedIndex) && c.scannedIndex > 0) return c.scannedIndex;
+    return i + 1;
+  };
+  const expectedIds = comments.map((c, i) => getItemId(c, i));
+  const input = buildAdjudicationInput(comments as any);
+
+  let responseText: string;
+  try {
+    responseText = await callAI(provider, model, prompt, input, maxTokens, userId, runId, aiLogger, temperature);
+  } catch (e) {
+    responseText = '';
+  }
+
+  const harmful = isHarmfulContentResponse(responseText, provider, model);
+  if (!harmful) {
+    // Try strict parse first
+    try {
+      const full = parseAdjudicationResponse(responseText, comments.length);
+      return full.map(r => ({ index: typeof r.index === 'number' ? r.index : parseInt(String(r.index), 10), concerning: Boolean(r.concerning), identifiable: Boolean(r.identifiable) }));
+    } catch (_) {
+      const partial = parseAdjudicationPartialResults(responseText, expectedIds);
+      if (partial.results.length === expectedIds.length) return partial.results;
+      if (partial.hasPartial && currentSplit < maxSplits && partial.missingIds.length > 0) {
+        const missingSet = new Set(partial.missingIds);
+        const missingComments = comments.filter((c, i) => missingSet.has(getItemId(c, i)));
+        const missingResults = await processAdjudicationWithRecursiveSplitting(
+          missingComments,
+          provider,
+          model,
+          prompt,
+          maxTokens,
+          userId,
+          runId,
+          aiLogger,
+          temperature,
+          maxSplits,
+          currentSplit + 1
+        );
+        const byId = new Map<number, { index: number; concerning: boolean; identifiable: boolean }>();
+        for (const r of partial.results) byId.set(r.index, r);
+        for (const r of missingResults) byId.set(r.index, r);
+        return expectedIds.map(id => byId.get(id)).filter((v): v is { index: number; concerning: boolean; identifiable: boolean } => Boolean(v));
+      }
+    }
+  }
+
+  // Harmful or unparseable: split
+  if (comments.length > 1 && currentSplit < maxSplits) {
+    const mid = Math.floor(comments.length / 2);
+    const a = await processAdjudicationWithRecursiveSplitting(
+      comments.slice(0, mid), provider, model, prompt, maxTokens, userId, runId, aiLogger, temperature, maxSplits, currentSplit + 1
+    );
+    const b = await processAdjudicationWithRecursiveSplitting(
+      comments.slice(mid), provider, model, prompt, maxTokens, userId, runId, aiLogger, temperature, maxSplits, currentSplit + 1
+    );
+    return [...a, ...b];
+  }
+
+  // Fallback: default safe labels
+  return expectedIds.map((id) => ({ index: id, concerning: false, identifiable: false }));
+}
+
 
 
 // Build adjudication input
@@ -585,39 +758,27 @@ serve(async (req) => {
       
       for (let batchIndex = 0; batchIndex < batchedComments.length; batchIndex++) {
         const batch = batchedComments[batchIndex];
-        const batchInput = buildAdjudicationInput(batch);
-        const batchEstimatedInputTokens = Math.ceil(batchInput.length / 4);
-        const batchEstimatedOutputTokens = batch.length * tokensPerComment;
-        const batchTotalTokens = batchEstimatedInputTokens + batchEstimatedOutputTokens;
-        
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}/${batchedComments.length}] Processing ${batch.length} comments`);
-        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Estimated tokens: ${batchTotalTokens} (${batchEstimatedInputTokens} input + ${batchEstimatedOutputTokens} output)`);
-        
+
         // Determine maxTokens: use client-calculated value if provided, otherwise fall back to dashboard value
         const maxTokensToUse = clientCalculatedOutputTokens || actualMaxTokens;
         console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Using maxTokens: ${maxTokensToUse} (${clientCalculatedOutputTokens ? 'client-calculated' : 'dashboard fallback'})`);
-        
-        // Call AI for this batch
-        const rawResponse = await callAI(
+
+        const batchResults = await processAdjudicationWithRecursiveSplitting(
+          batch as any,
           adjudicatorCfg.provider,
           adjudicatorCfg.model,
           prompt,
-          batchInput,
           maxTokensToUse,
           user.id,
           runId.toString(),
           aiLogger,
-          temperature
+          temperature,
+          3,
+          0
         );
-
-        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] AI RESPONSE ${adjudicatorCfg.provider}/${adjudicatorCfg.model} type=adjudication`);
-        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] rawResponse=${JSON.stringify(rawResponse).substring(0, 500)}...`);
-        
-        // Parse the batch response
-        const batchResults = parseAdjudicationResponse(rawResponse, batch.length);
         allAdjudicatedResults.push(...batchResults);
-        
-        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Parsed ${batchResults.length} results`);
+        console.log(`${logPrefix} [BATCH ${batchIndex + 1}] Parsed ${batchResults.length} results (after recursive splitting if needed)`);
       }
 
       console.log(`${logPrefix} [RUNID-BATCH] Completed all batches. Total results: ${allAdjudicatedResults.length}`);
