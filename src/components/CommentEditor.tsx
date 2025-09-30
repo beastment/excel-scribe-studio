@@ -565,6 +565,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
 
         const diagnosticsNeedSplit = (diag: any): boolean => {
           if (!diag) return false;
+          if (diag.shouldSplit === true) return true;
           const a = diag.scanA || {};
           const b = diag.scanB || {};
           const aFail = Boolean(a.harmfulRefusalDetected) || (typeof a.coverageRatio === 'number' && a.coverageRatio < 1);

@@ -1526,6 +1526,10 @@ serve(async (req) => {
           tokensPerComment: scanB.tokens_per_comment || 13
         }
       };
+      // Convenience flag for clients: split when refusal or partial coverage present in either scan
+      (clientDiagnostics as any).shouldSplit = Boolean(
+        aHarmful || bHarmful || aPartial.hasPartialResults || bPartial.hasPartialResults
+      );
 
       // Record usage AFTER the AI calls complete
       if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
