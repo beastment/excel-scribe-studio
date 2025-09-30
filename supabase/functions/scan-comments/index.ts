@@ -1459,6 +1459,33 @@ serve(async (req) => {
       });
       const aPartial = parsePartialResults(String(scanAResultsClient || ''), batch.length, batchStart, expectedIdxClient);
       const bPartial = parsePartialResults(String(scanBResultsClient || ''), batch.length, batchStart, expectedIdxClient);
+
+      // Extract explicit refusal item ranges like "Items 501-503" or "Item 501"
+      const extractRefusedIndices = (text: string, expected: number[]): number[] => {
+        const refused = new Set<number>();
+        const lower = text.toLowerCase();
+        // Range: Items X-Y
+        const rangeRe = /items\s+(\d+)\s*-\s*(\d+)/gi;
+        let m: RegExpExecArray | null;
+        while ((m = rangeRe.exec(lower)) !== null) {
+          const start = parseInt(m[1], 10);
+          const end = parseInt(m[2], 10);
+          if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+            for (let k = start; k <= end; k++) refused.add(k);
+          }
+        }
+        // Single: Item X
+        const singleRe = /item\s+(\d+)/gi;
+        while ((m = singleRe.exec(lower)) !== null) {
+          const idx = parseInt(m[1], 10);
+          if (Number.isFinite(idx)) refused.add(idx);
+        }
+        // Intersect with expected to avoid out-of-batch ids
+        const expSet = new Set<number>(expected);
+        return Array.from(refused).filter(x => expSet.has(x)).sort((a,b)=>a-b);
+      };
+      const aRefused = extractRefusedIndices(String(scanAResultsClient || ''), expectedIdxClient);
+      const bRefused = extractRefusedIndices(String(scanBResultsClient || ''), expectedIdxClient);
       const aHarmful = isHarmfulContentResponse(String(scanAResultsClient || ''), scanA.provider, scanA.model, batch.length, batchStart);
       const bHarmful = isHarmfulContentResponse(String(scanBResultsClient || ''), scanB.provider, scanB.model, batch.length, batchStart);
       const detectFormat = (s: string): string => {
@@ -1476,7 +1503,7 @@ serve(async (req) => {
           harmfulRefusalDetected: aHarmful,
           partialCoverage: aPartial.hasPartialResults,
           coverageRatio: batch.length > 0 ? (aPartial.parsedResults.length / batch.length) : 0,
-          missingIndices: aPartial.missingIndices,
+          missingIndices: Array.from(new Set([...(aPartial.missingIndices || []), ...aRefused])),
           responseFormat: detectFormat(String(scanAResultsClient || '')),
           itemIdsUsed: expectedIdxClient,
           output_token_limit: scanATokenLimits.output_token_limit,
@@ -1490,7 +1517,7 @@ serve(async (req) => {
           harmfulRefusalDetected: bHarmful,
           partialCoverage: bPartial.hasPartialResults,
           coverageRatio: batch.length > 0 ? (bPartial.parsedResults.length / batch.length) : 0,
-          missingIndices: bPartial.missingIndices,
+          missingIndices: Array.from(new Set([...(bPartial.missingIndices || []), ...bRefused])),
           responseFormat: detectFormat(String(scanBResultsClient || '')),
           itemIdsUsed: expectedIdxClient,
           output_token_limit: scanBTokenLimits.output_token_limit,
