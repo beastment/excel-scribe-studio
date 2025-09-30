@@ -543,7 +543,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         const maxSplits = Math.max(1, Math.min(5, args.maxSplits ?? 3));
 
         // Run once for the whole batch
-        const runOnce = async (restrictIndices?: number[]): Promise<any> => {
+        const runOnce = async (restrictIndices?: number[], targetScans?: Array<'scan_a'|'scan_b'>): Promise<any> => {
           const { data: sData, error: sErr } = await supabase.functions.invoke('scan-comments', {
             body: {
               comments: batch,
@@ -555,7 +555,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
               clientManagedBatching: true,
               maxBatchesPerRequest: 1,
               maxRunMs: 140000,
-              restrictIndices
+              restrictIndices,
+              targetScans
             },
             headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
           });
@@ -584,7 +585,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           return [];
         };
 
-        let initial = await runOnce();
+        let initial = await runOnce(undefined, undefined);
         const diag = initial?.scanDiagnostics;
         if (!diagnosticsNeedSplit(diag)) return initial;
         const seed = extractSeedIds(diag);
@@ -602,14 +603,14 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const ids = queue.shift() as number[];
           attempts++;
           if (ids.length <= 1) {
-            const res = await runOnce(ids.length === 1 ? ids : undefined);
+            const res = await runOnce(ids.length === 1 ? ids : undefined, ['scan_b']);
             merged = { ...merged, comments: mergeById(merged.comments || [], res.comments || []) };
             continue;
           }
           const [aHalf, bHalf] = splitIds(ids);
           const [resA, resB] = await Promise.all([
-            runOnce(aHalf),
-            runOnce(bHalf)
+            runOnce(aHalf, ['scan_b']),
+            runOnce(bHalf, ['scan_b'])
           ]);
           merged = { ...merged, comments: mergeById(merged.comments || [], (resA.comments || []).concat(resB.comments || [])) };
         }

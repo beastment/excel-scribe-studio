@@ -952,6 +952,8 @@ serve(async (req) => {
     const skipAdjudication = Boolean(requestBody.skipAdjudication);
     const clientManagedBatching = Boolean(requestBody.clientManagedBatching);
     let clientDiagnostics: any = null;
+    const targetScansRaw = Array.isArray((requestBody as any).targetScans) ? (requestBody as any).targetScans as string[] : [];
+    const targetScans = new Set<string>(targetScansRaw.map(s => String(s || '').toLowerCase()));
     const clientCalculatedAdjudicatorOutputTokens = Number.isFinite(requestBody.clientCalculatedAdjudicatorOutputTokens) ? Number(requestBody.clientCalculatedAdjudicatorOutputTokens) : undefined;
     // Optional runtime controls to ensure timely partial responses for large datasets
     const requestedMaxBatchesPerRequest = Number.isFinite(requestBody.maxBatchesPerRequest) ? Math.max(1, Math.min(50, Number(requestBody.maxBatchesPerRequest))) : undefined;
@@ -1443,8 +1445,8 @@ serve(async (req) => {
         callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
       ]);
 
-      const scanAResultsClient = settled[0].status === 'fulfilled' ? settled[0].value : '';
-      const scanBResultsClient = settled[1].status === 'fulfilled' ? settled[1].value : '';
+      const scanAResultsClient = settled[0].status === 'fulfilled' ? (settled[0] as PromiseFulfilledResult<any>).value : '';
+      const scanBResultsClient = settled[1].status === 'fulfilled' ? (settled[1] as PromiseFulfilledResult<any>).value : '';
       const batchEndTimeClient = Date.now();
       console.log(`[PERFORMANCE] Batch ${batchStart + 1}-${batchEnd} processed in ${batchEndTimeClient - batchStartTime}ms (parallel AI calls)`);
 
