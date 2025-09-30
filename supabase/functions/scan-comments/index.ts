@@ -242,12 +242,17 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     'cannot rephrase',
     'will not rephrase',
     'refuse to rephrase',
-    'I apologize'
+    'i apologize',
+    // Explicit refusal composite phrases
+    'cannot generate or repeat',
+    "i cannot generate or repeat",
+    // Common disclaimer that often precedes partial classifications
+    'i can provide the following classifications'
   ];
   
   // Check if response contains any of these specific patterns
   const containsHarmfulPattern = harmfulContentPatterns.some(pattern => 
-    lowerResponse.includes(pattern)
+    lowerResponse.includes(pattern.toLowerCase())
   );
   
   // Additional check: if response is very short and contains specific refusal language

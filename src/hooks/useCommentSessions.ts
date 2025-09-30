@@ -237,10 +237,17 @@ export async function orchestrateScanClientSide(
 
   if (!needsSplit(diagnostics)) return initial;
 
-  // Determine missing indices (union across scans)
-  const missingSet = new Set<number>([...diagnostics.scanA.missingIndices, ...diagnostics.scanB.missingIndices]);
+  // Determine target indices to resubmit:
+  // - Prefer missing indices when partial coverage detected
+  // - If no missing but refusal detected, split on the entire item id set
+  const aRefusal = Boolean(diagnostics.scanA.harmfulRefusalDetected);
+  const bRefusal = Boolean(diagnostics.scanB.harmfulRefusalDetected);
   const itemIds = diagnostics.scanA.itemIdsUsed || diagnostics.scanB.itemIdsUsed || [];
+  const missingSet = new Set<number>([...diagnostics.scanA.missingIndices, ...diagnostics.scanB.missingIndices]);
   const missingIds = itemIds.filter(id => missingSet.has(id));
+  const needsRefusalSplit = (missingIds.length === 0) && (aRefusal || bRefusal) && itemIds.length > 1;
+  const seedIds = needsRefusalSplit ? itemIds : missingIds;
+  if (seedIds.length === 0) return initial;
 
   // Helper to split array roughly in half
   const splitIds = (arr: number[]): [number[], number[]] => {
@@ -256,7 +263,7 @@ export async function orchestrateScanClientSide(
 
   let merged = initial;
   let attempts = 0;
-  let queue: number[][] = [missingIds];
+  let queue: number[][] = [seedIds];
   while (queue.length > 0 && attempts < maxSplits) {
     const ids = queue.shift() as number[];
     attempts++;
