@@ -946,6 +946,7 @@ serve(async (req) => {
     const checkStatusOnly = Boolean(requestBody.checkStatusOnly);
     const skipAdjudication = Boolean(requestBody.skipAdjudication);
     const clientManagedBatching = Boolean(requestBody.clientManagedBatching);
+    let clientDiagnostics: any = null;
     const clientCalculatedAdjudicatorOutputTokens = Number.isFinite(requestBody.clientCalculatedAdjudicatorOutputTokens) ? Number(requestBody.clientCalculatedAdjudicatorOutputTokens) : undefined;
     // Optional runtime controls to ensure timely partial responses for large datasets
     const requestedMaxBatchesPerRequest = Number.isFinite(requestBody.maxBatchesPerRequest) ? Math.max(1, Math.min(50, Number(requestBody.maxBatchesPerRequest))) : undefined;
@@ -1419,17 +1420,70 @@ serve(async (req) => {
         }
       }
 
-      // Use improved recursive splitting to handle harmful content detection
-      console.log(`[RECURSIVE_SPLIT] Processing batch of ${batch.length} comments with improved harmful content detection`);
-      
-      const recursiveResults = await processBatchWithRecursiveSplitting(
-        batch, scanA, scanB, scanATokenLimits, scanBTokenLimits, user, scanRunId, aiLogger, batchStart, 3, 0, false, false, null, null
-      );
-      
-      const scanAResultsClient = recursiveResults.scanAResults;
-      const scanBResultsClient = recursiveResults.scanBResults;
+      // Client-managed: single-shot calls (no server-side recursive splitting)
+      console.log(`[CLIENT_MANAGED] Processing batch of ${batch.length} comments without server-side splitting`);
+
+      const settled = await Promise.allSettled([
+        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+      ]);
+
+      const scanAResultsClient = settled[0].status === 'fulfilled' ? settled[0].value : '';
+      const scanBResultsClient = settled[1].status === 'fulfilled' ? settled[1].value : '';
       const batchEndTimeClient = Date.now();
       console.log(`[PERFORMANCE] Batch ${batchStart + 1}-${batchEnd} processed in ${batchEndTimeClient - batchStartTime}ms (parallel AI calls)`);
+
+      // Build diagnostics to help client orchestrate recursive splitting
+      const expectedIdxClient: number[] = batch.map((comment, idx) => {
+        const originalIdx = (typeof (comment as any)?.originalRow === 'number' && (comment as any).originalRow > 0)
+          ? (comment as any).originalRow
+          : (typeof (comment as any)?.scannedIndex === 'number' && (comment as any).scannedIndex > 0)
+            ? (comment as any).scannedIndex
+            : (batchStart + idx + 1);
+        return Number.isFinite(originalIdx) ? originalIdx : (batchStart + idx + 1);
+      });
+      const aPartial = parsePartialResults(String(scanAResultsClient || ''), batch.length, batchStart, expectedIdxClient);
+      const bPartial = parsePartialResults(String(scanBResultsClient || ''), batch.length, batchStart, expectedIdxClient);
+      const aHarmful = isHarmfulContentResponse(String(scanAResultsClient || ''), scanA.provider, scanA.model, batch.length, batchStart);
+      const bHarmful = isHarmfulContentResponse(String(scanBResultsClient || ''), scanB.provider, scanB.model, batch.length, batchStart);
+      const detectFormat = (s: string): string => {
+        const lower = s.toLowerCase();
+        if (/(^|\n)\s*i:\s*\d+/i.test(lower)) return 'kv';
+        if (s.includes('[') && s.includes(']')) return 'json_like';
+        return 'unknown';
+      };
+      clientDiagnostics = {
+        mode: 'client_managed',
+        batch: { start: batchStart, size: batch.length },
+        scanA: {
+          provider: scanA.provider,
+          model: scanA.model,
+          harmfulRefusalDetected: aHarmful,
+          partialCoverage: aPartial.hasPartialResults,
+          coverageRatio: batch.length > 0 ? (aPartial.parsedResults.length / batch.length) : 0,
+          missingIndices: aPartial.missingIndices,
+          responseFormat: detectFormat(String(scanAResultsClient || '')),
+          itemIdsUsed: expectedIdxClient,
+          output_token_limit: scanATokenLimits.output_token_limit,
+          tpm_limit: scanATokenLimits.tpm_limit,
+          rpm_limit: scanATokenLimits.rpm_limit,
+          tokensPerComment: scanA.tokens_per_comment || 13
+        },
+        scanB: {
+          provider: scanB.provider,
+          model: scanB.model,
+          harmfulRefusalDetected: bHarmful,
+          partialCoverage: bPartial.hasPartialResults,
+          coverageRatio: batch.length > 0 ? (bPartial.parsedResults.length / batch.length) : 0,
+          missingIndices: bPartial.missingIndices,
+          responseFormat: detectFormat(String(scanBResultsClient || '')),
+          itemIdsUsed: expectedIdxClient,
+          output_token_limit: scanBTokenLimits.output_token_limit,
+          tpm_limit: scanBTokenLimits.tpm_limit,
+          rpm_limit: scanBTokenLimits.rpm_limit,
+          tokensPerComment: scanB.tokens_per_comment || 13
+        }
+      };
 
       // Record usage AFTER the AI calls complete
       if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
@@ -1575,7 +1629,18 @@ serve(async (req) => {
         });
       }
       
-      const batch = inputComments.slice(currentBatchStart, currentBatchStart + finalBatchSize);
+      const restrictIndices = Array.isArray((requestBody as any).restrictIndices) ? (requestBody as any).restrictIndices as number[] : null;
+      const sourceBatch = inputComments.slice(currentBatchStart, currentBatchStart + finalBatchSize);
+      const batch = restrictIndices && restrictIndices.length > 0
+        ? sourceBatch.filter((comment: any, idx: number) => {
+            const originalIdx = (typeof (comment as any)?.originalRow === 'number' && (comment as any).originalRow > 0)
+              ? (comment as any).originalRow
+              : (typeof (comment as any)?.scannedIndex === 'number' && (comment as any).scannedIndex > 0)
+                ? (comment as any).scannedIndex
+                : (currentBatchStart + idx + 1);
+            return restrictIndices.includes(originalIdx as number);
+          })
+        : sourceBatch;
       const batchEnd = Math.min(currentBatchStart + finalBatchSize, inputComments.length);
       
       console.log(`[PROCESS] Batch ${currentBatchStart + 1}-${batchEnd} of ${inputComments.length} (finalBatchSize=${finalBatchSize}) - Elapsed: ${elapsedTime}ms`);
@@ -1850,7 +1915,18 @@ serve(async (req) => {
       
       // Calculate what comments are missing
       const tailStartIndex = lastProcessedIndex;
-      const tailComments = inputComments.slice(tailStartIndex);
+      const restrictIndicesTail = Array.isArray((requestBody as any).restrictIndices) ? (requestBody as any).restrictIndices as number[] : null;
+      const tailSource = inputComments.slice(tailStartIndex);
+      const tailComments = restrictIndicesTail && restrictIndicesTail.length > 0
+        ? tailSource.filter((comment: any, idx: number) => {
+            const originalIdx = (typeof (comment as any)?.originalRow === 'number' && (comment as any).originalRow > 0)
+              ? (comment as any).originalRow
+              : (typeof (comment as any)?.scannedIndex === 'number' && (comment as any).scannedIndex > 0)
+                ? (comment as any).scannedIndex
+                : (tailStartIndex + idx + 1);
+            return restrictIndicesTail.includes(originalIdx as number);
+          })
+        : tailSource;
       
       if (tailComments.length > 0 && tailComments.length <= 100) { // Only retry for reasonable sizes
         console.log(`[TAIL_RETRY] Processing ${tailComments.length} tail comments starting from index ${tailStartIndex}`);
@@ -2150,7 +2226,9 @@ serve(async (req) => {
       batchesProcessed: batchesProcessed,
       nextBatchStart: clientManagedBatching ? inputComments.length : (hasMoreBatches ? lastProcessedIndex : inputComments.length),
       adjudicationStarted: false,
-      adjudicationCompleted: false
+      adjudicationCompleted: false,
+      scanDiagnostics: clientManagedBatching ? clientDiagnostics : null,
+      clientManagedBatching
     };
     return new Response(JSON.stringify(responseNoAdj), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     } catch (error) {

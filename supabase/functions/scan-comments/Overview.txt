@@ -34,6 +34,11 @@ The scan-comments edge function is the core AI-powered comment analysis system t
 - Automatically waits when approaching rate limits
 - Prevents API violations across multiple function instances
 
+### 6. Client-Managed Splitting Mode
+- When the request includes `clientManagedBatching: true`, the function disables server-side recursive splitting and returns diagnostics to help the client orchestrate retries:
+  - For each of Scan A/B: `harmfulRefusalDetected`, `partialCoverage`, `coverageRatio`, `missingIndices` (based on `originalRow`/`scannedIndex`), `responseFormat`, `itemIdsUsed`, and token/rate limit hints (`output_token_limit`, `tpm_limit`, `rpm_limit`, `tokensPerComment`).
+  - The client can then split and resubmit only missing indices while honoring TPM/RPM and token limits.
+
 ## Technical Architecture
 
 ### AI Provider Support

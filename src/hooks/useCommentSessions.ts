@@ -181,3 +181,99 @@ export const useCommentSessions = () => {
     deleteAllSessions
   };
 };
+
+// Client-side scan orchestrator (recursive splitting on client)
+export type ScanDiagnostics = {
+  mode: "client_managed";
+  batch: { start: number; size: number };
+  scanA: {
+    provider: string; model: string;
+    harmfulRefusalDetected: boolean;
+    partialCoverage: boolean;
+    coverageRatio: number;
+    missingIndices: number[];
+    responseFormat: string;
+    itemIdsUsed: number[];
+    output_token_limit?: number;
+    tpm_limit?: number; rpm_limit?: number;
+    tokensPerComment: number;
+  };
+  scanB: {
+    provider: string; model: string;
+    harmfulRefusalDetected: boolean;
+    partialCoverage: boolean;
+    coverageRatio: number;
+    missingIndices: number[];
+    responseFormat: string;
+    itemIdsUsed: number[];
+    output_token_limit?: number;
+    tpm_limit?: number; rpm_limit?: number;
+    tokensPerComment: number;
+  };
+} | null;
+
+export interface ScanOrchestratorOptions {
+  maxSplits?: number;
+}
+
+export async function orchestrateScanClientSide(
+  fetchScan: (payload: any) => Promise<any>,
+  basePayload: any,
+  options?: ScanOrchestratorOptions
+): Promise<any> {
+  const maxSplits = typeof options?.maxSplits === "number" ? Math.max(1, options!.maxSplits) : 3;
+
+  // Ensure client-managed flag set
+  const initial = await fetchScan({ ...basePayload, clientManagedBatching: true });
+  const diagnostics: ScanDiagnostics = initial?.scanDiagnostics || null;
+  if (!diagnostics) return initial;
+
+  const needsSplit = (d: ScanDiagnostics) => {
+    const a = d.scanA; const b = d.scanB;
+    const aFail = a.harmfulRefusalDetected || a.coverageRatio < 1;
+    const bFail = b.harmfulRefusalDetected || b.coverageRatio < 1;
+    return aFail || bFail;
+  };
+
+  if (!needsSplit(diagnostics)) return initial;
+
+  // Determine missing indices (union across scans)
+  const missingSet = new Set<number>([...diagnostics.scanA.missingIndices, ...diagnostics.scanB.missingIndices]);
+  const itemIds = diagnostics.scanA.itemIdsUsed || diagnostics.scanB.itemIdsUsed || [];
+  const missingIds = itemIds.filter(id => missingSet.has(id));
+
+  // Helper to split array roughly in half
+  const splitIds = (arr: number[]): [number[], number[]] => {
+    const mid = Math.floor(arr.length / 2);
+    return [arr.slice(0, mid), arr.slice(mid)];
+  };
+
+  const mergeComments = (orig: any[], overlay: any[]) => {
+    const byId = new Map<string, any>(orig.map((c) => [String(c.id), c]));
+    for (const c of overlay) byId.set(String(c.id), c);
+    return Array.from(byId.values());
+  };
+
+  let merged = initial;
+  let attempts = 0;
+  let queue: number[][] = [missingIds];
+  while (queue.length > 0 && attempts < maxSplits) {
+    const ids = queue.shift() as number[];
+    attempts++;
+    if (ids.length <= 0) continue;
+    if (ids.length === 1) {
+      // single re-try by index
+      const res = await fetchScan({ ...basePayload, clientManagedBatching: true, restrictIndices: ids });
+      merged = { ...merged, comments: mergeComments(merged.comments || [], res.comments || []) };
+      continue;
+    }
+    const [a, b] = splitIds(ids);
+    const [resA, resB] = await Promise.all([
+      fetchScan({ ...basePayload, clientManagedBatching: true, restrictIndices: a }),
+      fetchScan({ ...basePayload, clientManagedBatching: true, restrictIndices: b })
+    ]);
+    merged = { ...merged, comments: mergeComments(merged.comments || [], (resA.comments || []).concat(resB.comments || [])) };
+  }
+
+  return merged;
+}

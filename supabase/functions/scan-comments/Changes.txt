@@ -1,3 +1,9 @@
+2025-09-30
+- Added client-managed splitting support details:
+  - When `clientManagedBatching=true`, server disables recursive splitting and returns `scanDiagnostics` to enable client orchestration (per-model harmful/partial flags, coverage ratios, missing indices, token/rate limit hints).
+  - Added `restrictIndices` request parameter to process only specific `originalRow/scannedIndex` ids so the client can resubmit only missing items.
+  - Response includes `clientManagedBatching` flag for clarity.
+
 2025-09-15
 - Disable server-side adjudication execution; adjudication is now client-managed with per-batch invocations sized by Dashboard token limits to avoid Edge timeouts.
 
