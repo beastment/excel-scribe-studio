@@ -1,9 +1,3 @@
-2025-09-29
-- Implement recursive splitting for both redaction and rephrase phases. When providers return refusal/policy messages or partial outputs, batches are split into smaller subsets and resubmitted until sufficient coverage is achieved or a split limit is reached.
-- Redaction spans mode participates in splitting; partial arrays are merged across splits.
-- For full_text outputs, partial arrays parsed by `normalizeBatchTextParsed` are converted into synthetic ITEM-tagged blocks and merged across splits for reliable alignment.
-- No API changes. Logs tagged with [RUNID-BATCH] and recursive splitting is encapsulated per group/model.
-
 2025-09-15
 - Respect `phase` parameter when invoking AI calls. When `phase` is `redaction`, the function will no longer initiate any rephrase calls. When `phase` is `rephrase`, the function will skip redaction calls. When `phase` is `both`, execution remains two-phased internally with rephrase only starting after all redactions across models have completed. This prevents rephrase calls from starting early when the client orchestrates phases in separate invocations.
 - Added explicit logs indicating when a phase is skipped due to the requested `phase`.

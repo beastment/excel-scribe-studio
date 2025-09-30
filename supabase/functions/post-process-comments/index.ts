@@ -521,154 +521,6 @@ function arrayBufferToHex(buffer: ArrayBuffer): string {
     .join('');
 }
 
-// Detect refusal/harmful responses that should trigger recursive splitting
-function isHarmfulPostResponse(responseText: string | null | undefined): boolean {
-  const text = String(responseText || "");
-  if (text.trim().length === 0) return true;
-  const lower = text.toLowerCase();
-  const patterns = [
-    "violates content policy", "violates safety guidelines", "content policy violation",
-    "safety guidelines violation", "inappropriate", "harmful", "unsafe", "sensitive",
-    "cannot analyze", "will not analyze", "refuse to analyze", "cannot provide", "will not provide",
-    "refuse to provide", "cannot respond", "will not respond", "refuse to respond",
-    "cannot generate", "will not generate", "refuse to generate", "i apologize"
-  ];
-  const hasPattern = patterns.some(p => lower.includes(p));
-  const veryShortRefusal = text.length < 120 && (lower.includes("cannot") || lower.includes("refuse") || lower.includes("policy"));
-  return hasPattern || veryShortRefusal;
-}
-
-// Build a synthetic raw output with ITEM markers so downstream parser can align
-function buildSyntheticItemsFromTexts(comments: any[], texts: string[]): string {
-  const blocks: string[] = [];
-  const getId = (c: any, i: number): number => {
-    const oraw = c?.originalRow;
-    const sraw = c?.scannedIndex;
-    const orow = typeof oraw === "string" ? parseInt(oraw, 10) : oraw;
-    const sidx = typeof sraw === "string" ? parseInt(sraw, 10) : sraw;
-    if (typeof orow === "number" && Number.isFinite(orow) && orow > 0) return orow;
-    if (typeof sidx === "number" && Number.isFinite(sidx) && sidx > 0) return sidx;
-    return i + 1;
-  };
-  for (let i = 0; i < texts.length && i < comments.length; i++) {
-    const id = getId(comments[i], i);
-    blocks.push(`<<<ITEM ${id}>>>\n${String(texts[i] || "").trim()}`);
-  }
-  return blocks.join("\n\n");
-}
-
-// Recursively process a batch for post-processing, splitting on refusals/partials
-async function processBatchTextWithRecursiveSplitting(
-  provider: string,
-  model: string,
-  prompt: string,
-  comments: any[],
-  responseType: "batch_text",
-  mode: "full_text" | "spans",
-  maxTokens: number,
-  userId: string,
-  scanRunId: string | undefined,
-  phase: "redaction" | "rephrase",
-  aiLogger: AILogger,
-  temperature: number,
-  logPrefix: string | undefined,
-  timeoutMs: number,
-  maxSplits: number = 3,
-  currentSplit: number = 0
-): Promise<string> {
-  if (!comments || comments.length === 0) return "";
-  const expected = comments.length;
-  const sentinel = buildSentinelInput(comments.map((c: any) => c.originalText || c.text), comments);
-
-  let raw: string | null = null;
-  try {
-    raw = await callAI(
-      provider,
-      model,
-      prompt,
-      sentinel,
-      responseType,
-      maxTokens,
-      userId,
-      scanRunId,
-      phase,
-      aiLogger,
-      temperature,
-      logPrefix,
-      timeoutMs
-    );
-  } catch (_) {
-    raw = null;
-  }
-
-  const harmful = isHarmfulPostResponse(raw);
-  if (!harmful && raw) {
-    if (mode === "spans") {
-      // Attempt to parse JSON array of { index, redact: string[] }
-      try {
-        // Extract JSON slice safeguard
-        const start = raw.indexOf("[");
-        const end = raw.lastIndexOf("]");
-        const jsonStr = (start >= 0 && end > start) ? raw.substring(start, end + 1) : raw;
-        const arr = JSON.parse(jsonStr);
-        if (Array.isArray(arr) && arr.length >= Math.floor(expected * 0.5)) {
-          if (arr.length === expected) return JSON.stringify(arr);
-          // Partial but acceptable: split to improve coverage
-        }
-      } catch (_) {
-        // Fall through to split
-      }
-    } else {
-      const texts = normalizeBatchTextParsed(raw);
-      if (Array.isArray(texts) && texts.length >= expected) {
-        return buildSyntheticItemsFromTexts(comments, texts.slice(0, expected));
-      }
-      if (Array.isArray(texts) && texts.length >= Math.floor(expected * 0.5)) {
-        // Partial but sizable; still prefer splitting to recover
-      }
-    }
-  }
-
-  // Split if possible
-  if (expected > 1 && currentSplit < maxSplits) {
-    const mid = Math.floor(expected / 2);
-    const left = await processBatchTextWithRecursiveSplitting(
-      provider, model, prompt, comments.slice(0, mid), responseType, mode, maxTokens,
-      userId, scanRunId, phase, aiLogger, temperature, logPrefix, timeoutMs, maxSplits, currentSplit + 1
-    );
-    const right = await processBatchTextWithRecursiveSplitting(
-      provider, model, prompt, comments.slice(mid), responseType, mode, maxTokens,
-      userId, scanRunId, phase, aiLogger, temperature, logPrefix, timeoutMs, maxSplits, currentSplit + 1
-    );
-    if (mode === "spans") {
-      try {
-        const la = left ? JSON.parse(left) : [];
-        const rb = right ? JSON.parse(right) : [];
-        if (Array.isArray(la) || Array.isArray(rb)) {
-          const merged = ([] as any[]).concat(Array.isArray(la) ? la : [], Array.isArray(rb) ? rb : []);
-          return JSON.stringify(merged);
-        }
-      } catch (_) {
-        // ignore; fall through
-      }
-      return "[]";
-    }
-    // full_text synthetic concat
-    const parts: string[] = [];
-    if (left && left.trim().length > 0) parts.push(left);
-    if (right && right.trim().length > 0) parts.push(right);
-    return parts.join("\n\n");
-  }
-
-  // Fallback at leaf
-  if (mode === "spans") {
-    return "[]";
-  }
-  // Deterministic policy for redaction at leaf if phase is redaction; otherwise original
-  const texts = comments.map((c: any) => phase === "redaction" ? enforceRedactionPolicy(String(c.originalText || c.text || "")) : String(c.originalText || c.text || ""));
-  return buildSyntheticItemsFromTexts(comments, texts);
-}
-
 // Parse and normalize batch text responses
 function normalizeBatchTextParsed(parsed: any): string[] {
 
@@ -1354,14 +1206,12 @@ serve(async (req) => {
               ctx.rawRed = null;
               continue;
             }
-            const redactionMode = (scanConfig.redaction_output_mode === 'spans') ? 'spans' : 'full_text';
-            ctx.rawRed = await processBatchTextWithRecursiveSplitting(
+            ctx.rawRed = await callAI(
               state.group.provider,
               state.group.model,
               ctx.promptRed,
-              ctx.chunk,
+              ctx.sentinelRed,
               'batch_text',
-              redactionMode,
               sharedOutputLimitSafe,
               user.id,
               scanRunId,
@@ -1406,13 +1256,12 @@ serve(async (req) => {
               ctx.rawReph = null;
               continue;
             }
-            ctx.rawReph = await processBatchTextWithRecursiveSplitting(
+            ctx.rawReph = await callAI(
               state.group.provider,
               state.group.model,
               ctx.promptReph,
-              ctx.chunk,
+              ctx.sentinelReph,
               'batch_text',
-              'full_text',
               sharedOutputLimitSafe,
               user.id,
               scanRunId,

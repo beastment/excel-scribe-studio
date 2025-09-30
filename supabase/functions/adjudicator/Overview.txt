@@ -36,12 +36,6 @@ The adjudicator edge function resolves disagreements between the primary (Scan A
 - Configurable prompts and parameters
 - Temperature and token limit support
 
-### 5. Recursive Splitting For Content Filters
-- When the adjudicator model returns refusal/policy messages or partial outputs, the function automatically splits the batch and resubmits smaller subsets.
-- If partial coverage is detected, only missing items are resubmitted to minimize cost.
-- After splits, results are merged and mapped back via `originalRow`/`scannedIndex` IDs.
-- Safe defaults are used if splitting reaches limits.
-
 ## Technical Architecture
 
 ### Input Processing
