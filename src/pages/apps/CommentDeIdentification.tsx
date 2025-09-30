@@ -2,8 +2,9 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
-import { Shield, ArrowRight, Check, Star, Eye, Lock, Zap } from 'lucide-react';
+import { Shield, ArrowRight, Check, Star, Eye, Lock, Zap, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EditableText } from '@/components/EditableText';
 const CommentDeIdentification = () => {
@@ -224,6 +225,135 @@ $0.25 for each comment after that</div>
                 </Link>
               </>}
           </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section className="py-20 bg-white">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
+              Frequently Asked Questions
+            </h2>
+            <p className="text-lg text-gray-600">
+              Get answers to common questions about our comment de-identification service
+            </p>
+          </div>
+
+          <Accordion type="single" collapsible className="space-y-4">
+            <AccordionItem value="data-security" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">Where is my data stored, and how secure is it?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  We get it. You're entrusting us with highly sensitive data that will be processed by an AI. All data resides on secure AWS servers located in Sydney Australia. It's encrypted during transit and at rest. Additionally, once the analysis is done your data is removed unless you opt to save the session. You can delete any saved sessions yourself, or they will automatically be removed after three months. The AI models we use are deployed on secure AWS and Azure infrastructure located in Australian datacentres. We do not send your data to international AI companies (OpenAI, Anthropic, etc).
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="what-does-it-do" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">What does this do exactly?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  It flags any comments that contain personally identifying information (names, IDs, etc), or contextual information that could potentially identify someone either directly or indirectly (e.g. if someone refers to the "Head of Marketing", or indicates that they have worked in their role for a specific length of time, have three children, etc). It also recognises specific events that could be identifying, like "the person who talked about XYZ at the team meeting…". It also flags comments that are unnecessarily inflammatory (e.g. expletives, accusations, "sack the whole team", etc).
+                </p>
+                <p className="text-gray-700 leading-relaxed mt-3">
+                  In addition to flagging whether a comment is identifying/inflammatory, each comment is flagged if it contains 'concerning' content that requires your attention. For example, this could be content that indicates a serious safety issue, threats of violence, self-harm, alleged criminal activity, etc.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="flagged-comments" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">What happens when a comment has been flagged?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  For comments that are flagged you are provided with both a redacted version (that has the identifying parts of the comment replaced by XXXX) and a rephrased version (that has the comment reworded so as to convey the original intent, but without the problematic references). You can choose whether prefer redacted or rephrased content to be the default, and can switch individual comments from one to the other as needed. Comments that flagged as concerning but not identifiable/inflammatory are just rephrased.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="positive-comments" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">What if the comment is positive, e.g. identifies someone but is actually praising them?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  These types of comments are not flagged.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="existing-platform" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">Can't I just use my existing platform to do this?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  Possibly, but the vast majority of platforms do not provide any similar functionality. Those that do, typically only scan for Personally Identifying Material (PII), such as; names, phone numbers, titles, etc, and often just remove the entire comment or flag it for manual review.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="review-results" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">Can I review the results of the analysis?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  Yes, absolutely. Our software includes a full interface for reviewing the comments. It provides details on how many comments were flagged and in what way, the ability to filter the full comment list to show only the comments that were identifiable/inflammatory, or only those that were concerning. For each flagged comment you are able to switch between the redacted text and the rephrased text, revert to the original text, or edit the final text directly. You can flag comments as approved and not needing further analysis (but you are not required to approve comments), and can also save your session in case you want to come back and make some changes later one.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="departments" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">What about different departments, demographics, etc?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  Our platform allows you to include a department or demographic column alongside each comment. You can then filter to see only comments from those groups.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="multiple-questions" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">What if I have comments from multiple survey questions?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  Each comment is treated independently. Generally, you would analyse comments from one question at a time.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="after-analysis" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">What happens after the analysis?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  Once you are finished, simply hit the export button and you will be provided with an Excel or CSV file showing the full list of original comments, the redacted and rephrased versions, and the final version of the comment (including any direct edits that you made). You can then upload the comments back into your existing survey platform, or contact your provider for assistance.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="accuracy" className="border border-gray-200 rounded-lg">
+              <AccordionTrigger className="px-6 py-4 text-left hover:no-underline">
+                <span className="text-lg font-semibold text-gray-900">How accurate is it?</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  Every comment is analysed by two high performing AI models, which agree over 80% of the time. If the two models disagree on whether a comment is concerning or identifiable/inflammatory, then an additional premium AI model conducts a further analysis to resolve the disagreement (just like a supervisor overseeing the work of junior analysts).
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
       </section>
     </div>;
