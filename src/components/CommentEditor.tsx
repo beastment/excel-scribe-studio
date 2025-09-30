@@ -522,18 +522,111 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         }
         throw lastErr instanceof Error ? lastErr : new Error('scan-comments invoke failed');
       };
+
+      // Orchestrated wrapper that performs client-side recursive splitting when diagnostics indicate refusal/partials
+      const mergeById = (base: any[], overlay: any[]): any[] => {
+        const byId = new Map<string, any>(Array.isArray(base) ? base.map((c: any) => [String(c.id), c]) : []);
+        for (const c of (Array.isArray(overlay) ? overlay : [])) byId.set(String(c.id), c);
+        return Array.from(byId.values());
+      };
+
+      const invokeScanBatchOrchestrated = async (args: {
+        batch: any[];
+        batchStart: number;
+        batchRunId: string;
+        defaultMode: 'redact' | 'rephrase' | 'original';
+        isDemoData: boolean;
+        accessToken?: string;
+        maxSplits?: number;
+      }): Promise<any> => {
+        const { batch, batchStart, batchRunId, defaultMode, isDemoData, accessToken } = args;
+        const maxSplits = Math.max(1, Math.min(5, args.maxSplits ?? 3));
+
+        // Run once for the whole batch
+        const runOnce = async (restrictIndices?: number[]): Promise<any> => {
+          const { data: sData, error: sErr } = await supabase.functions.invoke('scan-comments', {
+            body: {
+              comments: batch,
+              defaultMode,
+              scanRunId: batchRunId,
+              isDemoScan: isDemoData,
+              batchStart: batchStart,
+              skipAdjudication: true,
+              clientManagedBatching: true,
+              maxBatchesPerRequest: 1,
+              maxRunMs: 140000,
+              restrictIndices
+            },
+            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+          });
+          if (sErr) throw new Error(sErr.message || 'scan-comments invocation failed');
+          return sData;
+        };
+
+        const diagnosticsNeedSplit = (diag: any): boolean => {
+          if (!diag) return false;
+          const a = diag.scanA || {};
+          const b = diag.scanB || {};
+          const aFail = Boolean(a.harmfulRefusalDetected) || (typeof a.coverageRatio === 'number' && a.coverageRatio < 1);
+          const bFail = Boolean(b.harmfulRefusalDetected) || (typeof b.coverageRatio === 'number' && b.coverageRatio < 1);
+          return aFail || bFail;
+        };
+
+        const extractSeedIds = (diag: any): number[] => {
+          const a = diag?.scanA || {}; const b = diag?.scanB || {};
+          const itemIds: number[] = Array.isArray(a.itemIdsUsed) && a.itemIdsUsed.length > 0 ? a.itemIdsUsed : (Array.isArray(b.itemIdsUsed) ? b.itemIdsUsed : []);
+          const missingSet = new Set<number>([...Array.isArray(a.missingIndices) ? a.missingIndices : [], ...Array.isArray(b.missingIndices) ? b.missingIndices : []]);
+          const missing = itemIds.filter((id) => missingSet.has(id));
+          const refusal = Boolean(a.harmfulRefusalDetected) || Boolean(b.harmfulRefusalDetected);
+          if (missing.length > 0) return missing;
+          if (refusal && itemIds.length > 1) return itemIds;
+          return [];
+        };
+
+        let initial = await runOnce();
+        const diag = initial?.scanDiagnostics;
+        if (!diagnosticsNeedSplit(diag)) return initial;
+        const seed = extractSeedIds(diag);
+        if (seed.length === 0) return initial;
+
+        const splitIds = (arr: number[]): [number[], number[]] => {
+          const mid = Math.floor(arr.length / 2);
+          return [arr.slice(0, mid), arr.slice(mid)];
+        };
+
+        let merged = initial;
+        let attempts = 0;
+        let queue: number[][] = [seed];
+        while (queue.length > 0 && attempts < maxSplits) {
+          const ids = queue.shift() as number[];
+          attempts++;
+          if (ids.length <= 1) {
+            const res = await runOnce(ids.length === 1 ? ids : undefined);
+            merged = { ...merged, comments: mergeById(merged.comments || [], res.comments || []) };
+            continue;
+          }
+          const [aHalf, bHalf] = splitIds(ids);
+          const [resA, resB] = await Promise.all([
+            runOnce(aHalf),
+            runOnce(bHalf)
+          ]);
+          merged = { ...merged, comments: mergeById(merged.comments || [], (resA.comments || []).concat(resB.comments || [])) };
+        }
+        return merged;
+      };
       for (let i = 0; i < comments.length; i += finalBatchSize) {
         const batch = comments.slice(i, i + finalBatchSize);
         const batchNo = Math.floor(i / finalBatchSize) + 1;
         const batchRunId = `${scanRunId}-${batchNo}`;
         console.log(`[SCAN][SUBMIT] Batch ${batchNo} sending ${batch.length} comments (runId=${batchRunId})`);
-        const sData = await invokeScanBatch({
+        const sData = await invokeScanBatchOrchestrated({
           batch,
           batchStart: i,
           batchRunId,
           defaultMode,
           isDemoData,
-          accessToken
+          accessToken,
+          maxSplits: 3
         });
         if (Array.isArray(sData?.comments) && sData.comments.length > 0) {
           aggregated.push(...sData.comments);
