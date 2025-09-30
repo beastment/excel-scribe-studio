@@ -1379,8 +1379,18 @@ serve(async (req) => {
       // For client-managed batching, process only the provided comments as a single batch
       console.log(`[CLIENT_MANAGED] Processing single batch: ${inputComments.length} comments starting from index ${batchStart}`);
       
-      // Client-managed: the request already contains exactly one batch
-      const batch = inputComments;
+      // Respect restrictIndices when client splits and resubmits subsets
+      const restrictIndicesCM = Array.isArray((requestBody as any).restrictIndices) ? (requestBody as any).restrictIndices as number[] : null;
+      const batch = restrictIndicesCM && restrictIndicesCM.length > 0
+        ? inputComments.filter((comment: any, idx: number) => {
+            const originalIdx = (typeof (comment as any)?.originalRow === 'number' && (comment as any).originalRow > 0)
+              ? (comment as any).originalRow
+              : (typeof (comment as any)?.scannedIndex === 'number' && (comment as any).scannedIndex > 0)
+                ? (comment as any).scannedIndex
+                : (batchStart + idx + 1);
+            return restrictIndicesCM.includes(originalIdx as number);
+          })
+        : inputComments;
       const batchEnd = batchStart + batch.length;
       
       console.log(`[PROCESS] Batch ${batchStart + 1}-${batchEnd} of ${batchStart + batch.length} (finalBatchSize=${finalBatchSize})`);
