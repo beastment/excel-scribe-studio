@@ -1562,8 +1562,9 @@ serve(async (req) => {
         }
       };
       // Convenience flag for clients: split when refusal or partial coverage present in either scan
+      const bExplicitRefusalOnly = bHarmful && !aHarmful && bPartial.parsedResults.length >= Math.floor(batch.length * 0.9);
       (clientDiagnostics as any).shouldSplit = Boolean(
-        aHarmful || bHarmful || aPartial.hasPartialResults || bPartial.hasPartialResults
+        bExplicitRefusalOnly || aHarmful || bHarmful || aPartial.hasPartialResults || bPartial.hasPartialResults
       );
 
       // Record usage AFTER the AI calls complete
