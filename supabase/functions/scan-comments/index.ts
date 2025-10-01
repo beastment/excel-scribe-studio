@@ -245,9 +245,20 @@ const isHarmfulContentResponse = (responseText: string, provider: string, model:
     'i apologize',
     // Explicit refusal composite phrases
     'cannot generate or repeat',
-    "i cannot generate or repeat",
-    // Common disclaimer that often precedes partial classifications
-    'i can provide the following classifications'
+    'i cannot generate or repeat',
+    'i will not restate or generate',
+    'i will not restate',
+    'i will not generate',
+    'i cannot provide any analysis',
+    'i will not provide any analysis',
+    'i am unable to provide analysis',
+    'i am not able to provide analysis',
+    'i cannot repeat text',
+    'i will not repeat text',
+    // Common disclaimers that often precede partial classifications
+    'i can provide the following classifications',
+    'i will provide structured classifications',
+    'i will provide classifications'
   ];
   
   // Check if response contains any of these specific patterns
