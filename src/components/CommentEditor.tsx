@@ -579,10 +579,8 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const itemIds: number[] = Array.isArray(a.itemIdsUsed) && a.itemIdsUsed.length > 0 ? a.itemIdsUsed : (Array.isArray(b.itemIdsUsed) ? b.itemIdsUsed : []);
           const missingSet = new Set<number>([...Array.isArray(a.missingIndices) ? a.missingIndices : [], ...Array.isArray(b.missingIndices) ? b.missingIndices : []]);
           const missing = itemIds.filter((id) => missingSet.has(id));
-          const refusal = Boolean(a.harmfulRefusalDetected) || Boolean(b.harmfulRefusalDetected);
-          if (missing.length > 0) return missing;
-          if (refusal && itemIds.length > 1) return itemIds;
-          return [];
+          // Only split when we have explicit missing/refused indices; never resubmit entire itemIds
+          return missing;
         };
 
         let initial = await runOnce(undefined, undefined);
@@ -599,20 +597,41 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         let merged = initial;
         let attempts = 0;
         let queue: number[][] = [seed];
+        const processedIds = new Set<number>();
+        const attemptedBatches = new Set<string>();
         while (queue.length > 0 && attempts < maxSplits) {
-          const ids = queue.shift() as number[];
+          let ids = queue.shift() as number[];
+          // Filter out already-processed ids
+          ids = ids.filter((id) => !processedIds.has(id));
+          if (ids.length === 0) { continue; }
           attempts++;
           if (ids.length <= 1) {
-            const res = await runOnce(ids.length === 1 ? ids : undefined, ['scan_b']);
+            const sig = `b:${(ids && ids.length === 1) ? String(ids[0]) : 'none'}`;
+            if (!attemptedBatches.has(sig)) {
+              attemptedBatches.add(sig);
+              const res = await runOnce(ids.length === 1 ? ids : undefined, ['scan_b']);
+              merged = { ...merged, comments: mergeById(merged.comments || [], res.comments || []) };
+              ids.forEach((id) => processedIds.add(id));
+            }
             merged = { ...merged, comments: mergeById(merged.comments || [], res.comments || []) };
             continue;
           }
           const [aHalf, bHalf] = splitIds(ids);
-          const [resA, resB] = await Promise.all([
-            runOnce(aHalf, ['scan_b']),
-            runOnce(bHalf, ['scan_b'])
-          ]);
-          merged = { ...merged, comments: mergeById(merged.comments || [], (resA.comments || []).concat(resB.comments || [])) };
+          const halves: number[][] = [aHalf, bHalf].map((half) => half.filter((id) => !processedIds.has(id)));
+          const calls: Promise<any>[] = [];
+          for (const half of halves) {
+            if (half.length === 0) continue;
+            const sig = `b:${half.slice().sort((x,y)=>x-y).join(',')}`;
+            if (attemptedBatches.has(sig)) continue;
+            attemptedBatches.add(sig);
+            calls.push(runOnce(half, ['scan_b']).then((res) => {
+              merged = { ...merged, comments: mergeById(merged.comments || [], res.comments || []) };
+              half.forEach((id) => processedIds.add(id));
+            }));
+          }
+          if (calls.length > 0) {
+            await Promise.all(calls);
+          }
         }
         return merged;
       };
