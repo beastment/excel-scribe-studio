@@ -1440,13 +1440,35 @@ serve(async (req) => {
       // Client-managed: single-shot calls (no server-side recursive splitting)
       console.log(`[CLIENT_MANAGED] Processing batch of ${batch.length} comments without server-side splitting`);
 
-      const settled = await Promise.allSettled([
-        callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
-        callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
-      ]);
-
-      const scanAResultsClient = settled[0].status === 'fulfilled' ? (settled[0] as PromiseFulfilledResult<any>).value : '';
-      const scanBResultsClient = settled[1].status === 'fulfilled' ? (settled[1] as PromiseFulfilledResult<any>).value : '';
+      // Honor targetScans to allow client to run only a subset (e.g., split only scan_b)
+      const wantA = (targetScans.size === 0) || targetScans.has('scan_a');
+      const wantB = (targetScans.size === 0) || targetScans.has('scan_b');
+      let scanAResultsClient: string = '';
+      let scanBResultsClient: string = '';
+      if (wantA && wantB) {
+        const settled = await Promise.allSettled([
+          callAI(scanA.provider, scanA.model, scanA.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger, scanATokenLimits.output_token_limit, scanA.temperature),
+          callAI(scanB.provider, scanB.model, scanB.analysis_prompt, batchInput, 'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger, scanBTokenLimits.output_token_limit, scanB.temperature)
+        ]);
+        scanAResultsClient = settled[0].status === 'fulfilled' ? (settled[0] as PromiseFulfilledResult<any>).value : '';
+        scanBResultsClient = settled[1].status === 'fulfilled' ? (settled[1] as PromiseFulfilledResult<any>).value : '';
+      } else if (wantA) {
+        try {
+          scanAResultsClient = await callAI(
+            scanA.provider, scanA.model, scanA.analysis_prompt, batchInput,
+            'batch_analysis', user.id, scanRunId, 'scan_a', aiLogger,
+            scanATokenLimits.output_token_limit, scanA.temperature
+          );
+        } catch (_) { scanAResultsClient = ''; }
+      } else if (wantB) {
+        try {
+          scanBResultsClient = await callAI(
+            scanB.provider, scanB.model, scanB.analysis_prompt, batchInput,
+            'batch_analysis', user.id, scanRunId, 'scan_b', aiLogger,
+            scanBTokenLimits.output_token_limit, scanB.temperature
+          );
+        } catch (_) { scanBResultsClient = ''; }
+      }
       const batchEndTimeClient = Date.now();
       console.log(`[PERFORMANCE] Batch ${batchStart + 1}-${batchEnd} processed in ${batchEndTimeClient - batchStartTime}ms (parallel AI calls)`);
 
