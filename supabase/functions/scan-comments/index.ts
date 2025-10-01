@@ -1582,16 +1582,20 @@ serve(async (req) => {
       console.log(`[RESULT] Scan A ${scanA.provider}/${scanA.model}: type=${typeof scanAResultsClient} len=${Array.isArray(scanAResultsClient) ? scanAResultsClient.length : 'n/a'}`);
       console.log(`[RESULT] Scan B ${scanB.provider}/${scanB.model}: type=${typeof scanBResultsClient} len=${Array.isArray(scanBResultsClient) ? scanBResultsClient.length : 'n/a'}`);
 
-      // Parse and validate results
-      const scanAResultsArray = parseBatchResults(scanAResultsClient, batch.length, 'Scan A', batchStart + 1);
-      const scanBResultsArray = parseBatchResults(scanBResultsClient, batch.length, 'Scan B', batchStart + 1);
+      // Parse and validate results (tolerate single-scan retries)
+      const scanAResultsArray = (scanAResultsClient && String(scanAResultsClient).trim().length > 0)
+        ? parseBatchResults(scanAResultsClient, batch.length, 'Scan A', batchStart + 1)
+        : [];
+      const scanBResultsArray = (scanBResultsClient && String(scanBResultsClient).trim().length > 0)
+        ? parseBatchResults(scanBResultsClient, batch.length, 'Scan B', batchStart + 1)
+        : [];
       // Index-aligned lookup by returned index to avoid order mismatches
       const scanAByIndex = new Map<number, any>(scanAResultsArray.filter(r => typeof r?.index === 'number').map(r => [r.index as number, r]));
       const scanBByIndex = new Map<number, any>(scanBResultsArray.filter(r => typeof r?.index === 'number').map(r => [r.index as number, r]));
 
-      if (scanAResultsArray.length !== batch.length || scanBResultsArray.length !== batch.length) {
+      if ((scanAResultsArray.length > 0 && scanAResultsArray.length !== batch.length) || (scanBResultsArray.length > 0 && scanBResultsArray.length !== batch.length)) {
         console.error(`[ERROR] Incomplete batch results detected for client-managed batch ${batchStart + 1}-${batchEnd}`);
-        console.error(`[ERROR] Expected ${batch.length} results, got Scan A: ${scanAResultsArray.length}, Scan B: ${scanBResultsArray.length}`);
+        console.error(`[ERROR] Expected ${batch.length} results, got Scan A: ${scanAResultsArray.length || 0}, Scan B: ${scanBResultsArray.length || 0}`);
       }
 
       // Process each comment in this batch
@@ -1607,26 +1611,30 @@ serve(async (req) => {
         const expectedIndex = Number.isFinite(stableIndexCandidate) ? stableIndexCandidate : (batchStart + i + 1);
         const scanAResultRaw = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
         const scanBResultRaw = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
-        const scanAResult = scanAResultRaw ? { ...scanAResultRaw, model: `${scanA.provider}/${scanA.model}` } : scanAResultRaw;
-        const scanBResult = scanBResultRaw ? { ...scanBResultRaw, model: `${scanB.provider}/${scanB.model}` } : scanBResultRaw;
-        if (!scanAResult || !scanBResult) {
-          console.warn(`Missing scan results for comment ${expectedIndex}, skipping`);
+        const scanAResult = scanAResultRaw ? { ...scanAResultRaw, model: `${scanA.provider}/${scanA.model}` } : undefined;
+        const scanBResult = scanBResultRaw ? { ...scanBResultRaw, model: `${scanB.provider}/${scanB.model}` } : undefined;
+        if (!scanAResult && !scanBResult) {
+          console.warn(`Missing both scan results for comment ${expectedIndex}, skipping`);
           continue;
         }
-        if (scanAResult.index !== expectedIndex) {
+        if (scanAResult && scanAResult.index !== expectedIndex) {
           console.warn(`[WARNING] Scan A returned index ${scanAResult.index} for comment ${expectedIndex}`);
         }
-        if (scanBResult.index !== expectedIndex) {
+        if (scanBResult && scanBResult.index !== expectedIndex) {
           console.warn(`[WARNING] Scan B returned index ${scanBResult.index} for comment ${expectedIndex}`);
         }
-        const concerningDisagreement = scanAResult.concerning !== scanBResult.concerning;
-        const identifiableDisagreement = scanAResult.identifiable !== scanBResult.identifiable;
-        const needsAdjudication = concerningDisagreement || identifiableDisagreement;
+        const aConcerning = Boolean(scanAResult?.concerning);
+        const bConcerning = Boolean(scanBResult?.concerning);
+        const aIdent = Boolean(scanAResult?.identifiable);
+        const bIdent = Boolean(scanBResult?.identifiable);
+        const concerningDisagreement = (scanAResult != null && scanBResult != null) ? (aConcerning !== bConcerning) : false;
+        const identifiableDisagreement = (scanAResult != null && scanBResult != null) ? (aIdent !== bIdent) : false;
+        const needsAdjudication = (scanAResult != null && scanBResult != null) ? (concerningDisagreement || identifiableDisagreement) : false;
         if (needsAdjudication) {
           totalSummary.needsAdjudication++;
         }
-        const concerning = Boolean(scanAResult.concerning || scanBResult.concerning);
-        const identifiable = Boolean(scanAResult.identifiable || scanBResult.identifiable);
+        const concerning = Boolean(aConcerning || bConcerning);
+        const identifiable = Boolean(aIdent || bIdent);
         if (concerning) totalSummary.concerning++;
         if (identifiable) totalSummary.identifiable++;
         // Mode mapping policy:
@@ -1646,8 +1654,8 @@ serve(async (req) => {
           originalText: comment.text,
           originalRow: comment.originalRow || expectedIndex,
           scannedIndex: comment.scannedIndex || expectedIndex,
-          scanAResult: scanAResult,
-          scanBResult: scanBResult,
+          ...(scanAResult ? { scanAResult } : {}),
+          ...(scanBResult ? { scanBResult } : {}),
           concerning: concerning,
           identifiable: identifiable,
           mode: mode,
