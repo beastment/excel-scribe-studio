@@ -1562,10 +1562,10 @@ serve(async (req) => {
         }
       };
       // Convenience flag for clients: split when refusal or partial coverage present in either scan
-      const bExplicitRefusalOnly = bHarmful && !aHarmful && bPartial.parsedResults.length >= Math.floor(batch.length * 0.9);
-      (clientDiagnostics as any).shouldSplit = Boolean(
-        bExplicitRefusalOnly || aHarmful || bHarmful || aPartial.hasPartialResults || bPartial.hasPartialResults
-      );
+      // Only request split when we have explicit missing/refused indices or partial coverage
+      const hasExplicitRefused = (aRefused.length > 0) || (bRefused.length > 0);
+      const hasPartial = Boolean(aPartial.hasPartialResults || bPartial.hasPartialResults);
+      (clientDiagnostics as any).shouldSplit = Boolean(hasExplicitRefused || hasPartial);
 
       // Record usage AFTER the AI calls complete
       if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
