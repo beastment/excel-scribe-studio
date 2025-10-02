@@ -633,8 +633,16 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         const attemptedBatches = new Set<string>();
         while (queue.length > 0 && attempts < maxSplits) {
           let ids = queue.shift() as number[];
-          // Filter out already-processed ids
+          // Filter out already-processed ids and those already merged for Scan B
           ids = ids.filter((id) => !processedIds.has(id));
+          const existingBIndices = new Set<number>(
+            Array.isArray(merged?.comments)
+              ? (merged.comments as any[])
+                  .map((c: any) => (c?.scanBResult ? (typeof c?.originalRow === 'number' ? c.originalRow : (typeof c?.scannedIndex === 'number' ? c.scannedIndex : null)) : null))
+                  .filter((v: any): v is number => typeof v === 'number')
+              : []
+          );
+          ids = ids.filter((id) => !existingBIndices.has(id));
           if (ids.length === 0) { continue; }
           attempts++;
           if (ids.length <= 1) {
@@ -649,7 +657,7 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             continue;
           }
           const [aHalf, bHalf] = splitIds(ids);
-          const halves: number[][] = [aHalf, bHalf].map((half) => half.filter((id) => !processedIds.has(id)));
+          const halves: number[][] = [aHalf, bHalf].map((half) => half.filter((id) => !processedIds.has(id) && !existingBIndices.has(id)));
           const calls: Promise<any>[] = [];
           for (const half of halves) {
             if (half.length === 0) continue;
