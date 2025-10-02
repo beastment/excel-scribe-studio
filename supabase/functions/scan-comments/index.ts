@@ -1618,8 +1618,7 @@ serve(async (req) => {
         const scanAResult = scanAResultRaw ? { ...scanAResultRaw, model: `${scanA.provider}/${scanA.model}` } : undefined;
         const scanBResult = scanBResultRaw ? { ...scanBResultRaw, model: `${scanB.provider}/${scanB.model}` } : undefined;
         if (!scanAResult && !scanBResult) {
-          console.warn(`Missing both scan results for comment ${expectedIndex}, skipping`);
-          continue;
+          console.warn(`Missing both scan results for comment ${expectedIndex}, emitting placeholder`);
         }
         if (scanAResult && scanAResult.index !== expectedIndex) {
           console.warn(`[WARNING] Scan A returned index ${scanAResult.index} for comment ${expectedIndex}`);
