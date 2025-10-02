@@ -478,6 +478,13 @@ export function AILogsViewer({
     const containsRefusal = refusalKeywords.some(k => lower.includes(k));
     return !hasExpectedFormat && containsRefusal;
   };
+  const countResponseIndices = (response?: string): number => {
+    if (!response) return 0;
+    try {
+      const matches = response.match(/(?:^|\n)\s*i:\s*\d+/gi);
+      return matches ? matches.length : 0;
+    } catch { return 0; }
+  };
   const getDisplayStatus = (log: AILog): 'success' | 'error' | 'pending' | 'splitting' => {
     if (log.function_name === 'scan-comments' && (log.phase === 'scan_a' || log.phase === 'scan_b')) {
       // If this log is part of a splitting chain (superset/subset), mark as splitting
@@ -488,15 +495,14 @@ export function AILogsViewer({
       if (log.response_status === 'success' && isRefusalLikely(log.response_text)) {
         return 'splitting';
       }
-      // Otherwise, if it covers essentially the full numeric range, treat as success
+      // Compare response coverage vs requested range
       const range = parseItemsRange(log.request_input);
       if (range) {
         const width = Math.max(1, range.max - range.min + 1);
-        const count = extractCommentsCount(log.request_input);
-        const coverage = count / width;
-        if (coverage >= 0.95) {
-          return 'success';
-        }
+        const responseCount = countResponseIndices(log.response_text);
+        const coverage = responseCount / width;
+        if (coverage < 0.95) return 'splitting';
+        return 'success';
       }
     }
     return log.response_status;

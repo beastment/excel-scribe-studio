@@ -608,11 +608,17 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const a = diag?.scanA || {}; const b = diag?.scanB || {};
           const itemIds: number[] = Array.isArray(a.itemIdsUsed) && a.itemIdsUsed.length > 0 ? a.itemIdsUsed : (Array.isArray(b.itemIdsUsed) ? b.itemIdsUsed : []);
           const missingSet = new Set<number>([...Array.isArray(a.missingIndices) ? a.missingIndices : [], ...Array.isArray(b.missingIndices) ? b.missingIndices : []]);
-          // Also subtract indices already returned by scan_b if present
           const returnedB = new Set<number>(Array.isArray(b.returnedIndices) ? b.returnedIndices : []);
-          const missing = itemIds.filter((id) => missingSet.has(id) && !returnedB.has(id));
-          // Only split when we have explicit missing/refused indices; never resubmit entire itemIds
-          return missing;
+          // Preferred path: explicit missing indices
+          let seed = itemIds.filter((id) => missingSet.has(id) && !returnedB.has(id));
+          if (seed.length > 0) return seed;
+          // Coverage gating: if Scan B coverage is low, derive seed as (itemIds - returnedB)
+          const coverage = typeof b.coverageRatio === 'number' ? b.coverageRatio : 1;
+          if (coverage < 0.95 && itemIds.length > 0) {
+            const inferred = itemIds.filter((id) => !returnedB.has(id));
+            return inferred;
+          }
+          return [];
         };
 
         let initial = await runOnce(undefined, undefined);
