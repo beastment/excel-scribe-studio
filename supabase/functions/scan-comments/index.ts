@@ -1637,8 +1637,12 @@ serve(async (req) => {
         if (needsAdjudication) {
           totalSummary.needsAdjudication++;
         }
-        const concerning = Boolean(aConcerning || bConcerning);
-        const identifiable = Boolean(aIdent || bIdent);
+        let concerning: boolean | undefined = undefined;
+        let identifiable: boolean | undefined = undefined;
+        if (scanAResult != null && scanBResult != null) {
+          concerning = Boolean(aConcerning || bConcerning);
+          identifiable = Boolean(aIdent || bIdent);
+        }
         if (concerning) totalSummary.concerning++;
         if (identifiable) totalSummary.identifiable++;
         // Mode mapping policy:
@@ -1646,9 +1650,9 @@ serve(async (req) => {
         // - concerning-only => rephrase
         // - else => original
         let mode: 'redact' | 'rephrase' | 'original';
-        if (identifiable) {
+        if (identifiable === true) {
           mode = 'redact';
-        } else if (concerning) {
+        } else if (concerning === true) {
           mode = 'rephrase';
         } else {
           mode = 'original';
@@ -1660,8 +1664,8 @@ serve(async (req) => {
           scannedIndex: comment.scannedIndex || expectedIndex,
           ...(scanAResult ? { scanAResult } : {}),
           ...(scanBResult ? { scanBResult } : {}),
-          concerning: concerning,
-          identifiable: identifiable,
+          ...(typeof concerning === 'boolean' ? { concerning } : {}),
+          ...(typeof identifiable === 'boolean' ? { identifiable } : {}),
           mode: mode,
           needsAdjudication: needsAdjudication,
           adjudicationReason: needsAdjudication ? (concerningDisagreement ? 'concerning_disagreement' : 'identifiable_disagreement') : null
