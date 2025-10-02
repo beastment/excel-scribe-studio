@@ -54,6 +54,10 @@ export function AILogsViewer({
   const [loading, setLoading] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
   const [showFullContent, setShowFullContent] = useState(true); // Auto-expand by default
+  const [expandedMap, setExpandedMap] = useState<Record<string, { prompt?: boolean; input?: boolean; response?: boolean; payload?: boolean }>>({});
+  const toggleExpanded = (id: string, key: 'prompt'|'input'|'response'|'payload') => {
+    setExpandedMap(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [key]: !prev[id]?.[key] } }));
+  };
   const [selectedLog, setSelectedLog] = useState<AILog | null>(null);
   const [mostRecentRunId, setMostRecentRunId] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -275,7 +279,7 @@ export function AILogsViewer({
       const {
         data: allLogs,
         error: allLogsError
-      } = await supabase.from('ai_logs').select('id, scan_run_id, function_name, provider, model, request_type, phase, request_tokens, response_tokens, response_status, processing_time_ms, time_started, time_finished, total_run_time_ms, created_at, request_input, response_text, response_error').eq('user_id', user.id).order('created_at', {
+      } = await supabase.from('ai_logs').select('id, scan_run_id, function_name, provider, model, request_type, phase, request_tokens, response_tokens, response_status, processing_time_ms, time_started, time_finished, total_run_time_ms, created_at, request_prompt, request_input, request_temperature, request_max_tokens, response_text, response_error').eq('user_id', user.id).order('created_at', {
         ascending: false
       }).limit(250);
       if (allLogsError) {
@@ -806,28 +810,57 @@ export function AILogsViewer({
                       
                       {showFullContent && <>
                           <div>
+                            <span className="font-medium text-sm">Request Payload:</span>
+                            <pre className="text-xs bg-gray-50 p-2 rounded mt-1 font-mono overflow-auto max-h-40">
+{JSON.stringify({
+  provider: log.provider,
+  model: log.model,
+  request_type: log.request_type,
+  phase: log.phase,
+  temperature: typeof (log as any).request_temperature === 'number' ? (log as any).request_temperature : undefined,
+  max_tokens: typeof (log as any).request_max_tokens === 'number' ? (log as any).request_max_tokens : undefined,
+  messages: [
+    { role: 'system', content: log.request_prompt || '' },
+    { role: 'user', content: log.request_input || '' }
+  ]
+}, null, expandedMap[log.id]?.payload ? 2 : 0)}
+                            </pre>
+                            <Button variant="ghost" size="sm" className="mt-1 px-2 py-0 h-6" onClick={() => toggleExpanded(log.id, 'payload')}>
+                              {expandedMap[log.id]?.payload ? 'Collapse' : 'Expand'} payload
+                            </Button>
+                          </div>
+                          <div>
                             <span className="font-medium text-sm">Request Prompt:</span>
-                            <p className="text-sm bg-gray-50 p-2 rounded mt-1 font-mono">
-                              {truncateText(log.request_prompt, 200)}
-                            </p>
+                            <pre className="text-sm bg-gray-50 p-2 rounded mt-1 font-mono overflow-auto max-h-40">
+                              {expandedMap[log.id]?.prompt ? (log.request_prompt || '') : truncateText(log.request_prompt, 200)}
+                            </pre>
+                            <Button variant="ghost" size="sm" className="mt-1 px-2 py-0 h-6" onClick={() => toggleExpanded(log.id, 'prompt')}>
+                              {expandedMap[log.id]?.prompt ? 'Collapse' : 'Expand'} prompt
+                            </Button>
                           </div>
                           <div>
                             <span className="font-medium text-sm">Request Input:</span>
-                            <p className="text-sm bg-gray-50 p-2 rounded mt-1 font-mono">
-                              {truncateText(log.request_input, 200)}
-                            </p>
+                            <pre className="text-sm bg-gray-50 p-2 rounded mt-1 font-mono overflow-auto max-h-40">
+                              {expandedMap[log.id]?.input ? (log.request_input || '') : truncateText(log.request_input, 200)}
+                            </pre>
+                            <Button variant="ghost" size="sm" className="mt-1 px-2 py-0 h-6" onClick={() => toggleExpanded(log.id, 'input')}>
+                              {expandedMap[log.id]?.input ? 'Collapse' : 'Expand'} input
+                            </Button>
                           </div>
                           {log.response_text && <div>
                               <span className="font-medium text-sm">Response:</span>
-                              <p className="text-sm bg-gray-50 p-2 rounded mt-1 font-mono">
-                                {truncateText(log.response_text, 200)}
-                              </p>
+                              <pre className="text-sm bg-gray-50 p-2 rounded mt-1 font-mono overflow-auto max-h-40">
+                                {expandedMap[log.id]?.response ? (log.response_text || '') : truncateText(log.response_text, 200)}
+                              </pre>
+                              <Button variant="ghost" size="sm" className="mt-1 px-2 py-0 h-6" onClick={() => toggleExpanded(log.id, 'response')}>
+                                {expandedMap[log.id]?.response ? 'Collapse' : 'Expand'} response
+                              </Button>
                             </div>}
                           {log.response_error && <div>
                               <span className="font-medium text-sm text-red-600">Error:</span>
-                              <p className="text-sm bg-red-50 p-2 rounded mt-1 font-mono text-red-600">
+                              <pre className="text-sm bg-red-50 p-2 rounded mt-1 font-mono text-red-600 overflow-auto max-h-40">
                                 {log.response_error}
-                              </p>
+                              </pre>
                             </div>}
                         </>}
                     </CardContent>
