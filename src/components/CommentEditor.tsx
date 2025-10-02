@@ -534,8 +534,10 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
             continue;
           }
           const merged: any = { ...bc, ...oc };
-          // Preserve existing scan results if the overlay doesn't include them
-          if (typeof oc.scanAResult === 'undefined' && typeof bc.scanAResult !== 'undefined') {
+          // Preserve existing scan results if the overlay doesn't include them or they are nullish/empty
+          const overlayHasA = typeof oc.scanAResult !== 'undefined' && oc.scanAResult !== null;
+          const overlayAValid = overlayHasA && (typeof oc.scanAResult?.concerning === 'boolean' || typeof oc.scanAResult?.identifiable === 'boolean');
+          if ((!overlayHasA || !overlayAValid) && typeof bc.scanAResult !== 'undefined') {
             merged.scanAResult = bc.scanAResult;
           }
           if (typeof oc.scanBResult === 'undefined' && typeof bc.scanBResult !== 'undefined') {
@@ -545,13 +547,13 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           if (typeof oc.adjudicationData === 'undefined' && typeof bc.adjudicationData !== 'undefined') {
             merged.adjudicationData = bc.adjudicationData;
           }
-          // Prefer true/defined flags, fallback to existing when overlay omits
-          if (typeof oc.concerning === 'undefined' && typeof bc.concerning !== 'undefined') {
-            merged.concerning = bc.concerning;
-          }
-          if (typeof oc.identifiable === 'undefined' && typeof bc.identifiable !== 'undefined') {
-            merged.identifiable = bc.identifiable;
-          }
+          // Prefer true/defined flags, fallback to existing when overlay omits; recompute OR from scan results if available
+          const aRes = merged.scanAResult;
+          const bRes = merged.scanBResult;
+          const orConc = (typeof aRes?.concerning === 'boolean' ? aRes.concerning : false) || (typeof bRes?.concerning === 'boolean' ? bRes.concerning : false);
+          const orIdent = (typeof aRes?.identifiable === 'boolean' ? aRes.identifiable : false) || (typeof bRes?.identifiable === 'boolean' ? bRes.identifiable : false);
+          if (typeof oc.concerning === 'undefined') merged.concerning = (typeof bc.concerning === 'boolean') ? bc.concerning : orConc;
+          if (typeof oc.identifiable === 'undefined') merged.identifiable = (typeof bc.identifiable === 'boolean') ? bc.identifiable : orIdent;
           byId.set(key, merged);
         }
         return Array.from(byId.values());
