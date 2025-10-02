@@ -526,7 +526,34 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
       // Orchestrated wrapper that performs client-side recursive splitting when diagnostics indicate refusal/partials
       const mergeById = (base: any[], overlay: any[]): any[] => {
         const byId = new Map<string, any>(Array.isArray(base) ? base.map((c: any) => [String(c.id), c]) : []);
-        for (const c of (Array.isArray(overlay) ? overlay : [])) byId.set(String(c.id), c);
+        for (const oc of (Array.isArray(overlay) ? overlay : [])) {
+          const key = String(oc.id);
+          const bc = byId.get(key);
+          if (!bc) {
+            byId.set(key, oc);
+            continue;
+          }
+          const merged: any = { ...bc, ...oc };
+          // Preserve existing scan results if the overlay doesn't include them
+          if (typeof oc.scanAResult === 'undefined' && typeof bc.scanAResult !== 'undefined') {
+            merged.scanAResult = bc.scanAResult;
+          }
+          if (typeof oc.scanBResult === 'undefined' && typeof bc.scanBResult !== 'undefined') {
+            merged.scanBResult = bc.scanBResult;
+          }
+          // Preserve adjudication data if missing in overlay
+          if (typeof oc.adjudicationData === 'undefined' && typeof bc.adjudicationData !== 'undefined') {
+            merged.adjudicationData = bc.adjudicationData;
+          }
+          // Prefer true/defined flags, fallback to existing when overlay omits
+          if (typeof oc.concerning === 'undefined' && typeof bc.concerning !== 'undefined') {
+            merged.concerning = bc.concerning;
+          }
+          if (typeof oc.identifiable === 'undefined' && typeof bc.identifiable !== 'undefined') {
+            merged.identifiable = bc.identifiable;
+          }
+          byId.set(key, merged);
+        }
         return Array.from(byId.values());
       };
 
