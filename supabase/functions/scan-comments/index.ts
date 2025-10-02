@@ -1613,8 +1613,8 @@ serve(async (req) => {
             ? (comment as any).scannedIndex
             : (batchStart + i + 1);
         const expectedIndex = Number.isFinite(stableIndexCandidate) ? stableIndexCandidate : (batchStart + i + 1);
-        const scanAResultRaw = scanAByIndex.get(expectedIndex) || scanAResultsArray[i];
-        const scanBResultRaw = scanBByIndex.get(expectedIndex) || scanBResultsArray[i];
+        const scanAResultRaw = scanAByIndex.get(expectedIndex);
+        const scanBResultRaw = scanBByIndex.get(expectedIndex);
         const scanAResult = scanAResultRaw ? { ...scanAResultRaw, model: `${scanA.provider}/${scanA.model}` } : undefined;
         const scanBResult = scanBResultRaw ? { ...scanBResultRaw, model: `${scanB.provider}/${scanB.model}` } : undefined;
         if (!scanAResult && !scanBResult) {
