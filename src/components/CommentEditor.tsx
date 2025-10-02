@@ -552,8 +552,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const bRes = merged.scanBResult;
           const orConc = (typeof aRes?.concerning === 'boolean' ? aRes.concerning : false) || (typeof bRes?.concerning === 'boolean' ? bRes.concerning : false);
           const orIdent = (typeof aRes?.identifiable === 'boolean' ? aRes.identifiable : false) || (typeof bRes?.identifiable === 'boolean' ? bRes.identifiable : false);
-          if (typeof oc.concerning === 'undefined') merged.concerning = (typeof bc.concerning === 'boolean') ? bc.concerning : orConc;
-          if (typeof oc.identifiable === 'undefined') merged.identifiable = (typeof bc.identifiable === 'boolean') ? bc.identifiable : orIdent;
+          // Always set flags from the merged scan results to avoid stale values
+          merged.concerning = orConc;
+          merged.identifiable = orIdent;
           byId.set(key, merged);
         }
         return Array.from(byId.values());
