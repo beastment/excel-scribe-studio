@@ -1494,6 +1494,8 @@ serve(async (req) => {
       });
       const aPartial = parsePartialResults(String(scanAResultsClient || ''), batch.length, batchStart, expectedIdxClient);
       const bPartial = parsePartialResults(String(scanBResultsClient || ''), batch.length, batchStart, expectedIdxClient);
+      const bCoverage = batch.length > 0 ? (bPartial.parsedResults.length / batch.length) : 1;
+      const lowCoverageB = bCoverage < 0.95;
 
       // Extract explicit refusal item ranges like "Items 501-503" or "Item 501"
       const extractRefusedIndices = (text: string, expected: number[]): number[] => {
@@ -1569,7 +1571,7 @@ serve(async (req) => {
       // Only request split when we have explicit missing/refused indices or partial coverage
       const hasExplicitRefused = (aRefused.length > 0) || (bRefused.length > 0);
       const hasPartial = Boolean(aPartial.hasPartialResults || bPartial.hasPartialResults);
-      (clientDiagnostics as any).shouldSplit = Boolean(hasExplicitRefused || hasPartial);
+      (clientDiagnostics as any).shouldSplit = Boolean(hasExplicitRefused || hasPartial || (bHarmful && lowCoverageB));
 
       // Record usage AFTER the AI calls complete
       if (scanATokenLimits.tpm_limit || scanATokenLimits.rpm_limit) {
