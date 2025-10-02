@@ -578,7 +578,9 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
           const a = diag?.scanA || {}; const b = diag?.scanB || {};
           const itemIds: number[] = Array.isArray(a.itemIdsUsed) && a.itemIdsUsed.length > 0 ? a.itemIdsUsed : (Array.isArray(b.itemIdsUsed) ? b.itemIdsUsed : []);
           const missingSet = new Set<number>([...Array.isArray(a.missingIndices) ? a.missingIndices : [], ...Array.isArray(b.missingIndices) ? b.missingIndices : []]);
-          const missing = itemIds.filter((id) => missingSet.has(id));
+          // Also subtract indices already returned by scan_b if present
+          const returnedB = new Set<number>(Array.isArray(b.returnedIndices) ? b.returnedIndices : []);
+          const missing = itemIds.filter((id) => missingSet.has(id) && !returnedB.has(id));
           // Only split when we have explicit missing/refused indices; never resubmit entire itemIds
           return missing;
         };

@@ -1529,6 +1529,8 @@ serve(async (req) => {
         if (s.includes('[') && s.includes(']')) return 'json_like';
         return 'unknown';
       };
+      const aReturned = Array.isArray(aPartial.parsedResults) ? aPartial.parsedResults.map((r: any) => r.index).filter((n: any) => typeof n === 'number') : [];
+      const bReturned = Array.isArray(bPartial.parsedResults) ? bPartial.parsedResults.map((r: any) => r.index).filter((n: any) => typeof n === 'number') : [];
       clientDiagnostics = {
         mode: 'client_managed',
         batch: { start: batchStart, size: batch.length },
@@ -1544,7 +1546,8 @@ serve(async (req) => {
           output_token_limit: scanATokenLimits.output_token_limit,
           tpm_limit: scanATokenLimits.tpm_limit,
           rpm_limit: scanATokenLimits.rpm_limit,
-          tokensPerComment: scanA.tokens_per_comment || 13
+          tokensPerComment: scanA.tokens_per_comment || 13,
+          returnedIndices: aReturned
         },
         scanB: {
           provider: scanB.provider,
@@ -1558,7 +1561,8 @@ serve(async (req) => {
           output_token_limit: scanBTokenLimits.output_token_limit,
           tpm_limit: scanBTokenLimits.tpm_limit,
           rpm_limit: scanBTokenLimits.rpm_limit,
-          tokensPerComment: scanB.tokens_per_comment || 13
+          tokensPerComment: scanB.tokens_per_comment || 13,
+          returnedIndices: bReturned
         }
       };
       // Convenience flag for clients: split when refusal or partial coverage present in either scan
