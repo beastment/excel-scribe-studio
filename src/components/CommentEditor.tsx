@@ -1407,7 +1407,21 @@ export const CommentEditor: React.FC<CommentEditorProps> = ({
         const rephraseResults = await Promise.all(rephraseTasks);
         for (const arr of rephraseResults) mergeInto(arr);
 
-        let mergedProcessed = Object.values(processedCombined);
+        // Ensure a placeholder entry exists for every comment to be post-processed
+        const placeholderById = new Map<string, any>();
+        for (const c of commentsToProcess as any[]) {
+          const id = String(c.id);
+          if (!processedCombined[id]) {
+            placeholderById.set(id, {
+              id,
+              originalRow: c.originalRow,
+              scannedIndex: c.scannedIndex,
+              finalText: c.text,
+              mode: c.mode || (c.identifiable ? defaultMode : (c.concerning ? 'rephrase' : 'original'))
+            });
+          }
+        }
+        let mergedProcessed = [...Object.values(processedCombined), ...Array.from(placeholderById.values())];
 
         // Build processedBy* indices for fallback lookup
         const processedByOriginalRow: Map<number, any> = new Map();
